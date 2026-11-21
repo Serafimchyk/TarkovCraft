@@ -13,6 +13,8 @@ import com.tarkovcraft.network.TarkovNetworking;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.damage.DamageSource;
+import net.minecraft.entity.effect.StatusEffectInstance;
+import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
@@ -22,6 +24,7 @@ import net.minecraft.registry.tag.DamageTypeTags;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.sound.SoundCategory;
 import net.minecraft.sound.SoundEvents;
+import net.minecraft.world.GameRules;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -29,6 +32,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Mixin(PlayerEntity.class)
@@ -137,6 +141,16 @@ public abstract class PlayerEntityMixin implements PlayerLoadoutHolder {
 
 		ci.cancel();
 
+		StatusEffectInstance res = self.getStatusEffect(StatusEffects.RESISTANCE);
+		if (res != null && !source.isIn(DamageTypeTags.BYPASSES_RESISTANCE)) {
+			int reduction = Math.min(25, (res.getAmplifier() + 1) * 5);
+			float mult = Math.max(0.0f, (25 - reduction) / 25.0f);
+			amount *= mult;
+			if (amount <= 0.001f) {
+				return;
+			}
+		}
+
 		if (source.isIn(DamageTypeTags.IS_FALL)) {
 			float weightKg = tarkovcraft$loadout.calculateWeightKg();
 			boolean killed = tarkovcraft$bodyHealth.applyFallDamage(amount, weightKg, self.getRandom().nextFloat());
@@ -172,6 +186,19 @@ public abstract class PlayerEntityMixin implements PlayerLoadoutHolder {
 		float distance = attacker != null ? self.distanceTo(attacker) : 0.0f;
 
 		float tarkovDamage = amount * TARKOV_DAMAGE_SCALE * bulletInfo.damageMultiplier();
+		float absorptionVanilla = self.getAbsorptionAmount();
+		if (absorptionVanilla > 0.0f && tarkovDamage > 0.0f && !source.isIn(DamageTypeTags.BYPASSES_INVULNERABILITY)) {
+			float absorptionTarkov = absorptionVanilla * TARKOV_DAMAGE_SCALE;
+			float absorbedTarkov = Math.min(tarkovDamage, absorptionTarkov);
+			tarkovDamage -= absorbedTarkov;
+			self.setAbsorptionAmount(Math.max(0.0f, absorptionVanilla - absorbedTarkov / TARKOV_DAMAGE_SCALE));
+			if (tarkovDamage <= 0.001f) {
+				self.getWorld().playSound(null, self.getX(), self.getY(), self.getZ(),
+					SoundEvents.ITEM_SHIELD_BLOCK, SoundCategory.PLAYERS, 0.5f, 1.35f);
+				return;
+			}
+		}
+
 		boolean killed = tarkovcraft$bodyHealth.applyHit(
 			tarkovcraft$loadout,
 			zone,
@@ -180,6 +207,7 @@ public abstract class PlayerEntityMixin implements PlayerLoadoutHolder {
 			bulletInfo.armorWearMultiplier(),
 			bypassesArmor,
 			canRicochet,
+			self.getRandom().nextFloat(),
 			self.getRandom().nextFloat(),
 			self.getRandom().nextFloat(),
 			killerName,
@@ -216,11 +244,38 @@ public abstract class PlayerEntityMixin implements PlayerLoadoutHolder {
 	@Inject(method = "dropInventory", at = @At("HEAD"), cancellable = true)
 	private void tarkovcraft$spawnCorpseInsteadOfDropping(CallbackInfo ci) {
 		PlayerEntity self = (PlayerEntity) (Object) this;
-		if (!self.getWorld().isClient && !tarkovcraft$loadout.isEmpty()) {
-			CorpseEntity corpse = CorpseEntity.fromPlayer(self.getWorld(), self, tarkovcraft$loadout);
+		if (self.getWorld().isClient) {
+			return;
+		}
+		if (self.getWorld().getGameRules().getBoolean(GameRules.KEEP_INVENTORY)) {
+			ci.cancel();
+			return;
+		}
+
+		List<ItemStack> extras = new ArrayList<>();
+		for (ItemStack st : self.getInventory().offHand) {
+			if (!st.isEmpty()) {
+				extras.add(st.copy());
+			}
+		}
+		for (ItemStack st : self.getInventory().main) {
+			if (!st.isEmpty()) {
+				extras.add(st.copy());
+			}
+		}
+
+		if (!tarkovcraft$loadout.isEmpty() || !extras.isEmpty()) {
+			List<ItemStack> overflow = new ArrayList<>();
+			CorpseEntity corpse = CorpseEntity.fromPlayer(self.getWorld(), self, tarkovcraft$loadout, extras, overflow);
 			self.getWorld().spawnEntity(corpse);
+			for (ItemStack st : overflow) {
+				if (!st.isEmpty()) {
+					self.dropItem(st, true, false);
+				}
+			}
 			tarkovcraft$loadout.clear();
 			self.getInventory().clear();
+			tarkovcraft$syncLoadout();
 			ci.cancel();
 		}
 	}

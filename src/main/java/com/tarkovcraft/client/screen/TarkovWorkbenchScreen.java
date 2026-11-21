@@ -91,6 +91,13 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 	private int gearMaxScroll = 0;
 	private Rect gearListClip;
 	private TextFieldWidget searchBox;
+	private List<TarkovWorkbenchRecipes.GearRecipe> cachedFilteredGear = List.of();
+	private TarkovWorkbenchRecipes.GearCategory cachedGearCategory = null;
+	private String cachedGearQuery = null;
+	private GearSortMode cachedGearSortMode = null;
+	private boolean cachedOnlyAvailable = false;
+	private boolean cachedCreative = false;
+	private int cachedWorkbenchRevision = -1;
 
 	public TarkovWorkbenchScreen(TarkovWorkbenchScreenHandler handler, PlayerInventory inventory, Text title) {
 		super(handler, inventory, title);
@@ -415,30 +422,45 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 
 		boolean creative = client != null && client.player != null && client.player.isCreative();
 
-		// Filter & sort recipes
+		// Filter & sort recipes (cached until category, query, sortMode, onlyAvailable, creative, or sync revision changes)
 		String query = searchBox != null ? searchBox.getText().trim().toLowerCase(Locale.ROOT) : "";
-		List<TarkovWorkbenchRecipes.GearRecipe> all = TarkovWorkbenchRecipes.getGearRecipes(gearCategory);
-		List<TarkovWorkbenchRecipes.GearRecipe> filtered = new ArrayList<>();
-		for (TarkovWorkbenchRecipes.GearRecipe r : all) {
-			if (!query.isEmpty() && !r.resultItem().getName().getString().toLowerCase(Locale.ROOT).contains(query)) {
-				continue;
+		int rev = ClientWorkbenchCache.getRevision();
+		if (cachedGearCategory != gearCategory
+			|| !query.equals(cachedGearQuery)
+			|| cachedGearSortMode != gearSortMode
+			|| cachedOnlyAvailable != onlyAvailableGear
+			|| cachedCreative != creative
+			|| cachedWorkbenchRevision != rev) {
+			List<TarkovWorkbenchRecipes.GearRecipe> all = TarkovWorkbenchRecipes.getGearRecipes(gearCategory);
+			List<TarkovWorkbenchRecipes.GearRecipe> rebuilt = new ArrayList<>();
+			for (TarkovWorkbenchRecipes.GearRecipe r : all) {
+				if (!query.isEmpty() && !r.resultItem().getName().getString().toLowerCase(Locale.ROOT).contains(query)) {
+					continue;
+				}
+				if (onlyAvailableGear && !creative && !hasAllMaterials(r.materials())) {
+					continue;
+				}
+				rebuilt.add(r);
 			}
-			if (onlyAvailableGear && !creative && !hasAllMaterials(r.materials())) {
-				continue;
+			if (gearSortMode != GearSortMode.DEFAULT) {
+				Comparator<TarkovWorkbenchRecipes.GearRecipe> cmp = switch (gearSortMode) {
+					case ARMOR_DESC -> Comparator.comparingInt((TarkovWorkbenchRecipes.GearRecipe r) -> getArmorMetric(r.resultItem())).reversed();
+					case ARMOR_ASC -> Comparator.comparingInt(r -> getArmorMetric(r.resultItem()));
+					case CAPACITY_DESC -> Comparator.comparingInt((TarkovWorkbenchRecipes.GearRecipe r) -> getCapacityMetric(r.resultItem())).reversed();
+					case CAPACITY_ASC -> Comparator.comparingInt(r -> getCapacityMetric(r.resultItem()));
+					default -> Comparator.comparing(r -> r.resultItem().getName().getString());
+				};
+				rebuilt.sort(cmp.thenComparing(r -> r.resultItem().getName().getString(), String.CASE_INSENSITIVE_ORDER));
 			}
-			filtered.add(r);
+			cachedFilteredGear = List.copyOf(rebuilt);
+			cachedGearCategory = gearCategory;
+			cachedGearQuery = query;
+			cachedGearSortMode = gearSortMode;
+			cachedOnlyAvailable = onlyAvailableGear;
+			cachedCreative = creative;
+			cachedWorkbenchRevision = rev;
 		}
-
-		if (gearSortMode != GearSortMode.DEFAULT) {
-			Comparator<TarkovWorkbenchRecipes.GearRecipe> cmp = switch (gearSortMode) {
-				case ARMOR_DESC -> Comparator.comparingInt((TarkovWorkbenchRecipes.GearRecipe r) -> getArmorMetric(r.resultItem())).reversed();
-				case ARMOR_ASC -> Comparator.comparingInt(r -> getArmorMetric(r.resultItem()));
-				case CAPACITY_DESC -> Comparator.comparingInt((TarkovWorkbenchRecipes.GearRecipe r) -> getCapacityMetric(r.resultItem())).reversed();
-				case CAPACITY_ASC -> Comparator.comparingInt(r -> getCapacityMetric(r.resultItem()));
-				default -> Comparator.comparing(r -> r.resultItem().getName().getString());
-			};
-			filtered.sort(cmp.thenComparing(r -> r.resultItem().getName().getString(), String.CASE_INSENSITIVE_ORDER));
-		}
+		List<TarkovWorkbenchRecipes.GearRecipe> filtered = cachedFilteredGear;
 
 		gearListClip = new Rect(px + 8, py + 58, leftW - 16, ph - 66);
 		context.enableScissor(gearListClip.x, gearListClip.y, gearListClip.x + gearListClip.w, gearListClip.y + gearListClip.h);

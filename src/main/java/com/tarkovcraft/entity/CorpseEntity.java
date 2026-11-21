@@ -71,24 +71,104 @@ public class CorpseEntity extends Entity {
 	}
 
 	public static CorpseEntity fromPlayer(World world, PlayerEntity player, PlayerLoadout sourceLoadout) {
+		return fromPlayer(world, player, sourceLoadout, List.of(), new ArrayList<>());
+	}
+
+	public static CorpseEntity fromPlayer(
+		World world,
+		PlayerEntity player,
+		PlayerLoadout sourceLoadout,
+		List<ItemStack> extras,
+		List<ItemStack> overflow
+	) {
 		CorpseEntity corpse = new CorpseEntity(ModEntities.CORPSE, world);
 		corpse.setPosition(player.getX(), player.getY(), player.getZ());
 		corpse.setYaw(player.getYaw());
 		corpse.setOwnerName(player.getName().getString());
 
+		corpse.loadout = transferPlayerInventoryToCorpse(sourceLoadout, corpse.pocketsGrid, extras, overflow);
+		corpse.syncVisualFlags();
+		return corpse;
+	}
+
+	public static PlayerLoadout transferPlayerInventoryToCorpse(
+		PlayerLoadout sourceLoadout,
+		GridContainer targetPocketsGrid,
+		List<ItemStack> extras,
+		List<ItemStack> overflow
+	) {
 		PlayerLoadout copy = sourceLoadout.copy();
 		for (int i = 0; i < PlayerLoadout.POCKET_COUNT; i++) {
 			ItemStack p = copy.getPocket(i);
 			if (!p.isEmpty()) {
-				corpse.pocketsGrid.place(p.copy(), i, 0, false);
+				if (targetPocketsGrid.place(p.copy(), i, 0, false) == null) {
+					overflow.add(p.copy());
+				}
 				copy.setPocket(i, ItemStack.EMPTY);
 			}
 		}
+
+		// Store any offHand or vanilla main-inventory extras into corpse pockets -> empty equipment -> rig -> backpack -> overflow
+		if (extras != null) {
+			for (ItemStack extra : extras) {
+				if (extra == null || extra.isEmpty()) {
+					continue;
+				}
+				ItemStack rem = extra.copy();
+				if (!targetPocketsGrid.tryAutoPlace(rem) && !rem.isEmpty()) {
+					tryPlaceExtraIntoCorpseLoadout(copy, rem);
+				}
+				if (!rem.isEmpty()) {
+					overflow.add(rem);
+				}
+			}
+		}
+
 		markContainerUnsearched(copy.getEquipment(EquipmentSlotType.BACKPACK));
 		markContainerUnsearched(copy.getEquipment(EquipmentSlotType.RIG));
-		corpse.loadout = copy;
-		corpse.syncVisualFlags();
-		return corpse;
+		return copy;
+	}
+
+	private static void tryPlaceExtraIntoCorpseLoadout(PlayerLoadout corpseLoadout, ItemStack rem) {
+		if (rem.isEmpty()) {
+			return;
+		}
+		// 1. Empty matching equipment slot (armor, backpack, rig, melee, weapons)
+		for (EquipmentSlotType slot : EquipmentSlotType.values()) {
+			if (corpseLoadout.getEquipment(slot).isEmpty() && slot.accepts(rem)) {
+				corpseLoadout.setEquipment(slot, rem.copy());
+				rem.setCount(0);
+				return;
+			}
+		}
+		// 2. Equipped Rig compartments
+		ItemStack rig = corpseLoadout.getEquipment(EquipmentSlotType.RIG);
+		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
+			List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
+			boolean changed = false;
+			for (GridContainer g : grids) {
+				int before = rem.getCount();
+				boolean full = g.tryAutoPlace(rem);
+				if (full || rem.getCount() < before) {
+					changed = true;
+					if (rem.isEmpty()) break;
+				}
+			}
+			if (changed) {
+				ContainerItemHelper.writeRigGrids(rig, grids);
+				if (rem.isEmpty()) return;
+			}
+		}
+		// 3. Equipped Backpack grid
+		ItemStack bp = corpseLoadout.getEquipment(EquipmentSlotType.BACKPACK);
+		if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem) {
+			GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
+			int before = rem.getCount();
+			boolean full = bpGrid.tryAutoPlace(rem);
+			if (full || rem.getCount() < before) {
+				ContainerItemHelper.writeBackpackGrid(bp, bpGrid);
+			}
+		}
 	}
 
 	public static CorpseEntity fromMob(World world, LivingEntity mob) {

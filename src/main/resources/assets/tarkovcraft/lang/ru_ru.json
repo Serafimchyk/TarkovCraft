@@ -903,5 +903,16 @@
   "message.tarkovcraft.airdrop_incoming": "[АИРДРОП] Поблизости сброшен груз — ищите красный дым!",
   "message.tarkovcraft.config_reloaded": "[TarkovCraft] Конфиг перезагружен из config/tarkovcraft.json",
   "message.tarkovcraft.wb_crafted_dropped": "Внимание: %s не поместился в инвентарь и выпал на землю!",
-  "message.tarkovcraft.hotswap_dropped": "Старый %s не поместился в инвентарь и выпал на землю со всем лутом."
+  "message.tarkovcraft.hotswap_dropped": "Старый %s не поместился в инвентарь и выпал на землю со всем лутом.",
+  "itemGroup.tarkovcraft.tarkov_ammo_tab": "TarkovCraft: Патроны (Тиры)",
+  "tooltip.tarkovcraft.case_filter": "Хранит: %s",
+  "tooltip.tarkovcraft.case_role.general": "Любые предметы",
+  "tooltip.tarkovcraft.case_role.medical": "Медицина и стимуляторы",
+  "tooltip.tarkovcraft.case_role.injector": "Только стимуляторы",
+  "tooltip.tarkovcraft.case_role.ammo": "Патроны и магазины",
+  "tooltip.tarkovcraft.case_role.grenade": "Только гранаты",
+  "tooltip.tarkovcraft.case_role.food": "Еда и напитки",
+  "tooltip.tarkovcraft.case_role.weapon": "Оружие, модули и патроны",
+  "tooltip.tarkovcraft.case_role.armor_plate": "Бронеплиты, ремнаборы и броня",
+  "tooltip.tarkovcraft.case_role.money": "Ценности (изумруды, золото, алмазы, незерит)"
 }

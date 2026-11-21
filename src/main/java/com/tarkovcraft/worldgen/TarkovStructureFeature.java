@@ -64,6 +64,13 @@ public class TarkovStructureFeature extends Feature<DefaultFeatureConfig> {
 			case MILITARY_CAMP -> buildMilitaryCamp(world, origin, random);
 			case FOREST_STASH -> buildForestStash(world, origin, random);
 		}
+		try {
+			net.minecraft.server.world.ServerWorld sw = world.toServerWorld();
+			if (sw != null) {
+				TarkovStructureRegistry.get(sw).record(kind, origin);
+			}
+		} catch (Exception ignored) {
+		}
 		return true;
 	}
 

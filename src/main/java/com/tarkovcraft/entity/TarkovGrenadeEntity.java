@@ -57,9 +57,11 @@ public class TarkovGrenadeEntity extends ThrownItemEntity {
 	};
 
 	private static final DustParticleEffect SMOKE_GREEN_DUST =
-		new DustParticleEffect(new Vector3f(0.22f, 0.72f, 0.28f), 2.8f);
+		new DustParticleEffect(new Vector3f(0.28f, 0.72f, 0.34f), 4.0f);
+	private static final DustParticleEffect SMOKE_WHITE_DUST =
+		new DustParticleEffect(new Vector3f(0.78f, 0.82f, 0.78f), 4.0f);
 	private static final DustParticleEffect GAS_CS_DUST =
-		new DustParticleEffect(new Vector3f(0.68f, 0.78f, 0.22f), 2.4f);
+		new DustParticleEffect(new Vector3f(0.68f, 0.78f, 0.22f), 2.8f);
 
 	private TarkovGrenadeItem.GrenadeType grenadeType = TarkovGrenadeItem.GrenadeType.FRAG_F1;
 	private int fuseRemaining = 40;
@@ -233,7 +235,9 @@ public class TarkovGrenadeEntity extends ThrownItemEntity {
 						zone,
 						perZone,
 						grenadeType.getPenetrationPower(),
-						1.0f, false, false, 1.0f, 1.0f,
+						1.0f, false, false, 1.0f,
+						random.nextFloat(),
+						random.nextFloat(),
 						killerName,
 						weaponName,
 						"Shrapnel",
@@ -334,9 +338,29 @@ public class TarkovGrenadeEntity extends ThrownItemEntity {
 		double spread = radius * 0.65;
 
 		if (grenadeType.getCategory() == TarkovGrenadeItem.Category.SMOKE) {
+			double smokeSpread = Math.max(2.6, radius * 0.72);
+			sw.spawnParticles(ParticleTypes.CAMPFIRE_SIGNAL_SMOKE, getX(), getY() + 0.45, getZ(), 10, smokeSpread, 0.8, smokeSpread, 0.012);
+			sw.spawnParticles(ParticleTypes.CAMPFIRE_SIGNAL_SMOKE, getX(), getY() + 1.85, getZ(), 8, smokeSpread * 0.85, 0.7, smokeSpread * 0.85, 0.01);
+			sw.spawnParticles(ParticleTypes.CLOUD, getX(), getY() + 1.2, getZ(), 14, smokeSpread * 0.9, 1.15, smokeSpread * 0.9, 0.008);
 			if (cloudRemaining % 2 == 0) {
-				sw.spawnParticles(ParticleTypes.CAMPFIRE_SIGNAL_SMOKE, getX(), getY() + 0.5, getZ(), 8, spread, 0.9, spread, 0.01);
-				sw.spawnParticles(SMOKE_GREEN_DUST, getX(), getY() + 0.9, getZ(), 14, spread, 1.0, spread, 0.01);
+				sw.spawnParticles(SMOKE_GREEN_DUST, getX(), getY() + 1.0, getZ(), 20, smokeSpread, 1.2, smokeSpread, 0.01);
+				sw.spawnParticles(SMOKE_WHITE_DUST, getX(), getY() + 1.4, getZ(), 18, smokeSpread, 1.2, smokeSpread, 0.01);
+				sw.spawnParticles(ParticleTypes.LARGE_SMOKE, getX(), getY() + 0.8, getZ(), 12, smokeSpread, 1.0, smokeSpread, 0.015);
+			}
+			if (cloudRemaining % 8 == 0) {
+				Box box = getBoundingBox().expand(radius, 3.8, radius);
+				List<LivingEntity> targets = sw.getEntitiesByClass(LivingEntity.class, box,
+					e -> e.isAlive() && !e.isSpectator());
+				Vec3d origin = getPos();
+				for (LivingEntity target : targets) {
+					double dx = target.getX() - origin.x;
+					double dz = target.getZ() - origin.z;
+					double dy = target.getY() - origin.y;
+					if (dx * dx + dz * dz <= radius * radius && dy >= -1.0 && dy <= 4.0) {
+						target.addStatusEffect(new StatusEffectInstance(StatusEffects.BLINDNESS, 45, 0, false, false, true));
+						target.addStatusEffect(new StatusEffectInstance(StatusEffects.DARKNESS, 55, 0, false, false, true));
+					}
+				}
 			}
 			if (cloudRemaining % 30 == 0) {
 				sw.playSound(null, getX(), getY(), getZ(),
@@ -398,11 +422,9 @@ public class TarkovGrenadeEntity extends ThrownItemEntity {
 			return false;
 		}
 		ItemStack mask = loadout.getEquipment(EquipmentSlotType.FACE_MASK);
-		if (mask.isEmpty()) {
-			return false;
-		}
-		String path = Registries.ITEM.getId(mask.getItem()).getPath().toLowerCase(Locale.ROOT);
-		return path.contains("protivogaz") || path.contains("respirator") || path.contains("gasmask");
+		return !mask.isEmpty()
+			&& mask.getItem() instanceof com.tarkovcraft.item.TarkovArmorItem armor
+			&& armor.isGasProtection();
 	}
 
 	@Override

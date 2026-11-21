@@ -172,7 +172,8 @@ public final class TarkovItemCatalog {
 			case "case" -> {
 				int gridW = Math.max(1, getInt(obj, "gridWidth", 4));
 				int gridH = Math.max(1, getInt(obj, "gridHeight", 4));
-				yield new TarkovCaseItem(settings, gridW, gridH, size, rarity, weight);
+				TarkovCaseItem.CaseRole role = TarkovCaseItem.CaseRole.fromString(getString(obj, "caseRole", "GENERAL"));
+				yield new TarkovCaseItem(settings, gridW, gridH, size, rarity, weight, role);
 			}
 			case "grenade" -> {
 				String gTypeStr = getString(obj, "grenadeType", "FRAG_F1");
@@ -197,7 +198,8 @@ public final class TarkovItemCatalog {
 		ArmorMaterialType material = parseMaterial(getString(obj, "material", "COSMETIC"));
 		float ricochet = getFloat(obj, "ricochet", 0.0f);
 		Set<HitZone> zones = parseZones(obj);
-		return new TarkovArmorItem(settings, slot, size, armorClass, durability, material, ricochet, weight, zones, rarity);
+		boolean gasProtection = getBoolean(obj, "gasProtection", false);
+		return new TarkovArmorItem(settings, slot, size, armorClass, durability, material, ricochet, weight, zones, rarity, gasProtection);
 	}
 
 	private static void addToTabBucket(String category, Item item) {

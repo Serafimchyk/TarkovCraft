@@ -36,6 +36,11 @@ public final class PlayerLoadout {
 	private final ItemStack[] pockets = new ItemStack[POCKET_COUNT];
 	private boolean meleeSelected = false;
 
+	private transient long exposedCacheTick = Long.MIN_VALUE;
+	private transient boolean exposedCacheIncludeBp = false;
+	@Nullable
+	private transient List<ItemStack> exposedCache = null;
+
 	public PlayerLoadout() {
 		for (EquipmentSlotType slot : EquipmentSlotType.values()) {
 			equipment.put(slot, ItemStack.EMPTY);
@@ -49,8 +54,14 @@ public final class PlayerLoadout {
 		return equipment.getOrDefault(slot, ItemStack.EMPTY);
 	}
 
+	public void invalidateExposedCache() {
+		exposedCache = null;
+		exposedCacheTick = Long.MIN_VALUE;
+	}
+
 	public void setEquipment(EquipmentSlotType slot, ItemStack stack) {
 		equipment.put(slot, stack == null ? ItemStack.EMPTY : stack);
+		invalidateExposedCache();
 	}
 
 	public ItemStack getPocket(int index) {
@@ -217,13 +228,18 @@ public final class PlayerLoadout {
 				List<GridContainer> rigGrids = ContainerItemHelper.readRigGrids(rigStack);
 				boolean changed = false;
 				for (GridContainer grid : rigGrids) {
-					if (grid.tryAutoPlace(incoming)) {
+					int beforeGrid = incoming.getCount();
+					boolean full = grid.tryAutoPlace(incoming);
+					if (full || incoming.getCount() < beforeGrid) {
 						changed = true;
-						break;
+						if (incoming.isEmpty()) {
+							break;
+						}
 					}
 				}
-				if (changed || incoming.isEmpty()) {
+				if (changed) {
 					ContainerItemHelper.writeRigGrids(rigStack, rigGrids);
+					invalidateExposedCache();
 					if (incoming.isEmpty()) {
 						return true;
 					}
@@ -238,9 +254,14 @@ public final class PlayerLoadout {
 				|| (playerId != null && ContainerItemHelper.getSearchMemory(bpStack).isGridRevealed(playerId));
 			if (canPutInBp) {
 				GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bpStack);
-				if (bpGrid.tryAutoPlace(incoming)) {
+				int beforeBp = incoming.getCount();
+				boolean full = bpGrid.tryAutoPlace(incoming);
+				if (full || incoming.getCount() < beforeBp) {
 					ContainerItemHelper.writeBackpackGrid(bpStack, bpGrid);
-					return true;
+					invalidateExposedCache();
+					if (incoming.isEmpty()) {
+						return true;
+					}
 				}
 			}
 		}
@@ -255,6 +276,42 @@ public final class PlayerLoadout {
 	 */
 	public ItemStack getRigExposedStack(int rigSlotIndex, @Nullable UUID playerId) {
 		return getExposedStorageStack(rigSlotIndex, playerId, false);
+	}
+
+	public ItemStack getExposedStorageStackCached(int slotIndex, @Nullable UUID playerId, boolean includeBackpack, long worldTick) {
+		if (slotIndex < 0) return ItemStack.EMPTY;
+		if (exposedCache == null || exposedCacheTick != worldTick || exposedCacheIncludeBp != includeBackpack) {
+			java.util.ArrayList<ItemStack> rebuilt = new java.util.ArrayList<>();
+			ItemStack rig = getEquipment(EquipmentSlotType.RIG);
+			if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
+				boolean ok = !ContainerItemHelper.requiresSearch(rig)
+					|| (playerId != null && ContainerItemHelper.getSearchMemory(rig).isGridRevealed(playerId));
+				if (ok) {
+					for (GridContainer g : ContainerItemHelper.readRigGrids(rig)) {
+						for (var entry : g.getEntries()) {
+							rebuilt.add(entry.getStack());
+						}
+					}
+				}
+			}
+			if (includeBackpack) {
+				ItemStack bp = getEquipment(EquipmentSlotType.BACKPACK);
+				if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem) {
+					boolean ok = !ContainerItemHelper.requiresSearch(bp)
+						|| (playerId != null && ContainerItemHelper.getSearchMemory(bp).isGridRevealed(playerId));
+					if (ok) {
+						GridContainer g = ContainerItemHelper.readBackpackGrid(bp);
+						for (var entry : g.getEntries()) {
+							rebuilt.add(entry.getStack());
+						}
+					}
+				}
+			}
+			exposedCache = rebuilt;
+			exposedCacheTick = worldTick;
+			exposedCacheIncludeBp = includeBackpack;
+		}
+		return slotIndex < exposedCache.size() ? exposedCache.get(slotIndex) : ItemStack.EMPTY;
 	}
 
 	public ItemStack getExposedStorageStack(int slotIndex, @Nullable UUID playerId, boolean includeBackpack) {
@@ -316,6 +373,7 @@ public final class PlayerLoadout {
 							g.remove(entry.getEntryId());
 						}
 						ContainerItemHelper.writeRigGrids(rig, grids);
+						invalidateExposedCache();
 						return extracted;
 					}
 					cursor++;
@@ -335,6 +393,7 @@ public final class PlayerLoadout {
 							g.remove(entry.getEntryId());
 						}
 						ContainerItemHelper.writeBackpackGrid(bp, g);
+						invalidateExposedCache();
 						return extracted;
 					}
 					cursor++;
@@ -345,32 +404,91 @@ public final class PlayerLoadout {
 	}
 
 	public boolean setRigExposedStack(int rigSlotIndex, ItemStack incoming) {
-		if (rigSlotIndex < 0) return false;
-		ItemStack rig = getEquipment(EquipmentSlotType.RIG);
-		if (rig.isEmpty() || !(rig.getItem() instanceof TacticalRigItem)) return false;
-		List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
+		return setExposedStorageStack(rigSlotIndex, incoming, null, false);
+	}
+
+	public boolean setExposedStorageStack(int slotIndex, ItemStack incoming, @Nullable UUID playerId, boolean includeBackpack) {
+		if (slotIndex < 0) return false;
 		int cursor = 0;
-		for (GridContainer g : grids) {
-			for (var entry : g.getEntries()) {
-				if (cursor == rigSlotIndex) {
-					if (incoming == null || incoming.isEmpty()) {
-						g.remove(entry.getEntryId());
-					} else {
-						entry.setStack(incoming.copy());
+
+		ItemStack rig = getEquipment(EquipmentSlotType.RIG);
+		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
+			boolean ok = !ContainerItemHelper.requiresSearch(rig)
+				|| (playerId != null && ContainerItemHelper.getSearchMemory(rig).isGridRevealed(playerId));
+			if (ok) {
+				List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
+				for (GridContainer g : grids) {
+					for (var entry : g.getEntries()) {
+						if (cursor == slotIndex) {
+							if (incoming == null || incoming.isEmpty()) {
+								g.remove(entry.getEntryId());
+							} else {
+								entry.setStack(incoming.copy());
+							}
+							ContainerItemHelper.writeRigGrids(rig, grids);
+							invalidateExposedCache();
+							return true;
+						}
+						cursor++;
 					}
-					ContainerItemHelper.writeRigGrids(rig, grids);
-					return true;
 				}
-				cursor++;
 			}
 		}
-		// New item pushed back into an empty rig slot (e.g. TaCZ unloading rounds)
+
+		if (includeBackpack) {
+			ItemStack bp = getEquipment(EquipmentSlotType.BACKPACK);
+			if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem) {
+				boolean ok = !ContainerItemHelper.requiresSearch(bp)
+					|| (playerId != null && ContainerItemHelper.getSearchMemory(bp).isGridRevealed(playerId));
+				if (ok) {
+					GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
+					for (var entry : bpGrid.getEntries()) {
+						if (cursor == slotIndex) {
+							if (incoming == null || incoming.isEmpty()) {
+								bpGrid.remove(entry.getEntryId());
+							} else {
+								entry.setStack(incoming.copy());
+							}
+							ContainerItemHelper.writeBackpackGrid(bp, bpGrid);
+							invalidateExposedCache();
+							return true;
+						}
+						cursor++;
+					}
+				}
+			}
+		}
+
+		// New item pushed back into an empty exposed slot (e.g. TaCZ unloading or workbench crafting output)
 		if (incoming != null && !incoming.isEmpty()) {
 			ItemStack copy = incoming.copy();
-			for (GridContainer g : grids) {
-				if (g.tryAutoPlace(copy)) {
-					ContainerItemHelper.writeRigGrids(rig, grids);
-					return true;
+			if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
+				boolean ok = !ContainerItemHelper.requiresSearch(rig)
+					|| (playerId != null && ContainerItemHelper.getSearchMemory(rig).isGridRevealed(playerId));
+				if (ok) {
+					List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
+					for (GridContainer g : grids) {
+						if (g.tryAutoPlace(copy)) {
+							ContainerItemHelper.writeRigGrids(rig, grids);
+							invalidateExposedCache();
+							return true;
+						}
+					}
+				}
+			}
+			if (includeBackpack) {
+				ItemStack bp = getEquipment(EquipmentSlotType.BACKPACK);
+				if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem) {
+					boolean ok = !ContainerItemHelper.requiresSearch(bp)
+						|| (playerId != null && ContainerItemHelper.getSearchMemory(bp).isGridRevealed(playerId));
+					if (ok) {
+						GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
+						if (bpGrid.tryAutoPlace(copy)) {
+							ContainerItemHelper.writeBackpackGrid(bp, bpGrid);
+							invalidateExposedCache();
+							return true;
+						}
+					}
 				}
 			}
 		}
@@ -435,6 +553,7 @@ public final class PlayerLoadout {
 			pockets[i] = ItemStack.EMPTY;
 		}
 		meleeSelected = false;
+		invalidateExposedCache();
 	}
 
 	public PlayerLoadout copy() {

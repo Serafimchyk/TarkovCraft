@@ -443,7 +443,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		int hpVal = Math.round(bodyHealth.getTotalHp());
 		int food = client.player.getHungerManager().getFoodLevel() * 5;
 		int sat = Math.round(client.player.getHungerManager().getSaturationLevel() * 5.0f);
-		String weight = String.format(Locale.ROOT, "%.1fkg", loadout.calculateWeightKg());
+		String weight = String.format(Locale.ROOT, "%.1fkg", ClientLoadoutCache.getCachedWeightKg());
 
 		int ty = y + 6;
 		TarkovUiTheme.drawFlatText(context, textRenderer, weight, x + 4, ty, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
@@ -637,15 +637,20 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			PlayerLoadout corpseLo = snap.corpseLoadout();
 			int halfW = (area.w - pad * 2 - 8) / 2;
 
-			drawEquipSlot(context, area.x + pad, curY, halfW, 28, EquipmentSlotType.HELMET, "HELM", null, corpseLo, true, scrollClip, mouseX, mouseY);
-			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 28, EquipmentSlotType.BODY_ARMOR, "ARMOR", null, corpseLo, true, scrollClip, mouseX, mouseY);
+			drawEquipSlot(context, area.x + pad, curY, halfW, 26, EquipmentSlotType.HELMET, "HELM", null, corpseLo, true, scrollClip, mouseX, mouseY);
+			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 26, EquipmentSlotType.FACE_MASK, "MASK", null, corpseLo, true, scrollClip, mouseX, mouseY);
+			curY += 29;
+			drawEquipSlot(context, area.x + pad, curY, halfW, 26, EquipmentSlotType.BODY_ARMOR, "ARMOR", null, corpseLo, true, scrollClip, mouseX, mouseY);
+			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 26, EquipmentSlotType.RIG, "RIG", null, corpseLo, true, scrollClip, mouseX, mouseY);
+			curY += 29;
+			drawEquipSlot(context, area.x + pad, curY, halfW, 26, EquipmentSlotType.BACKPACK, "BACKPACK", null, corpseLo, true, scrollClip, mouseX, mouseY);
+			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 26, EquipmentSlotType.MELEE, "MELEE", null, corpseLo, true, scrollClip, mouseX, mouseY);
+			curY += 29;
+			drawEquipSlot(context, area.x + pad, curY, halfW, 26, EquipmentSlotType.PRIMARY_1, "PRIMARY 1", null, corpseLo, true, scrollClip, mouseX, mouseY);
+			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 26, EquipmentSlotType.PRIMARY_2, "PRIMARY 2", null, corpseLo, true, scrollClip, mouseX, mouseY);
+			curY += 29;
+			drawEquipSlot(context, area.x + pad, curY, halfW, 26, EquipmentSlotType.PISTOL, "HOLSTER", null, corpseLo, true, scrollClip, mouseX, mouseY);
 			curY += 32;
-			drawEquipSlot(context, area.x + pad, curY, halfW, 28, EquipmentSlotType.PRIMARY_1, "WEAPON", null, corpseLo, true, scrollClip, mouseX, mouseY);
-			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 28, EquipmentSlotType.RIG, "RIG", null, corpseLo, true, scrollClip, mouseX, mouseY);
-			curY += 32;
-			drawEquipSlot(context, area.x + pad, curY, halfW, 28, EquipmentSlotType.BACKPACK, "BACKPACK", null, corpseLo, true, scrollClip, mouseX, mouseY);
-			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 28, EquipmentSlotType.FACE_MASK, "MASK", null, corpseLo, true, scrollClip, mouseX, mouseY);
-			curY += 34;
 
 			if (snap.externalGridView() != null) {
 				TarkovUiTheme.drawFlatText(context, textRenderer, Text.translatable("ui.tarkovcraft.pockets").getString(),

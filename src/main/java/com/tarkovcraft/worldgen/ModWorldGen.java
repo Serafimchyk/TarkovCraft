@@ -7,6 +7,7 @@ import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
+import net.minecraft.registry.tag.BiomeTags;
 import net.minecraft.util.Identifier;
 import net.minecraft.world.gen.GenerationStep;
 import net.minecraft.world.gen.feature.DefaultFeatureConfig;
@@ -39,15 +40,21 @@ public final class ModWorldGen {
 			return;
 		}
 		initialized = true;
-		addOverworldSurfaceStructure("roadblock");
-		addOverworldSurfaceStructure("med_tent");
-		addOverworldSurfaceStructure("military_camp");
-		addOverworldSurfaceStructure("forest_stash");
+		var nonWaterOverworld = BiomeSelectors.foundInOverworld()
+			.and(BiomeSelectors.tag(BiomeTags.IS_OCEAN).negate())
+			.and(BiomeSelectors.tag(BiomeTags.IS_DEEP_OCEAN).negate())
+			.and(BiomeSelectors.tag(BiomeTags.IS_RIVER).negate())
+			.and(BiomeSelectors.tag(BiomeTags.IS_BEACH).negate());
+
+		addStructure("roadblock", nonWaterOverworld);
+		addStructure("med_tent", nonWaterOverworld);
+		addStructure("military_camp", nonWaterOverworld);
+		addStructure("forest_stash", BiomeSelectors.tag(BiomeTags.IS_FOREST).or(BiomeSelectors.tag(BiomeTags.IS_TAIGA)));
 	}
 
-	private static void addOverworldSurfaceStructure(String name) {
+	private static void addStructure(String name, java.util.function.Predicate<net.fabricmc.fabric.api.biome.v1.BiomeSelectionContext> selector) {
 		BiomeModifications.addFeature(
-			BiomeSelectors.foundInOverworld(),
+			selector,
 			GenerationStep.Feature.SURFACE_STRUCTURES,
 			RegistryKey.of(RegistryKeys.PLACED_FEATURE, new Identifier(TarkovCraftMod.MOD_ID, name))
 		);

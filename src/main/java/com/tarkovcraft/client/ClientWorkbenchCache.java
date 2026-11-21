@@ -19,8 +19,13 @@ public final class ClientWorkbenchCache {
 	private static Map<Identifier, Integer> itemCounts = new HashMap<>();
 	private static Map<String, Integer> fmjAmmoCounts = new HashMap<>();
 	private static List<String> extraCalibers = List.of();
+	private static int revision = 0;
 
 	private ClientWorkbenchCache() {
+	}
+
+	public static int getRevision() {
+		return revision;
 	}
 
 	public static void update(
@@ -31,6 +36,7 @@ public final class ClientWorkbenchCache {
 		itemCounts = new HashMap<>(items);
 		fmjAmmoCounts = new HashMap<>(fmjCounts);
 		extraCalibers = List.copyOf(extras);
+		revision++;
 	}
 
 	public static int getItemCount(Item item) {

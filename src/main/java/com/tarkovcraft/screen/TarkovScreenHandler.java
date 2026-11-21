@@ -474,11 +474,18 @@ public class TarkovScreenHandler extends ScreenHandler {
 		if (mode == MODE_LOOT_BLOCK && lootBlock != null && lootBlock.getSearchMemory().isGridRevealed(playerId)) {
 			ItemStack copy = peek.copy();
 			int before = copy.getCount();
-			if (lootBlock.getGrid().tryAutoPlace(copy) || copy.getCount() < before) {
+			java.util.Set<UUID> existingIds = new java.util.HashSet<>();
+			for (GridEntry e : lootBlock.getGrid().getEntries()) {
+				existingIds.add(e.getEntryId());
+			}
+			ContainerSearchMemory mem = lootBlock.getSearchMemory();
+			if (lootBlock.getGrid().tryAutoPlace(copy, id -> mem.isEntryDiscovered(playerId, id)) || copy.getCount() < before) {
 				int moved = before - copy.getCount();
 				extractSource(loadout, srcLoc, srcIdx, srcEntryId, moved);
 				for (GridEntry e : lootBlock.getGrid().getEntries()) {
-					lootBlock.getSearchMemory().markEntryDiscovered(playerId, e.getEntryId());
+					if (!existingIds.contains(e.getEntryId())) {
+						mem.markEntryDiscovered(playerId, e.getEntryId());
+					}
 				}
 				lootBlock.markDirty();
 				syncToClient(serverPlayer);
@@ -613,11 +620,11 @@ public class TarkovScreenHandler extends ScreenHandler {
 			if (serverPlayer.getItemCooldownManager().isCoolingDown(stim)) {
 				return;
 			}
-			ItemStack toUse = serverPlayer.isCreative()
-				? peek.copy()
-				: extractSource(loadout, srcLoc, srcIdx, srcEntryId, 1);
-			if (toUse.isEmpty()) return;
+			ItemStack toUse = peek.copyWithCount(1);
 			if (TarkovStimulatorItem.applyStimulator(serverPlayer, toUse)) {
+				if (!serverPlayer.isCreative()) {
+					extractSource(loadout, srcLoc, srcIdx, srcEntryId, 1);
+				}
 				markExternalDirty();
 				syncToClient(serverPlayer);
 			}
@@ -628,11 +635,11 @@ public class TarkovScreenHandler extends ScreenHandler {
 				serverPlayer.sendMessage(Text.translatable("message.tarkovcraft.repair_not_needed"), true);
 				return;
 			}
-			ItemStack toUse = serverPlayer.isCreative()
-				? peek.copy()
-				: extractSource(loadout, srcLoc, srcIdx, srcEntryId, 1);
-			if (toUse.isEmpty()) return;
+			ItemStack toUse = peek.copyWithCount(1);
 			if (TarkovArmorRepairItem.applyRepair(serverPlayer, toUse)) {
+				if (!serverPlayer.isCreative()) {
+					extractSource(loadout, srcLoc, srcIdx, srcEntryId, 1);
+				}
 				markExternalDirty();
 				syncToClient(serverPlayer);
 			}
@@ -1911,6 +1918,9 @@ public class TarkovScreenHandler extends ScreenHandler {
 	}
 
 	private boolean canPlaceIntoCase(CaseHandle handle, ItemStack incoming) {
+		if (handle.getStack().getItem() instanceof TarkovCaseItem caseItem && !caseItem.canAcceptItem(incoming)) {
+			return false;
+		}
 		if (activeCaseUuid != null && ContainerItemHelper.containsContainerId(incoming, activeCaseUuid)) {
 			return false;
 		}

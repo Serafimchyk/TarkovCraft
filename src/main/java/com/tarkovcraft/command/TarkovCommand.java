@@ -21,6 +21,8 @@ import com.tarkovcraft.loot.TarkovLootPool;
 import com.tarkovcraft.registry.ModBlocks;
 import com.tarkovcraft.registry.ModEntities;
 import com.tarkovcraft.registry.ModItems;
+import com.tarkovcraft.worldgen.TarkovStructureFeature;
+import com.tarkovcraft.worldgen.TarkovStructureRegistry;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.command.CommandSource;
 import net.minecraft.item.ItemStack;
@@ -28,7 +30,10 @@ import net.minecraft.item.Items;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.ClickEvent;
+import net.minecraft.text.HoverEvent;
 import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
 
 import java.util.Arrays;
@@ -46,6 +51,7 @@ public final class TarkovCommand {
 		List<String> partNames = Arrays.stream(BodyPart.values()).map(BodyPart::getId).toList();
 		List<String> limbNames = List.of("left_arm", "right_arm", "left_leg", "right_leg");
 		List<String> bleedTypes = List.of("light", "heavy");
+		List<String> structureNames = List.of("any", "roadblock", "med_tent", "military_camp", "forest_stash");
 
 		dispatcher.register(CommandManager.literal("tarkov")
 			.requires(source -> source.hasPermissionLevel(2))
@@ -61,6 +67,16 @@ public final class TarkovCommand {
 				.executes(ctx -> clearCorpses(ctx.getSource())))
 			.then(CommandManager.literal("reload")
 				.executes(ctx -> reloadConfig(ctx.getSource())))
+			.then(CommandManager.literal("locate")
+				.executes(ctx -> locateStructure(ctx.getSource(), "any"))
+				.then(CommandManager.argument("structure", StringArgumentType.word())
+					.suggests((ctx, builder) -> CommandSource.suggestMatching(structureNames, builder))
+					.executes(ctx -> locateStructure(
+						ctx.getSource(),
+						StringArgumentType.getString(ctx, "structure")
+					))
+				)
+			)
 			.then(CommandManager.literal("airdrop")
 				.executes(ctx -> spawnAirdropNear(ctx.getSource()))
 				.then(CommandManager.literal("here")
@@ -142,7 +158,7 @@ public final class TarkovCommand {
 
 		boolean killed = health.applyHit(
 			loadout, zone, damage, penetration, 1.0f, false, true,
-			player.getRandom().nextFloat(), player.getRandom().nextFloat(),
+			player.getRandom().nextFloat(), player.getRandom().nextFloat(), player.getRandom().nextFloat(),
 			"Scav Sniper", "AK-74M", "5.45x39 PS", 32.5f
 		);
 		holder.tarkovcraft$syncBodyHealth();
@@ -269,6 +285,43 @@ public final class TarkovCommand {
 		TarkovConfig.loadOrCreate();
 		AirdropManager.onConfigReloaded();
 		source.sendFeedback(() -> Text.translatable("message.tarkovcraft.config_reloaded"), true);
+		return 1;
+	}
+
+	private static int locateStructure(ServerCommandSource source, String typeRaw) {
+		TarkovStructureFeature.StructureKind filter = null;
+		if (typeRaw != null && !"any".equalsIgnoreCase(typeRaw)) {
+			try {
+				filter = TarkovStructureFeature.StructureKind.valueOf(typeRaw.toUpperCase(java.util.Locale.ROOT));
+			} catch (IllegalArgumentException e) {
+				source.sendError(Text.literal("[TarkovCraft] Unknown structure: " + typeRaw
+					+ " (use: any, roadblock, med_tent, military_camp, forest_stash)"));
+				return 0;
+			}
+		}
+
+		BlockPos origin = BlockPos.ofFloored(source.getPosition());
+		TarkovStructureRegistry registry = TarkovStructureRegistry.get(source.getWorld());
+		TarkovStructureRegistry.FoundStructure found = registry.findNearest(filter, origin);
+		if (found == null) {
+			source.sendError(Text.literal("[TarkovCraft] No generated structures recorded yet for '" + typeRaw
+				+ "'. Explore new chunks in Overworld to generate them."));
+			return 0;
+		}
+
+		BlockPos pos = found.pos();
+		int dist = (int) Math.round(Math.sqrt(pos.getSquaredDistance(origin)));
+		String tpCmd = "/tp @s " + pos.getX() + " " + (pos.getY() + 1) + " " + pos.getZ();
+		Text coords = Text.literal("[" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + "]")
+			.styled(style -> style
+				.withColor(Formatting.GREEN)
+				.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, tpCmd))
+				.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal("Click to teleport: " + tpCmd)))
+			);
+		source.sendFeedback(() -> Text.literal("[TarkovCraft] Nearest "
+			+ found.kind().name().toLowerCase(java.util.Locale.ROOT) + " is at ")
+			.append(coords)
+			.append(Text.literal(" (" + dist + " blocks away)")), false);
 		return 1;
 	}
 

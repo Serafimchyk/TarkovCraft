@@ -23,7 +23,9 @@ import com.tarkovcraft.registry.TarkovItemCatalog;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.nbt.NbtCompound;
 import net.minecraft.registry.Registries;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.random.Random;
 
 import java.util.ArrayList;
@@ -170,7 +172,7 @@ public final class TarkovLootGenerator {
 				if (is1x1) ONE_BY_ONE_GRENADES.add(item);
 			} else if (item instanceof TarkovCaseItem caze) {
 				ALL_CASES.add(item);
-				if (path.contains("med") || path.contains("inektor")) MED_CASES.add(item);
+				if (caze.isMedicalCase()) MED_CASES.add(item);
 				if (sz.width() * sz.height() <= 2) SMALL_CASES.add(item);
 				if (caze.getGridWidth() * caze.getGridHeight() >= 25) LARGE_CASES.add(item);
 			} else if (item instanceof TarkovMeleeItem) {
@@ -181,11 +183,87 @@ public final class TarkovLootGenerator {
 		}
 	}
 
+	private record GunPreset(String gunId, String ammoId, int magSize, String fireMode) {
+	}
+
+	private static final Identifier TACZ_GUN_ITEM_ID = new Identifier("tacz", "modern_kinetic_gun");
+
+	private static final List<GunPreset> MILITARY_GUNS = List.of(
+		new GunPreset("tacz:glock_17", "tacz:9mm", 17, "SEMI"),
+		new GunPreset("tacz:cz75", "tacz:9mm", 16, "SEMI"),
+		new GunPreset("tacz:m1911", "tacz:45acp", 7, "SEMI"),
+		new GunPreset("tacz:hk_mk23", "tacz:45acp", 12, "SEMI"),
+		new GunPreset("tacz:hk_mp5a5", "tacz:9mm", 30, "AUTO"),
+		new GunPreset("tacz:hk_mp7a1", "tacz:46x30", 30, "AUTO"),
+		new GunPreset("tacz:m870", "tacz:12g", 6, "SEMI"),
+		new GunPreset("tacz:m1014", "tacz:12g", 7, "SEMI"),
+		new GunPreset("tacz:ak74m", "tacz:545x39", 30, "AUTO"),
+		new GunPreset("tacz:ak47", "tacz:762x39", 30, "AUTO"),
+		new GunPreset("tacz:m16a4", "tacz:556x45", 30, "BURST"),
+		new GunPreset("tacz:g36k", "tacz:556x45", 30, "AUTO"),
+		new GunPreset("tacz:aug", "tacz:556x45", 30, "AUTO"),
+		new GunPreset("tacz:kar98", "tacz:792x57", 5, "SEMI")
+	);
+
+	private static final List<GunPreset> AIRDROP_GUNS = List.of(
+		new GunPreset("tacz:ak12", "tacz:545x39", 30, "AUTO"),
+		new GunPreset("tacz:m4a1", "tacz:556x45", 30, "AUTO"),
+		new GunPreset("tacz:hk416d", "tacz:556x45", 30, "AUTO"),
+		new GunPreset("tacz:fn_fal", "tacz:308", 20, "AUTO"),
+		new GunPreset("tacz:hk_g3", "tacz:308", 20, "AUTO"),
+		new GunPreset("tacz:aa12", "tacz:12g", 20, "AUTO"),
+		new GunPreset("tacz:deagle", "tacz:50ae", 7, "SEMI"),
+		new GunPreset("tacz:m700", "tacz:30_06", 5, "SEMI"),
+		new GunPreset("tacz:ai_awp", "tacz:338", 5, "SEMI"),
+		new GunPreset("tacz:m107", "tacz:50bmg", 10, "SEMI"),
+		new GunPreset("tacz:m249", "tacz:556x45", 60, "AUTO"),
+		new GunPreset("tacz:fn_evolys", "tacz:556x45", 60, "AUTO")
+	);
+
+	public static ItemStack createTaczGunStack(GunPreset preset, AmmoTier loadedTier, Random random) {
+		if (preset == null || !Registries.ITEM.containsId(TACZ_GUN_ITEM_ID)) {
+			return ItemStack.EMPTY;
+		}
+		Item gunItem = Registries.ITEM.get(TACZ_GUN_ITEM_ID);
+		ItemStack stack = new ItemStack(gunItem, 1);
+		NbtCompound nbt = stack.getOrCreateNbt();
+		nbt.putString("GunId", preset.gunId());
+		nbt.putString("GunFireMode", preset.fireMode());
+		int minAmmo = Math.max(1, preset.magSize() / 2);
+		int loadedCount = minAmmo + random.nextInt(Math.max(1, preset.magSize() - minAmmo + 1));
+		nbt.putInt("GunCurrentAmmoCount", loadedCount);
+		nbt.putBoolean("HasBulletInBarrel", true);
+		AmmoTier.stampLoadedTierOnGun(stack, loadedTier != null ? loadedTier : AmmoTier.FMJ);
+		return stack;
+	}
+
 	public static void populateLootGrid(GridContainer grid, TarkovLootPool pool, Random random) {
 		if (grid == null || pool == null || random == null) {
 			return;
 		}
 		ensurePools();
+
+		// Guarantee / chance for real TaCZ firearms + matching tiered ammo in military crates and airdrops
+		if (pool == TarkovLootPool.MILITARY && random.nextFloat() < 0.45f) {
+			GunPreset gun = MILITARY_GUNS.get(random.nextInt(MILITARY_GUNS.size()));
+			AmmoTier tier = random.nextFloat() < 0.35f ? AmmoTier.AP : AmmoTier.FMJ;
+			ItemStack gunStack = createTaczGunStack(gun, tier, random);
+			if (!gunStack.isEmpty()) {
+				grid.tryAutoPlace(gunStack);
+				grid.tryAutoPlace(AmmoTier.createTaczAmmoStack(gun.ammoId(), tier, Math.min(30, Math.max(10, gun.magSize()))));
+			}
+		} else if (pool == TarkovLootPool.AIRDROP) {
+			int gunCount = random.nextBoolean() ? 2 : 1;
+			for (int g = 0; g < gunCount; g++) {
+				GunPreset gun = AIRDROP_GUNS.get(random.nextInt(AIRDROP_GUNS.size()));
+				AmmoTier tier = random.nextFloat() < 0.45f ? AmmoTier.IGN : AmmoTier.AP;
+				ItemStack gunStack = createTaczGunStack(gun, tier, random);
+				if (!gunStack.isEmpty()) {
+					grid.tryAutoPlace(gunStack);
+					grid.tryAutoPlace(AmmoTier.createTaczAmmoStack(gun.ammoId(), tier, Math.min(40, Math.max(15, gun.magSize()))));
+				}
+			}
+		}
 
 		int baseRolls = switch (pool) {
 			case MILITARY, MEDICAL -> 4 + random.nextInt(4);

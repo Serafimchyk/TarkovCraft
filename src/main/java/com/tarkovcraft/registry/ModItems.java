@@ -1,6 +1,8 @@
 package com.tarkovcraft.registry;
 
 import com.tarkovcraft.TarkovCraftMod;
+import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.ammo.TaCZCaliberCatalog;
 import com.tarkovcraft.grid.ItemSize;
 import com.tarkovcraft.health.HitZone;
 import com.tarkovcraft.item.ArmorMaterialType;
@@ -206,6 +208,27 @@ public final class ModItems {
 				entries.add(ModBlocks.AIRDROP_CRATE);
 				entries.add(ModBlocks.TARKOV_WORKBENCH);
 				TarkovItemCatalog.getTacticalItems().forEach(entries::add);
+			})
+			.build()
+	);
+
+	public static final ItemGroup TARKOV_AMMO_GROUP = Registry.register(
+		Registries.ITEM_GROUP,
+		new Identifier(TarkovCraftMod.MOD_ID, "tarkov_ammo_tab"),
+		FabricItemGroup.builder()
+			.icon(() -> Registries.ITEM.containsId(new Identifier("tacz", "ammo"))
+				? AmmoTier.createTaczAmmoStack("tacz:545x39", AmmoTier.AP, 1)
+				: new ItemStack(ModBlocks.TARKOV_WORKBENCH))
+			.displayName(Text.translatable("itemGroup.tarkovcraft.tarkov_ammo_tab"))
+			.entries((displayContext, entries) -> {
+				if (!Registries.ITEM.containsId(new Identifier("tacz", "ammo"))) {
+					return;
+				}
+				for (TaCZCaliberCatalog.CaliberSpec spec : TaCZCaliberCatalog.getAllKnownCalibers()) {
+					for (AmmoTier tier : AmmoTier.values()) {
+						entries.add(AmmoTier.createTaczAmmoStack(spec.ammoId(), tier, 1));
+					}
+				}
 			})
 			.build()
 	);

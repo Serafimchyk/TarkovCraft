@@ -159,12 +159,24 @@ public final class GridContainer {
 	 * Mutates the passed stack's count if partially/fully stacked, returning true if completely inserted.
 	 */
 	public boolean tryAutoPlace(ItemStack stack) {
+		return tryAutoPlace(stack, null);
+	}
+
+	/**
+	 * Auto-places stack into the first available space (trying stacking first, then normal, then rotated).
+	 * Mutates the passed stack's count if partially/fully stacked, returning true if completely inserted.
+	 * When {@code canMergeIntoEntry} is provided, only merges into entries whose UUID passes the predicate.
+	 */
+	public boolean tryAutoPlace(ItemStack stack, @Nullable java.util.function.Predicate<UUID> canMergeIntoEntry) {
 		if (stack == null || stack.isEmpty() || wouldCauseRecursion(stack)) {
 			return false;
 		}
 		// 1. Try merging into existing stacks
 		if (stack.isStackable()) {
 			for (GridEntry entry : entries.values()) {
+				if (canMergeIntoEntry != null && !canMergeIntoEntry.test(entry.getEntryId())) {
+					continue;
+				}
 				if (canMerge(entry.getStack(), stack)) {
 					int space = entry.getStack().getMaxCount() - entry.getStack().getCount();
 					if (space > 0) {

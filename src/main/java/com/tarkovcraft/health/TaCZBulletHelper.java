@@ -8,6 +8,8 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.util.Identifier;
 
 import java.lang.reflect.Method;
+import java.util.concurrent.ConcurrentHashMap;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Zero-hard-dependency bridge to TaCZ Refabricated's EntityKineticBullet.
@@ -15,6 +17,11 @@ import java.lang.reflect.Method;
  * computing effective penetration power and flesh damage multiplier.
  */
 public final class TaCZBulletHelper {
+	private record BulletGetters(@Nullable Method getGunId, @Nullable Method getAmmoId) {
+	}
+
+	private static final ConcurrentHashMap<Class<?>, BulletGetters> GETTER_CACHE = new ConcurrentHashMap<>();
+
 	private TaCZBulletHelper() {
 	}
 
@@ -42,8 +49,8 @@ public final class TaCZBulletHelper {
 		boolean isTacz = (direct != null && direct.getClass().getName().contains("EntityKineticBullet"))
 			|| (source.getName() != null && source.getName().toLowerCase().contains("tacz.bullet"));
 		if (isTacz) {
-			String gunStr = direct != null ? invokeIdGetter(direct, "getGunId") : "";
-			String ammoStr = direct != null ? invokeIdGetter(direct, "getAmmoId") : "";
+			String gunStr = direct != null ? invokeCachedGetter(direct, true) : "";
+			String ammoStr = direct != null ? invokeCachedGetter(direct, false) : "";
 			String cleanGun = prettifyId(gunStr, "Firearm");
 			String cleanAmmo = prettifyId(ammoStr, "Ballistic") + " [" + loadedTier.getBadge() + "]";
 			int pen = computePenetration(ammoStr, loadedTier);
@@ -61,9 +68,29 @@ public final class TaCZBulletHelper {
 		return new BulletInfo(false, source.getName(), "", AmmoTier.FMJ, 0, 1.0f, 0.0f);
 	}
 
-	private static String invokeIdGetter(Entity bullet, String methodName) {
+	private static BulletGetters resolveGetters(Class<?> bulletClass) {
+		return GETTER_CACHE.computeIfAbsent(bulletClass, cls -> {
+			Method gun = null;
+			Method ammo = null;
+			try {
+				gun = cls.getMethod("getGunId");
+			} catch (NoSuchMethodException ignored) {
+			}
+			try {
+				ammo = cls.getMethod("getAmmoId");
+			} catch (NoSuchMethodException ignored) {
+			}
+			return new BulletGetters(gun, ammo);
+		});
+	}
+
+	private static String invokeCachedGetter(Entity bullet, boolean isGun) {
 		try {
-			Method m = bullet.getClass().getMethod(methodName);
+			BulletGetters getters = resolveGetters(bullet.getClass());
+			Method m = isGun ? getters.getGunId() : getters.getAmmoId();
+			if (m == null) {
+				return "";
+			}
 			Object res = m.invoke(bullet);
 			if (res instanceof Identifier id) {
 				return id.toString();

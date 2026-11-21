@@ -60,14 +60,39 @@ public final class AirdropManager {
 		TarkovConfig cfg = TarkovConfig.get();
 		int minR = cfg.airdropMinRadius;
 		int maxR = Math.max(minR, cfg.airdropMaxRadius);
-		double angle = world.random.nextDouble() * Math.PI * 2.0;
-		double radius = minR + world.random.nextDouble() * (maxR - minR);
-		int x = (int) Math.round(player.getX() + Math.cos(angle) * radius);
-		int z = (int) Math.round(player.getZ() + Math.sin(angle) * radius);
-		return spawnAirdropAt(world, x, z, true);
+
+		int chosenX = player.getBlockX();
+		int chosenZ = player.getBlockZ();
+		boolean found = false;
+		for (int attempt = 0; attempt < 16; attempt++) {
+			double angle = world.random.nextDouble() * Math.PI * 2.0;
+			double radius = minR + world.random.nextDouble() * (maxR - minR);
+			int cx = (int) Math.round(player.getX() + Math.cos(angle) * radius);
+			int cz = (int) Math.round(player.getZ() + Math.sin(angle) * radius);
+			if (!world.isChunkLoaded(cx >> 4, cz >> 4)) {
+				continue;
+			}
+			int surfaceY = world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, cx, cz);
+			net.minecraft.util.math.BlockPos surfacePos = new net.minecraft.util.math.BlockPos(cx, surfaceY - 1, cz);
+			if (world.getFluidState(surfacePos).isEmpty() && world.getFluidState(surfacePos.up()).isEmpty()) {
+				chosenX = cx;
+				chosenZ = cz;
+				found = true;
+				break;
+			}
+		}
+		if (!found) {
+			chosenX = player.getBlockX();
+			chosenZ = player.getBlockZ();
+		}
+		return spawnAirdropAt(world, chosenX, chosenZ, true);
 	}
 
+	@org.jetbrains.annotations.Nullable
 	public static AirdropEntity spawnAirdropAt(ServerWorld world, int x, int z, boolean announce) {
+		if (!world.isChunkLoaded(x >> 4, z >> 4)) {
+			return null;
+		}
 		int surfaceY = world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z);
 		int spawnY = Math.min(world.getTopY() - 8, Math.max(surfaceY + 48, world.getSeaLevel() + 48));
 

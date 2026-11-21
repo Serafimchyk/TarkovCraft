@@ -16,7 +16,10 @@ import net.minecraft.registry.Registries;
 import net.minecraft.util.Identifier;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Deterministic recipe engine for the Tarkov Workbench:
@@ -24,6 +27,7 @@ import java.util.List;
  * - ARMOR & GEAR tab: auto-generated recipes for all Helmets, Body Armor, Face Masks, Plates/Repair Kits, Rigs, and Backpacks.
  */
 public final class TarkovWorkbenchRecipes {
+	private static final Map<GearCategory, List<GearRecipe>> GEAR_CACHE = new EnumMap<>(GearCategory.class);
 	public record Ingredient(Item item, int count) {
 	}
 
@@ -138,7 +142,11 @@ public final class TarkovWorkbenchRecipes {
 			|| item instanceof BackpackItem;
 	}
 
-	public static List<GearRecipe> getGearRecipes(GearCategory category) {
+	public static synchronized List<GearRecipe> getGearRecipes(GearCategory category) {
+		List<GearRecipe> cached = GEAR_CACHE.get(category);
+		if (cached != null) {
+			return cached;
+		}
 		List<Item> candidates = new ArrayList<>();
 		switch (category) {
 			case HELMET -> {
@@ -195,7 +203,9 @@ public final class TarkovWorkbenchRecipes {
 		for (Item item : candidates) {
 			out.add(new GearRecipe(item, category, computeGearIngredients(item)));
 		}
-		return out;
+		List<GearRecipe> immutable = Collections.unmodifiableList(out);
+		GEAR_CACHE.put(category, immutable);
+		return immutable;
 	}
 
 	public static List<Ingredient> computeGearIngredients(Item item) {
@@ -212,7 +222,7 @@ public final class TarkovWorkbenchRecipes {
 				case 0 -> {
 					mats.add(new Ingredient(Items.LEATHER, ceilMul(2, s)));
 					mats.add(new Ingredient(Items.STRING, ceilMul(2, s)));
-					if (Registries.ITEM.getId(item).getPath().contains("protivogaz")) {
+					if (armor.isGasProtection()) {
 						mats.add(new Ingredient(Items.GLASS, 2));
 						mats.add(new Ingredient(Items.COAL, 2));
 					}

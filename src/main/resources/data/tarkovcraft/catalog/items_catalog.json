@@ -8831,7 +8831,8 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "gasProtection": true
     },
     {
       "id": "protivogaz_msa_millenium_riot_contro_6a8316",
@@ -8843,7 +8844,8 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "gasProtection": true
     },
     {
       "id": "protivogaz_gp_5_5b432c",
@@ -8855,7 +8857,8 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "gasProtection": true
     },
     {
       "id": "protivogaz_gp_7_60363c",
@@ -8867,7 +8870,8 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "gasProtection": true
     },
     {
       "id": "respirator_gentex_ops_core_sotr_689b40",
@@ -8879,7 +8883,8 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "gasProtection": true
     },
     {
       "id": "respiratornaya_maska_59e771",
@@ -8891,7 +8896,8 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "gasProtection": true
     },
     {
       "id": "ryzhaya_nakladnaya_boroda_baddie_62a09d",
@@ -9790,7 +9796,8 @@
       "rarity": "UNCOMMON",
       "weight": 0.5,
       "gridWidth": 2,
-      "gridHeight": 2
+      "gridHeight": 2,
+      "caseRole": "MONEY"
     },
     {
       "id": "keys_s_i_c_c_5d235b",
@@ -9810,7 +9817,8 @@
       "rarity": "RARE",
       "weight": 3.5,
       "gridWidth": 7,
-      "gridHeight": 7
+      "gridHeight": 7,
+      "caseRole": "ARMOR_PLATE"
     },
     {
       "id": "keys_dlya_veshchey_t_h_i_c_c_5c0a84",
@@ -9850,7 +9858,8 @@
       "rarity": "RARE",
       "weight": 3.5,
       "gridWidth": 7,
-      "gridHeight": 7
+      "gridHeight": 7,
+      "caseRole": "GRENADE"
     },
     {
       "id": "keys_dlya_deneg_59fb01",
@@ -9860,7 +9869,8 @@
       "rarity": "RARE",
       "weight": 1.2,
       "gridWidth": 7,
-      "gridHeight": 7
+      "gridHeight": 7,
+      "caseRole": "MONEY"
     },
     {
       "id": "keys_dlya_zhetonov_5c093e",
@@ -9880,7 +9890,8 @@
       "rarity": "RARE",
       "weight": 1.2,
       "gridWidth": 4,
-      "gridHeight": 4
+      "gridHeight": 4,
+      "caseRole": "INJECTOR"
     },
     {
       "id": "keys_dlya_klyuchey_67d3ed",
@@ -9900,7 +9911,8 @@
       "rarity": "RARE",
       "weight": 3.5,
       "gridWidth": 7,
-      "gridHeight": 7
+      "gridHeight": 7,
+      "caseRole": "AMMO"
     },
     {
       "id": "keys_dlya_medikamentov_5aafbc",
@@ -9910,7 +9922,8 @@
       "rarity": "RARE",
       "weight": 3.5,
       "gridWidth": 7,
-      "gridHeight": 7
+      "gridHeight": 7,
+      "caseRole": "MEDICAL"
     },
     {
       "id": "keys_dlya_medikamentov_6a997c",
@@ -9920,7 +9933,8 @@
       "rarity": "RARE",
       "weight": 3.5,
       "gridWidth": 7,
-      "gridHeight": 7
+      "gridHeight": 7,
+      "caseRole": "MEDICAL"
     },
     {
       "id": "keys_dlya_redkikh_zhetonov_twitch_6937ec",
@@ -9990,7 +10004,8 @@
       "rarity": "UNCOMMON",
       "weight": 0.5,
       "gridWidth": 4,
-      "gridHeight": 4
+      "gridHeight": 4,
+      "caseRole": "MONEY"
     },
     {
       "id": "neprostoy_bumazhnik_loui_peeton_6937ec",
@@ -10000,7 +10015,8 @@
       "rarity": "UNCOMMON",
       "weight": 0.5,
       "gridWidth": 2,
-      "gridHeight": 2
+      "gridHeight": 2,
+      "caseRole": "MONEY"
     },
     {
       "id": "oruzheynyy_keys_t_h_i_c_c_5b6d9c",
@@ -10010,7 +10026,8 @@
       "rarity": "EPIC",
       "weight": 8.0,
       "gridWidth": 10,
-      "gridHeight": 8
+      "gridHeight": 8,
+      "caseRole": "WEAPON"
     },
     {
       "id": "oruzheynyy_keys_59fb02",
@@ -10020,7 +10037,8 @@
       "rarity": "EPIC",
       "weight": 5.0,
       "gridWidth": 8,
-      "gridHeight": 5
+      "gridHeight": 5,
+      "caseRole": "WEAPON"
     },
     {
       "id": "oruzheynyy_keys_6a997c",
@@ -10030,7 +10048,8 @@
       "rarity": "EPIC",
       "weight": 5.0,
       "gridWidth": 8,
-      "gridHeight": 5
+      "gridHeight": 5,
+      "caseRole": "WEAPON"
     },
     {
       "id": "pistoletnyy_keys_567143",
@@ -10040,7 +10059,8 @@
       "rarity": "RARE",
       "weight": 1.2,
       "gridWidth": 4,
-      "gridHeight": 3
+      "gridHeight": 3,
+      "caseRole": "WEAPON"
     },
     {
       "id": "planshet_dlya_dokumentov_590c60",
@@ -10070,7 +10090,8 @@
       "rarity": "RARE",
       "weight": 3.5,
       "gridWidth": 8,
-      "gridHeight": 8
+      "gridHeight": 8,
+      "caseRole": "FOOD"
     },
     {
       "id": "termosumka_dlya_napitkov_hot_rod_6937ec",
@@ -10080,7 +10101,8 @@
       "rarity": "UNCOMMON",
       "weight": 0.5,
       "gridWidth": 5,
-      "gridHeight": 5
+      "gridHeight": 5,
+      "caseRole": "FOOD"
     },
     {
       "id": "tubus_dlya_plakatov_697883",

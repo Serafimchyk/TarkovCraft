@@ -59,7 +59,8 @@ public abstract class PlayerInventoryMixin {
 			if (slot < 9) {
 				cir.setReturnValue(loadout.getHotbarDisplayStack(slot));
 			} else {
-				cir.setReturnValue(loadout.getExposedStorageStack(slot - 9, player.getUuid(), isExternalWorkbenchOpen()));
+				long worldTick = player.getWorld() != null ? player.getWorld().getTime() : 0L;
+				cir.setReturnValue(loadout.getExposedStorageStackCached(slot - 9, player.getUuid(), isExternalWorkbenchOpen(), worldTick));
 			}
 		}
 	}
@@ -149,7 +150,7 @@ public abstract class PlayerInventoryMixin {
 			} else if (slot < 9) {
 				loadout.setPocket(slot - 3, safe);
 			} else {
-				loadout.setRigExposedStack(slot - 9, safe);
+				loadout.setExposedStorageStack(slot - 9, safe, player.getUuid(), isExternalWorkbenchOpen());
 			}
 			if (!player.getWorld().isClient) {
 				holder.tarkovcraft$syncLoadout();

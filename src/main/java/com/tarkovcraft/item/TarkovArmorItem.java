@@ -40,6 +40,7 @@ public class TarkovArmorItem extends Item implements TarkovSizedItem {
 	private final float weightKg;
 	private final Set<HitZone> coveredZones;
 	private final ItemRarityTier rarityTier;
+	private final boolean gasProtection;
 
 	public TarkovArmorItem(
 		Settings settings,
@@ -53,7 +54,7 @@ public class TarkovArmorItem extends Item implements TarkovSizedItem {
 		Set<HitZone> coveredZones
 	) {
 		this(settings, targetSlot, storedItemSize, armorClass, maxDurability, material, ricochetChance, weightKg,
-			coveredZones, ItemRarityTier.UNCOMMON);
+			coveredZones, ItemRarityTier.UNCOMMON, false);
 	}
 
 	public TarkovArmorItem(
@@ -67,6 +68,23 @@ public class TarkovArmorItem extends Item implements TarkovSizedItem {
 		float weightKg,
 		Set<HitZone> coveredZones,
 		ItemRarityTier rarityTier
+	) {
+		this(settings, targetSlot, storedItemSize, armorClass, maxDurability, material, ricochetChance, weightKg,
+			coveredZones, rarityTier, false);
+	}
+
+	public TarkovArmorItem(
+		Settings settings,
+		EquipmentSlotType targetSlot,
+		ItemSize storedItemSize,
+		int armorClass,
+		int maxDurability,
+		ArmorMaterialType material,
+		float ricochetChance,
+		float weightKg,
+		Set<HitZone> coveredZones,
+		ItemRarityTier rarityTier,
+		boolean gasProtection
 	) {
 		super(armorClass > 0
 			? settings.maxCount(1).maxDamage(Math.max(1, maxDurability))
@@ -82,6 +100,11 @@ public class TarkovArmorItem extends Item implements TarkovSizedItem {
 			: EnumSet.copyOf(coveredZones);
 		this.coveredZones = Collections.unmodifiableSet(zones);
 		this.rarityTier = rarityTier != null ? rarityTier : ItemRarityTier.UNCOMMON;
+		this.gasProtection = gasProtection;
+	}
+
+	public boolean isGasProtection() {
+		return gasProtection;
 	}
 
 	public EquipmentSlotType getTargetSlot() {

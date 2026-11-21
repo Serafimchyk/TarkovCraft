@@ -9,6 +9,7 @@ import org.jetbrains.annotations.Nullable;
 public final class ClientLoadoutCache {
 	private static final PlayerLoadout LOADOUT = new PlayerLoadout();
 	private static final BodyPartHealth BODY_HEALTH = new BodyPartHealth();
+	private static float cachedWeightKg = 0.0f;
 	@Nullable
 	private static TarkovNetworking.ScreenStateSnapshot screenState;
 
@@ -19,8 +20,13 @@ public final class ClientLoadoutCache {
 		return LOADOUT;
 	}
 
+	public static float getCachedWeightKg() {
+		return cachedWeightKg;
+	}
+
 	public static void updateLoadoutFromNbt(NbtCompound nbt) {
 		LOADOUT.readNbt(nbt);
+		cachedWeightKg = LOADOUT.calculateWeightKg();
 	}
 
 	public static BodyPartHealth getBodyHealth() {

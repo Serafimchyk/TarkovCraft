@@ -14,6 +14,7 @@ import com.tarkovcraft.screen.TarkovScreenHandler;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
@@ -22,6 +23,7 @@ import net.minecraft.resource.ResourceManager;
 import net.minecraft.resource.ResourceType;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.util.Identifier;
+import net.minecraft.world.GameRules;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -82,17 +84,23 @@ public class TarkovCraftMod implements ModInitializer {
 			}
 		});
 
-		// Keep loadout & health on dimension change; reset body health on respawn
+		// Keep loadout & health on dimension change or KEEP_INVENTORY; reset body health on respawn
 		ServerPlayerEvents.COPY_FROM.register((oldPlayer, newPlayer, alive) -> {
 			if (oldPlayer instanceof PlayerLoadoutHolder oldHolder && newPlayer instanceof PlayerLoadoutHolder newHolder) {
-				if (alive) {
+				boolean keepInv = oldPlayer.getWorld().getGameRules().getBoolean(GameRules.KEEP_INVENTORY);
+				if (alive || keepInv) {
 					newHolder.tarkovcraft$getLoadout().readNbt(oldHolder.tarkovcraft$getLoadout().writeNbt());
+				}
+				if (alive) {
 					newHolder.tarkovcraft$getBodyHealth().readNbt(oldHolder.tarkovcraft$getBodyHealth().writeNbt());
 				} else {
 					newHolder.tarkovcraft$getBodyHealth().resetFull();
 				}
 			}
 		});
+
+		ServerLifecycleEvents.SERVER_STARTED.register(server -> com.tarkovcraft.airdrop.AirdropManager.resetTimer());
+		ServerLifecycleEvents.SERVER_STOPPED.register(server -> com.tarkovcraft.airdrop.AirdropManager.resetTimer());
 
 		ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> {
 			if (newPlayer instanceof PlayerLoadoutHolder holder) {
@@ -101,6 +109,6 @@ public class TarkovCraftMod implements ModInitializer {
 			}
 		});
 
-		LOGGER.info("TarkovCraft initialized (Phase 1: Grid Inventory, Loadout, Corpses & Search).");
+		LOGGER.info("TarkovCraft initialized (Grid Inventory, Zonal Armor, Ballistic Ammo, Workbench, Worldgen & Airdrops).");
 	}
 }

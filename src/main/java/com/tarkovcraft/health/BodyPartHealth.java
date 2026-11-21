@@ -304,6 +304,31 @@ public final class BodyPartHealth {
 		String ammoName,
 		float distanceMeters
 	) {
+		float fractureRoll = (injuryRoll * 0.6180339f + 0.37f) % 1.0f;
+		return applyHit(
+			loadout, zone, rawDamage, penetrationPower,
+			armorWearMultiplier, bypassesArmor, canRicochet,
+			ricochetRoll, injuryRoll, fractureRoll,
+			killerName, weaponName, ammoName, distanceMeters
+		);
+	}
+
+	public boolean applyHit(
+		PlayerLoadout loadout,
+		HitZone zone,
+		float rawDamage,
+		int penetrationPower,
+		float armorWearMultiplier,
+		boolean bypassesArmor,
+		boolean canRicochet,
+		float ricochetRoll,
+		float bleedRoll,
+		float fractureRoll,
+		String killerName,
+		String weaponName,
+		String ammoName,
+		float distanceMeters
+	) {
 		if (rawDamage <= 0.0f) {
 			return isDead();
 		}
@@ -343,12 +368,12 @@ public final class BodyPartHealth {
 		// Rule 3: Combat injuries (only for penetrating/unblocked non-bypassing alive hits)
 		if (!killed && !bypassesArmor && !armorRes.ricocheted() && !armorRes.stoppedByArmor() && dmg > 0.0f) {
 			float heavyChance = dmg >= 25.0f ? Math.min(0.45f, 0.12f + (dmg - 25.0f) * 0.008f) : 0.0f;
-			if (dmg >= 25.0f && injuryRoll < heavyChance) {
+			if (dmg >= 25.0f && bleedRoll < heavyChance) {
 				addInjury(targetPart, InjuryType.HEAVY_BLEED);
 			} else if (dmg >= 10.0f) {
 				float lightChance = Math.min(0.50f, 0.18f + (dmg - 10.0f) * 0.010f);
 				float threshold = heavyChance + lightChance;
-				if (injuryRoll < threshold) {
+				if (bleedRoll < threshold) {
 					addInjury(targetPart, InjuryType.LIGHT_BLEED);
 				}
 			}
@@ -360,7 +385,7 @@ public final class BodyPartHealth {
 				} else if (dmg >= 18.0f) {
 					fractureChance = Math.min(0.45f, 0.15f + (dmg - 18.0f) * 0.008f);
 				}
-				if (fractureChance > 0.0f && injuryRoll < fractureChance) {
+				if (fractureChance > 0.0f && fractureRoll < fractureChance) {
 					addInjury(targetPart, InjuryType.FRACTURE);
 				}
 			}
