@@ -1,11 +1,15 @@
 package com.tarkovcraft.entity;
 
+import com.tarkovcraft.config.TarkovConfig;
 import com.tarkovcraft.grid.ContainerItemHelper;
 import com.tarkovcraft.grid.GridContainer;
 import com.tarkovcraft.item.BackpackItem;
 import com.tarkovcraft.item.TacticalRigItem;
+import com.tarkovcraft.item.TarkovArmorItem;
 import com.tarkovcraft.loadout.EquipmentSlotType;
 import com.tarkovcraft.loadout.PlayerLoadout;
+import com.tarkovcraft.loot.TarkovLootGenerator;
+import com.tarkovcraft.loot.TarkovLootPool;
 import com.tarkovcraft.registry.ModEntities;
 import com.tarkovcraft.registry.ModItems;
 import com.tarkovcraft.screen.TarkovScreenHandler;
@@ -14,6 +18,7 @@ import com.tarkovcraft.search.SearchTarget;
 import net.fabricmc.fabric.api.screenhandler.v1.ExtendedScreenHandlerFactory;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
+import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.data.DataTracker;
@@ -87,59 +92,108 @@ public class CorpseEntity extends Entity {
 	}
 
 	public static CorpseEntity fromMob(World world, LivingEntity mob) {
+		return fromGearedMob(world, mob);
+	}
+
+	public static CorpseEntity fromGearedMob(World world, LivingEntity mob) {
 		CorpseEntity corpse = new CorpseEntity(ModEntities.CORPSE, world);
 		corpse.setPosition(mob.getX(), mob.getY(), mob.getZ());
 		corpse.setYaw(mob.getYaw());
 		corpse.setOwnerName(mob.getDisplayName().getString());
-		corpse.populateScavLoot(world.getRandom());
+		Random random = world.getRandom();
+
+		ItemStack headStack = mob.getEquippedStack(EquipmentSlot.HEAD);
+		if (!headStack.isEmpty() && headStack.getItem() instanceof TarkovArmorItem armor
+			&& armor.getTargetSlot() == EquipmentSlotType.HELMET) {
+			corpse.loadout.setEquipment(EquipmentSlotType.HELMET, headStack.copy());
+		} else if (random.nextFloat() < 0.45f) {
+			ItemStack rolledHelmet = TarkovLootGenerator.pickRandomLightHelmet(random);
+			if (!rolledHelmet.isEmpty()) {
+				corpse.loadout.setEquipment(EquipmentSlotType.HELMET, rolledHelmet);
+			}
+		}
+
+		ItemStack chestStack = mob.getEquippedStack(EquipmentSlot.CHEST);
+		if (!chestStack.isEmpty() && chestStack.getItem() instanceof TarkovArmorItem armor
+			&& armor.getTargetSlot() == EquipmentSlotType.BODY_ARMOR) {
+			corpse.loadout.setEquipment(EquipmentSlotType.BODY_ARMOR, chestStack.copy());
+		} else if (random.nextFloat() < 0.5f) {
+			ItemStack rolledArmor = TarkovLootGenerator.pickRandomLightArmor(random);
+			if (!rolledArmor.isEmpty()) {
+				corpse.loadout.setEquipment(EquipmentSlotType.BODY_ARMOR, rolledArmor);
+			}
+		}
+
+		if (mob.getCommandTags().contains(MobGearSpawner.TAG_GEARED_RIG) || random.nextFloat() < 0.65f) {
+			ItemStack rig = TarkovLootGenerator.pickRandomScavRig(random);
+			if (!rig.isEmpty()) {
+				List<GridContainer> rigGrids = ContainerItemHelper.readRigGrids(rig);
+				for (GridContainer g : rigGrids) {
+					TarkovLootGenerator.populateLootGrid(g, TarkovLootPool.SCAV_POCKET, random);
+				}
+				ContainerItemHelper.writeRigGrids(rig, rigGrids);
+				markContainerUnsearched(rig);
+				corpse.loadout.setEquipment(EquipmentSlotType.RIG, rig);
+			}
+		}
+
+		if (mob.getCommandTags().contains(MobGearSpawner.TAG_GEARED_BACKPACK)) {
+			ItemStack bp = TarkovLootGenerator.pickRandomScavBackpack(random);
+			if (!bp.isEmpty()) {
+				GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
+				TarkovLootGenerator.populateLootGrid(bpGrid, TarkovLootPool.CIVILIAN, random);
+				ContainerItemHelper.writeBackpackGrid(bp, bpGrid);
+				markContainerUnsearched(bp);
+				corpse.loadout.setEquipment(EquipmentSlotType.BACKPACK, bp);
+			}
+		}
+
+		TarkovLootGenerator.populateLootGrid(corpse.pocketsGrid, TarkovLootPool.SCAV_POCKET, random);
+		corpse.syncVisualFlags();
+		return corpse;
+	}
+
+	public static CorpseEntity fromRegularMob(World world, LivingEntity mob) {
+		CorpseEntity corpse = new CorpseEntity(ModEntities.CORPSE, world);
+		corpse.setPosition(mob.getX(), mob.getY(), mob.getZ());
+		corpse.setYaw(mob.getYaw());
+		corpse.setOwnerName(mob.getDisplayName().getString());
+		TarkovLootGenerator.populateLootGrid(corpse.pocketsGrid, TarkovLootPool.SCAV_POCKET, world.getRandom());
+		corpse.syncVisualFlags();
 		return corpse;
 	}
 
 	public void populateScavLoot(Random random) {
-		// Helmet & Armor occasionally
-		if (random.nextFloat() < 0.6f) {
-			loadout.setEquipment(EquipmentSlotType.HELMET, new ItemStack(ModItems.SSH68_HELMET));
+		ItemStack helmet = TarkovLootGenerator.pickRandomLightHelmet(random);
+		if (!helmet.isEmpty() && random.nextFloat() < 0.65f) {
+			loadout.setEquipment(EquipmentSlotType.HELMET, helmet);
 		}
-		if (random.nextFloat() < 0.5f) {
-			loadout.setEquipment(EquipmentSlotType.BODY_ARMOR, new ItemStack(ModItems.PACA_ARMOR));
+		ItemStack armor = TarkovLootGenerator.pickRandomLightArmor(random);
+		if (!armor.isEmpty() && random.nextFloat() < 0.6f) {
+			loadout.setEquipment(EquipmentSlotType.BODY_ARMOR, armor);
 		}
 
-		// Equip an unsearched Tactical Rig with REAL loot inside its compartments
-		ItemStack rig = new ItemStack(random.nextBoolean() ? ModItems.SCAV_VEST : ModItems.BANK_ROBBER_RIG);
-		List<GridContainer> rigGrids = ContainerItemHelper.readRigGrids(rig);
-		if (!rigGrids.isEmpty()) {
-			rigGrids.get(0).tryAutoPlace(new ItemStack(Items.ARROW, 8 + random.nextInt(8)));
+		ItemStack rig = TarkovLootGenerator.pickRandomScavRig(random);
+		if (!rig.isEmpty()) {
+			List<GridContainer> rigGrids = ContainerItemHelper.readRigGrids(rig);
+			for (GridContainer g : rigGrids) {
+				TarkovLootGenerator.populateLootGrid(g, TarkovLootPool.SCAV_POCKET, random);
+			}
+			ContainerItemHelper.writeRigGrids(rig, rigGrids);
+			markContainerUnsearched(rig);
+			loadout.setEquipment(EquipmentSlotType.RIG, rig);
 		}
-		if (rigGrids.size() > 1) {
-			rigGrids.get(1).tryAutoPlace(new ItemStack(Items.BREAD, 1 + random.nextInt(2)));
-		}
-		if (rigGrids.size() > 2 && random.nextFloat() < 0.5f) {
-			rigGrids.get(2).tryAutoPlace(new ItemStack(Items.GOLD_NUGGET, 3 + random.nextInt(5)));
-		}
-		ContainerItemHelper.writeRigGrids(rig, rigGrids);
-		ContainerItemHelper.setRequiresSearch(rig, true);
-		ContainerItemHelper.saveSearchMemory(rig, new ContainerSearchMemory());
-		loadout.setEquipment(EquipmentSlotType.RIG, rig);
 
-		// Equip an unsearched Backpack with REAL loot inside
-		ItemStack bp = new ItemStack(random.nextBoolean() ? ModItems.BERKUT_BACKPACK : ModItems.SLING_BACKPACK);
-		GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
-		bpGrid.tryAutoPlace(new ItemStack(Items.IRON_INGOT, 2 + random.nextInt(4)));
-		bpGrid.tryAutoPlace(new ItemStack(Items.COOKED_BEEF, 1 + random.nextInt(3)));
-		if (random.nextFloat() < 0.5f) {
-			bpGrid.tryAutoPlace(new ItemStack(Items.DIAMOND, 1));
+		ItemStack bp = TarkovLootGenerator.pickRandomScavBackpack(random);
+		if (!bp.isEmpty()) {
+			GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
+			TarkovLootGenerator.populateLootGrid(bpGrid, TarkovLootPool.CIVILIAN, random);
+			ContainerItemHelper.writeBackpackGrid(bp, bpGrid);
+			markContainerUnsearched(bp);
+			loadout.setEquipment(EquipmentSlotType.BACKPACK, bp);
 		}
-		if (random.nextFloat() < 0.35f) {
-			bpGrid.tryAutoPlace(new ItemStack(Items.GOLDEN_APPLE, 1));
-		}
-		ContainerItemHelper.writeBackpackGrid(bp, bpGrid);
-		ContainerItemHelper.setRequiresSearch(bp, true);
-		ContainerItemHelper.saveSearchMemory(bp, new ContainerSearchMemory());
-		loadout.setEquipment(EquipmentSlotType.BACKPACK, bp);
 
-		// Real pockets (6x 1x1)
-		pocketsGrid.place(new ItemStack(Items.APPLE, 1 + random.nextInt(2)), 0, 0, false);
-		pocketsGrid.place(new ItemStack(Items.EMERALD, 1), 1, 0, false);
+		TarkovLootGenerator.populateLootGrid(pocketsGrid, TarkovLootPool.SCAV_POCKET, random);
 		syncVisualFlags();
 	}
 
@@ -256,7 +310,7 @@ public class CorpseEntity extends Entity {
 			} else {
 				emptyTicks = 0;
 			}
-			if (ageTicks >= MAX_LIFETIME_TICKS) {
+			if (ageTicks >= TarkovConfig.get().getCorpseLifetimeTicks()) {
 				this.discard();
 			}
 		}

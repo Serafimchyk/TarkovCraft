@@ -29,7 +29,7 @@
 - **Ресурсы и данные:**
   - Ассеты: `src/main/resources/assets/tarkovcraft/` (`blockstates`, `lang/en_us.json`, `lang/ru_ru.json`, `models/block`, `models/item`, `textures/block`, `textures/item`)
   - Датапак-данные: `src/main/resources/data/tarkovcraft/item_sizes/default_sizes.json`
-- **VCS:** репозиторий сейчас **не инициализирован как Git** (нет `.git`). Для Swarm-воркеров использовать `workspace:"inherit"` и строго соблюдать непересекающееся владение файлами.
+- **VCS:** Git инициализирован на ветке `main` (`.git` присутствует). Для Swarm-воркеров по-прежнему использовать `workspace:"inherit"` и строго соблюдать непересекающееся владение файлами.
 
 ## 2. Рабочие команды Gradle (Windows / PowerShell)
 

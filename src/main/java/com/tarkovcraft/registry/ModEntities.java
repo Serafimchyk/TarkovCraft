@@ -32,6 +32,16 @@ public final class ModEntities {
 			.build()
 	);
 
+	public static final EntityType<com.tarkovcraft.entity.AirdropEntity> AIRDROP = Registry.register(
+		Registries.ENTITY_TYPE,
+		new Identifier(TarkovCraftMod.MOD_ID, "airdrop"),
+		FabricEntityTypeBuilder.<com.tarkovcraft.entity.AirdropEntity>create(SpawnGroup.MISC, com.tarkovcraft.entity.AirdropEntity::new)
+			.dimensions(EntityDimensions.fixed(0.98f, 0.98f))
+			.trackRangeBlocks(160)
+			.trackedUpdateRate(2)
+			.build()
+	);
+
 	private ModEntities() {
 	}
 

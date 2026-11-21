@@ -1,8 +1,11 @@
 package com.tarkovcraft.client;
 
+import com.tarkovcraft.ammo.AmmoTier;
 import com.tarkovcraft.client.renderer.CorpseEntityRenderer;
 import com.tarkovcraft.client.renderer.HitZoneDebugRenderer;
 import com.tarkovcraft.client.screen.TarkovInventoryScreen;
+import com.tarkovcraft.client.screen.TarkovWorkbenchScreen;
+import com.tarkovcraft.health.TaCZBulletHelper;
 import com.tarkovcraft.network.TarkovNetworking;
 import com.tarkovcraft.registry.ModEntities;
 import com.tarkovcraft.registry.ModScreenHandlers;
@@ -31,13 +34,47 @@ public class TarkovCraftClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
 		TarkovNetworking.registerClientReceivers();
+		ClientNetworkSender.registerWorkbenchClientReceiver();
 		HandledScreens.register(ModScreenHandlers.TARKOV_SCREEN_HANDLER, TarkovInventoryScreen::new);
+		HandledScreens.register(ModScreenHandlers.TARKOV_WORKBENCH_SCREEN_HANDLER, TarkovWorkbenchScreen::new);
 		EntityRendererRegistry.register(ModEntities.CORPSE, CorpseEntityRenderer::new);
 		EntityRendererRegistry.register(ModEntities.GRENADE, FlyingItemEntityRenderer::new);
+		EntityRendererRegistry.register(ModEntities.AIRDROP, com.tarkovcraft.client.renderer.AirdropEntityRenderer::new);
 		WorldRenderEvents.AFTER_ENTITIES.register(HitZoneDebugRenderer::render);
 
 		ItemTooltipCallback.EVENT.register((stack, context, lines) -> {
-			if (stack == null || stack.isEmpty() || !stack.isFood()) {
+			if (stack == null || stack.isEmpty()) {
+				return;
+			}
+			if (AmmoTier.isTaczAmmoStack(stack)) {
+				AmmoTier tier = AmmoTier.getFromAmmoStack(stack);
+				if (!lines.isEmpty()) {
+					lines.set(0, lines.get(0).copy().append(" ")
+						.append(Text.literal("[" + tier.getBadge() + "]").formatted(tier.getColor())));
+				}
+				String ammoId = AmmoTier.getAmmoId(stack);
+				int pen = TaCZBulletHelper.computePenetration(ammoId, tier);
+				int idx = Math.min(1, lines.size());
+				lines.add(idx++, Text.translatable("tooltip.tarkovcraft.ammo_tier",
+					Text.translatable(tier.getTranslationKey())).formatted(tier.getColor()));
+				lines.add(idx++, Text.translatable("tooltip.tarkovcraft.ammo_pen",
+					pen, AmmoTier.formatArmorClassTarget(pen)).formatted(pen >= 35 ? Formatting.YELLOW : Formatting.GRAY));
+				lines.add(idx++, Text.translatable("tooltip.tarkovcraft.ammo_dmg_wear",
+					String.format(Locale.ROOT, "%.2f", tier.getDamageMultiplier()),
+					String.format(Locale.ROOT, "%.2f", tier.getArmorWearMultiplier())).formatted(Formatting.GRAY));
+				if (tier == AmmoTier.FMJ) {
+					lines.add(idx, Text.translatable("tooltip.tarkovcraft.ammo_upgrade_hint").formatted(Formatting.DARK_GRAY));
+				}
+				return;
+			}
+			if (AmmoTier.isTaczGunStack(stack)) {
+				AmmoTier loaded = AmmoTier.getLoadedTierFromGun(stack);
+				int idx = Math.min(1, lines.size());
+				lines.add(idx, Text.translatable("tooltip.tarkovcraft.gun_loaded_tier", loaded.getBadge())
+					.formatted(loaded.getColor()));
+				return;
+			}
+			if (!stack.isFood()) {
 				return;
 			}
 			FoodComponent fc = stack.getItem().getFoodComponent();

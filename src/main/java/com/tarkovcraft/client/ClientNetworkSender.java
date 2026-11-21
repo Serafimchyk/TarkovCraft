@@ -1,5 +1,6 @@
 package com.tarkovcraft.client;
 
+import com.tarkovcraft.ammo.AmmoTier;
 import com.tarkovcraft.health.BodyPart;
 import com.tarkovcraft.network.TarkovNetworking;
 import net.fabricmc.api.EnvType;
@@ -7,8 +8,13 @@ import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.minecraft.network.PacketByteBuf;
+import net.minecraft.util.Identifier;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -52,6 +58,41 @@ public final class ClientNetworkSender {
 
 	public static void sendCloseCase() {
 		ClientPlayNetworking.send(TarkovNetworking.C2S_CLOSE_CASE, PacketByteBufs.empty());
+	}
+
+	public static void sendWorkbenchCraftAmmo(String ammoId, AmmoTier tier, boolean upgradeFromFmj) {
+		PacketByteBuf buf = PacketByteBufs.create();
+		buf.writeString(ammoId, 64);
+		buf.writeByte(tier.ordinal());
+		buf.writeBoolean(upgradeFromFmj);
+		ClientPlayNetworking.send(TarkovNetworking.C2S_WORKBENCH_CRAFT_AMMO, buf);
+	}
+
+	public static void sendWorkbenchCraftGear(Identifier targetItemId) {
+		PacketByteBuf buf = PacketByteBufs.create();
+		buf.writeIdentifier(targetItemId);
+		ClientPlayNetworking.send(TarkovNetworking.C2S_WORKBENCH_CRAFT_GEAR, buf);
+	}
+
+	public static void registerWorkbenchClientReceiver() {
+		ClientPlayNetworking.registerGlobalReceiver(TarkovNetworking.S2C_WORKBENCH_SYNC, (client, handler, buf, responseSender) -> {
+			int itemCount = buf.readVarInt();
+			Map<Identifier, Integer> items = new HashMap<>(itemCount);
+			for (int i = 0; i < itemCount; i++) {
+				items.put(buf.readIdentifier(), buf.readVarInt());
+			}
+			int fmjCount = buf.readVarInt();
+			Map<String, Integer> fmj = new HashMap<>(fmjCount);
+			for (int i = 0; i < fmjCount; i++) {
+				fmj.put(buf.readString(64), buf.readVarInt());
+			}
+			int extraCount = buf.readVarInt();
+			List<String> extras = new ArrayList<>(extraCount);
+			for (int i = 0; i < extraCount; i++) {
+				extras.add(buf.readString(64));
+			}
+			client.execute(() -> ClientWorkbenchCache.update(items, fmj, extras));
+		});
 	}
 
 	private static PacketByteBuf buildSourceBuf(byte srcLoc, int srcIdx, @Nullable UUID srcEntryId) {

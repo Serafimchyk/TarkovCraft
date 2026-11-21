@@ -203,6 +203,8 @@ public final class ModItems {
 				entries.add(ModBlocks.WEAPON_CRATE);
 				entries.add(ModBlocks.MEDBAG);
 				entries.add(ModBlocks.TECHNICAL_CRATE);
+				entries.add(ModBlocks.AIRDROP_CRATE);
+				entries.add(ModBlocks.TARKOV_WORKBENCH);
 				TarkovItemCatalog.getTacticalItems().forEach(entries::add);
 			})
 			.build()

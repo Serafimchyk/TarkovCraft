@@ -88,7 +88,7 @@ public abstract class PlayerInventoryMixin {
 			// If TaCZ just consumed ammo during a reload, stamp the AmmoTier onto the held gun!
 			if (!extracted.isEmpty() && AmmoTier.isTaczAmmoStack(extracted)) {
 				ItemStack activeGun = loadout.getActiveHandStack(selectedSlot);
-				if (!activeGun.isEmpty()) {
+				if (!activeGun.isEmpty() && AmmoTier.isTaczGunStack(activeGun)) {
 					AmmoTier.stampLoadedTierOnGun(activeGun, AmmoTier.getFromAmmoStack(extracted));
 				}
 			}
@@ -123,7 +123,7 @@ public abstract class PlayerInventoryMixin {
 
 			if (!extracted.isEmpty() && AmmoTier.isTaczAmmoStack(extracted)) {
 				ItemStack activeGun = loadout.getActiveHandStack(selectedSlot);
-				if (!activeGun.isEmpty()) {
+				if (!activeGun.isEmpty() && AmmoTier.isTaczGunStack(activeGun)) {
 					AmmoTier.stampLoadedTierOnGun(activeGun, AmmoTier.getFromAmmoStack(extracted));
 				}
 			}

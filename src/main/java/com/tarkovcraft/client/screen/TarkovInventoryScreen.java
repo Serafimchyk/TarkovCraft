@@ -937,6 +937,13 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 
 			if (!entry.discovered()) {
 				context.fill(ex + 1, ey + 1, ex + ew - 1, ey + eh - 1, TarkovUiTheme.BG_CELL_SILHOUETTE);
+				// Dark tactical item silhouette block (Tarkov-style unrevealed item shape)
+				int padX = Math.max(3, ew / 6);
+				int padY = Math.max(3, eh / 6);
+				if (ew - padX * 2 >= 4 && eh - padY * 2 >= 4) {
+					context.fill(ex + padX, ey + padY, ex + ew - padX, ey + eh - padY, 0xFF171C22);
+					context.fill(ex + padX + 1, ey + padY + 1, ex + ew - padX - 1, Math.min(ey + eh - padY - 1, ey + padY + Math.max(2, eh / 4)), 0xFF202730);
+				}
 				context.drawBorder(ex + 1, ey + 1, ew - 2, eh - 2, TarkovUiTheme.BORDER_SLOT);
 
 				boolean isSearchingItem = snap != null
@@ -944,6 +951,8 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 					&& entry.entryId().equals(snap.searchEntryId());
 				if (isSearchingItem) {
 					context.drawBorder(ex + 1, ey + 1, ew - 2, eh - 2, TarkovUiTheme.ACCENT_SAND);
+					int sweepH = Math.max(2, Math.round((eh - 4) * snap.searchProgress()));
+					context.fill(ex + 2, ey + 2, ex + ew - 2, ey + 2 + sweepH, 0x33D4AF6A);
 					int bw = Math.max(8, ew - 6);
 					int bx = ex + 3;
 					int by = ey + eh - 5;
@@ -998,12 +1007,13 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			float ratio = cur / (float) Math.max(1, max);
 			int medCol = ratio >= 0.50f ? 0xFF77B85A : (ratio >= 0.25f ? 0xFFE0B23B : 0xFFE53935);
 			TarkovUiTheme.drawCellCornerBadge(context, textRenderer, cur + "/" + max, x, y, w, h, medCol);
-		} else if (stack.getCount() > 1) {
-			TarkovUiTheme.drawCellCornerBadge(context, textRenderer, String.valueOf(stack.getCount()),
-				x, y, w, h, TarkovUiTheme.TEXT_PRIMARY);
 		} else if (AmmoTier.isTaczAmmoStack(stack)) {
 			AmmoTier tier = AmmoTier.getFromAmmoStack(stack);
-			TarkovUiTheme.drawCellCornerBadge(context, textRenderer, tier.getBadge(),
+			String badge = stack.getCount() > 1 ? (tier.getBadge() + " " + stack.getCount()) : tier.getBadge();
+			TarkovUiTheme.drawCellCornerBadge(context, textRenderer, badge,
+				x, y, w, h, tier.getArgbColor());
+		} else if (stack.getCount() > 1) {
+			TarkovUiTheme.drawCellCornerBadge(context, textRenderer, String.valueOf(stack.getCount()),
 				x, y, w, h, TarkovUiTheme.TEXT_PRIMARY);
 		}
 	}
@@ -1492,7 +1502,10 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 
 		if (region.locType == TarkovNetworking.LOC_EQUIPMENT) {
 			EquipmentSlotType slot = EquipmentSlotType.values()[region.containerIndex];
-			boolean ok = drag.moveCount <= 0 && slot.accepts(moving) && loadout.getEquipment(slot).isEmpty();
+			boolean sameEquipSlot = drag.srcLoc == TarkovNetworking.LOC_EQUIPMENT && drag.srcIdx == region.containerIndex;
+			boolean allowHotswap = slot == EquipmentSlotType.BACKPACK || slot == EquipmentSlotType.RIG;
+			boolean ok = !sameEquipSlot && drag.moveCount <= 0 && slot.accepts(moving)
+				&& (loadout.getEquipment(slot).isEmpty() || allowHotswap);
 			return new DropEvaluation(ok, 0, 0, 1, 1);
 		}
 

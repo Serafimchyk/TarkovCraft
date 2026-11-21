@@ -2,6 +2,7 @@ package com.tarkovcraft.registry;
 
 import com.tarkovcraft.TarkovCraftMod;
 import com.tarkovcraft.screen.TarkovScreenHandler;
+import com.tarkovcraft.screen.TarkovWorkbenchScreenHandler;
 import net.fabricmc.fabric.api.screenhandler.v1.ExtendedScreenHandlerType;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
@@ -13,6 +14,12 @@ public final class ModScreenHandlers {
 		Registries.SCREEN_HANDLER,
 		new Identifier(TarkovCraftMod.MOD_ID, "tarkov_inventory"),
 		new ExtendedScreenHandlerType<>(TarkovScreenHandler::fromClientBuf)
+	);
+
+	public static final ScreenHandlerType<TarkovWorkbenchScreenHandler> TARKOV_WORKBENCH_SCREEN_HANDLER = Registry.register(
+		Registries.SCREEN_HANDLER,
+		new Identifier(TarkovCraftMod.MOD_ID, "tarkov_workbench"),
+		new ExtendedScreenHandlerType<>(TarkovWorkbenchScreenHandler::fromClientBuf)
 	);
 
 	private ModScreenHandlers() {

@@ -119,7 +119,7 @@ public final class SearchSession {
 				stage = Stage.REVEALING_GRID;
 				activeEntryId = null;
 				progressTicks = 0;
-				totalTicks = GRID_REVEAL_TICKS;
+				totalTicks = com.tarkovcraft.config.TarkovConfig.get().getContainerRevealTicks();
 			}
 			progressTicks++;
 			if (progressTicks >= totalTicks) {

@@ -1,5 +1,6 @@
 package com.tarkovcraft;
 
+import com.tarkovcraft.ammo.AmmoReloadTracker;
 import com.tarkovcraft.command.TarkovCommand;
 import com.tarkovcraft.grid.ItemSizeRegistry;
 import com.tarkovcraft.health.BodyHealthTicker;
@@ -30,10 +31,13 @@ public class TarkovCraftMod implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
+		com.tarkovcraft.config.TarkovConfig.loadOrCreate();
 		ModBlocks.init();
 		ModItems.init();
 		ModEntities.init();
 		ModScreenHandlers.init();
+		com.tarkovcraft.worldgen.ModWorldGen.init();
+		com.tarkovcraft.entity.MobGearSpawner.register();
 		TarkovNetworking.registerServerReceivers();
 
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
@@ -53,15 +57,21 @@ public class TarkovCraftMod implements ModInitializer {
 			}
 		});
 
-		// Tick open TarkovScreenHandlers + bleeding/injury penalties in Survival/Adventure
+		// Tick open TarkovScreenHandlers + bleeding/injury penalties + TaCZ reload tracking + Airdrops
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
+			com.tarkovcraft.airdrop.AirdropManager.tickServer(server);
 			for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
 				BodyHealthTicker.tickPlayer(player);
+				AmmoReloadTracker.tickPlayer(player);
 				if (player.currentScreenHandler instanceof TarkovScreenHandler tsh) {
 					tsh.tickServer(player);
 				}
 			}
 		});
+
+		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
+			AmmoReloadTracker.removePlayer(handler.getPlayer().getUuid())
+		);
 
 		// Sync loadout & body health when player joins
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {

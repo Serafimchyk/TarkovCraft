@@ -1,6 +1,8 @@
 package com.tarkovcraft.mixin;
 
+import com.tarkovcraft.config.TarkovConfig;
 import com.tarkovcraft.entity.CorpseEntity;
+import com.tarkovcraft.entity.MobGearSpawner;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.mob.HostileEntity;
@@ -30,8 +32,15 @@ public abstract class LivingEntityDeathMixin {
 			|| self instanceof IllagerEntity
 			|| self instanceof PiglinEntity
 			|| (self instanceof HostileEntity && self.getHeight() >= 1.6f)) {
-			CorpseEntity corpse = CorpseEntity.fromMob(self.getWorld(), self);
-			self.getWorld().spawnEntity(corpse);
+			CorpseEntity corpse = null;
+			if (self.getCommandTags().contains(MobGearSpawner.TAG_GEARED_MOB)) {
+				corpse = CorpseEntity.fromGearedMob(self.getWorld(), self);
+			} else if (self.getWorld().random.nextFloat() < TarkovConfig.get().corpseBaseLootChance) {
+				corpse = CorpseEntity.fromRegularMob(self.getWorld(), self);
+			}
+			if (corpse != null) {
+				self.getWorld().spawnEntity(corpse);
+			}
 		}
 	}
 }

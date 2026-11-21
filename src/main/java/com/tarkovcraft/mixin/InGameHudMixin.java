@@ -1,6 +1,7 @@
 package com.tarkovcraft.mixin;
 
 import com.tarkovcraft.block.SearchableLootBlock;
+import com.tarkovcraft.block.TarkovWorkbenchBlock;
 import com.tarkovcraft.client.ClientLoadoutCache;
 import com.tarkovcraft.client.TarkovCraftClient;
 import com.tarkovcraft.client.WorldInteractState;
@@ -195,6 +196,8 @@ public abstract class InGameHudMixin {
 			BlockState state = client.world.getBlockState(bhr.getBlockPos());
 			if (state.getBlock() instanceof SearchableLootBlock lootBlock) {
 				prompt = Text.translatable("prompt.tarkovcraft.search", key, Text.translatable(lootBlock.getContainerTitleKey()).getString());
+			} else if (state.getBlock() instanceof TarkovWorkbenchBlock wb) {
+				prompt = Text.translatable("prompt.tarkovcraft.workbench", key, wb.getName().getString());
 			}
 		}
 

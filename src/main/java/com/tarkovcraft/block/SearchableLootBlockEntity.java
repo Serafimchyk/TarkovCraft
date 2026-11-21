@@ -1,6 +1,8 @@
 package com.tarkovcraft.block;
 
 import com.tarkovcraft.grid.GridContainer;
+import com.tarkovcraft.loot.TarkovLootGenerator;
+import com.tarkovcraft.loot.TarkovLootPool;
 import com.tarkovcraft.registry.ModBlocks;
 import com.tarkovcraft.screen.TarkovScreenHandler;
 import com.tarkovcraft.search.ContainerSearchMemory;
@@ -14,19 +16,29 @@ import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
 import net.minecraft.network.PacketByteBuf;
+import net.minecraft.particle.DustParticleEffect;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.screen.ScreenHandler;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.random.Random;
+import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Vector3f;
 
 import java.util.List;
 
 public class SearchableLootBlockEntity extends BlockEntity {
+	private static final DustParticleEffect RED_FLARE_DUST =
+		new DustParticleEffect(new Vector3f(0.92f, 0.14f, 0.14f), 2.5f);
+
 	private int defaultWidth;
 	private int defaultHeight;
 	private GridContainer grid;
 	private ContainerSearchMemory searchMemory = new ContainerSearchMemory();
+	private int smokeTicksRemaining = 0;
 
 	public SearchableLootBlockEntity(BlockPos pos, BlockState state) {
 		this(ModBlocks.LOOT_CONTAINER_ENTITY, pos, state,
@@ -53,6 +65,40 @@ public class SearchableLootBlockEntity extends BlockEntity {
 		return new SearchTarget(grid.getContainerId(), List.of(grid), searchMemory, this::markDirty);
 	}
 
+	public int getSmokeTicksRemaining() {
+		return smokeTicksRemaining;
+	}
+
+	public void setSmokeTicksRemaining(int smokeTicksRemaining) {
+		this.smokeTicksRemaining = Math.max(0, smokeTicksRemaining);
+		markDirty();
+	}
+
+	public void populateFromPool(TarkovLootPool pool, Random random) {
+		this.grid.clear();
+		this.searchMemory = new ContainerSearchMemory();
+		TarkovLootGenerator.populateLootGrid(this.grid, pool, random);
+		markDirty();
+	}
+
+	public static void serverTick(World world, BlockPos pos, BlockState state, SearchableLootBlockEntity be) {
+		if (!(world instanceof ServerWorld sw) || be.smokeTicksRemaining <= 0) {
+			return;
+		}
+		be.smokeTicksRemaining--;
+		if (be.smokeTicksRemaining % 3 == 0) {
+			double cx = pos.getX() + 0.5;
+			double cy = pos.getY() + 1.05;
+			double cz = pos.getZ() + 0.5;
+			double pillarHeight = (be.smokeTicksRemaining % 12) * 0.9;
+			sw.spawnParticles(ParticleTypes.CAMPFIRE_SIGNAL_SMOKE, cx, cy, cz, 2, 0.15, 0.2, 0.15, 0.06);
+			sw.spawnParticles(RED_FLARE_DUST, cx, cy + 0.15 + pillarHeight, cz, 4, 0.25, 0.35, 0.25, 0.01);
+		}
+		if (be.smokeTicksRemaining == 0) {
+			be.markDirty();
+		}
+	}
+
 	public Text getDisplayTitle() {
 		if (getCachedState().getBlock() instanceof SearchableLootBlock lootBlock) {
 			return Text.translatable(lootBlock.getContainerTitleKey());
@@ -61,6 +107,10 @@ public class SearchableLootBlockEntity extends BlockEntity {
 	}
 
 	public void openForPlayer(ServerPlayerEntity player) {
+		if (smokeTicksRemaining > 0) {
+			smokeTicksRemaining = 0;
+			markDirty();
+		}
 		player.openHandledScreen(new ExtendedScreenHandlerFactory() {
 			@Override
 			public void writeScreenOpeningData(ServerPlayerEntity player, PacketByteBuf buf) {
@@ -88,6 +138,7 @@ public class SearchableLootBlockEntity extends BlockEntity {
 		nbt.putInt("DefaultH", defaultHeight);
 		nbt.put("Grid", grid.toNbt());
 		nbt.put("SearchMemory", searchMemory.toNbt());
+		nbt.putInt("SmokeTicks", smokeTicksRemaining);
 	}
 
 	@Override
@@ -109,5 +160,6 @@ public class SearchableLootBlockEntity extends BlockEntity {
 		} else {
 			this.searchMemory = new ContainerSearchMemory();
 		}
+		this.smokeTicksRemaining = Math.max(0, nbt.getInt("SmokeTicks"));
 	}
 }

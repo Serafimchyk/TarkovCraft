@@ -217,7 +217,10 @@ public class TarkovGrenadeEntity extends ThrownItemEntity {
 			}
 
 			float falloff = Math.max(0.0f, 1.0f - (float) (dist / radius));
-			float effectiveDmg = grenadeType.getMaxDamage() * (0.25f + 0.75f * falloff * falloff) * exposure;
+			float effectiveDmg = grenadeType.getMaxDamage()
+				* (0.25f + 0.75f * falloff * falloff)
+				* exposure
+				* com.tarkovcraft.config.TarkovConfig.get().grenadeDamageMultiplier;
 
 			if (target instanceof ServerPlayerEntity sp && !sp.isCreative() && !sp.isSpectator()
 				&& sp instanceof PlayerLoadoutHolder holder) {

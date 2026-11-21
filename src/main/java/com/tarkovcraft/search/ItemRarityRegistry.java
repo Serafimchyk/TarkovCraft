@@ -1,5 +1,9 @@
 package com.tarkovcraft.search;
 
+import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.config.TarkovConfig;
+import com.tarkovcraft.item.TarkovArmorItem;
+import com.tarkovcraft.item.TarkovCaseItem;
 import com.tarkovcraft.item.TarkovSizedItem;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
@@ -33,11 +37,43 @@ public final class ItemRarityRegistry {
 		if (stack == null || stack.isEmpty()) {
 			return ItemRarityTier.COMMON;
 		}
+		if (AmmoTier.isTaczAmmoStack(stack)) {
+			return switch (AmmoTier.getFromAmmoStack(stack)) {
+				case IGN -> ItemRarityTier.EPIC;
+				case AP -> ItemRarityTier.RARE;
+				case FMJ -> ItemRarityTier.UNCOMMON;
+				case HP -> ItemRarityTier.COMMON;
+			};
+		}
 		Item item = stack.getItem();
 		Identifier id = Registries.ITEM.getId(item);
 		ItemRarityTier override = OVERRIDES.get(id);
 		if (override != null) {
 			return override;
+		}
+		if (item instanceof TarkovArmorItem armor) {
+			ItemRarityTier base = armor.getRarityTier();
+			int ac = armor.getArmorClass();
+			if (ac >= 5) {
+				return maxTier(base, ItemRarityTier.EPIC);
+			}
+			if (ac == 4) {
+				return maxTier(base, ItemRarityTier.RARE);
+			}
+			if (ac >= 2) {
+				return maxTier(base, ItemRarityTier.UNCOMMON);
+			}
+			return base;
+		}
+		if (item instanceof TarkovCaseItem caseItem) {
+			int slots = caseItem.getGridWidth() * caseItem.getGridHeight();
+			if (slots >= 25) {
+				return maxTier(caseItem.getRarityTier(), ItemRarityTier.EPIC);
+			}
+			if (slots >= 9) {
+				return maxTier(caseItem.getRarityTier(), ItemRarityTier.RARE);
+			}
+			return caseItem.getRarityTier();
 		}
 		if (item instanceof TarkovSizedItem sized) {
 			return sized.getRarityTier();
@@ -51,7 +87,12 @@ public final class ItemRarityRegistry {
 		};
 	}
 
+	private static ItemRarityTier maxTier(ItemRarityTier a, ItemRarityTier b) {
+		return a.ordinal() >= b.ordinal() ? a : b;
+	}
+
 	public static int getSearchTicks(ItemStack stack) {
-		return getTier(stack).getSearchTicks();
+		int base = getTier(stack).getSearchTicks();
+		return Math.max(4, Math.round(base * TarkovConfig.get().searchTimeMultiplier));
 	}
 }

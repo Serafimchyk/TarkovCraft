@@ -93,13 +93,21 @@ public final class TaCZBulletHelper {
 	public static int estimateBaseCaliberPenetration(String ammoId) {
 		if (ammoId == null) return 22;
 		String lower = ammoId.toLowerCase();
-		if (lower.contains("50bmg") || lower.contains("338")) return 50;
-		if (lower.contains("308") || lower.contains("762x54") || lower.contains("30_06") || lower.contains("68x51") || lower.contains("45_70")) return 38;
-		if (lower.contains("762x39") || lower.contains("58x42") || lower.contains("300blk")) return 30;
+		if (lower.contains("50bmg")) return 54;
+		if (lower.contains("338")) return 48;
+		if (lower.contains("762x54")) return 39;
+		if (lower.contains("308") || lower.contains("30_06") || lower.contains("68x51") || lower.contains("792x57")) return 38;
+		if (lower.contains("45_70")) return 34;
+		if (lower.contains("762x39")) return 31;
+		if (lower.contains("58x42") || lower.contains("300blk")) return 30;
 		if (lower.contains("556") || lower.contains("545")) return 28;
-		if (lower.contains("57x28") || lower.contains("46x30") || lower.contains("50ae") || lower.contains("357") || lower.contains("500mag")) return 25;
-		if (lower.contains("9mm") || lower.contains("45acp") || lower.contains("762x25")) return 18;
-		if (lower.contains("12g") || lower.contains("22")) return 14;
+		if (lower.contains("500mag")) return 28;
+		if (lower.contains("57x28") || lower.contains("46x30") || lower.contains("50ae")) return 26;
+		if (lower.contains("357")) return 25;
+		if (lower.contains("762x25")) return 19;
+		if (lower.contains("9mm") || lower.contains("45acp")) return 18;
+		if (lower.contains("12g")) return 15;
+		if (lower.contains("22wmr") || lower.contains("22lr") || lower.contains("22")) return 14;
 		return 22;
 	}
 }

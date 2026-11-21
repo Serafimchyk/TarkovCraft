@@ -2,6 +2,7 @@ package com.tarkovcraft.network;
 
 import com.tarkovcraft.TarkovCraftMod;
 import com.tarkovcraft.block.SearchableLootBlockEntity;
+import com.tarkovcraft.block.TarkovWorkbenchBlock;
 import com.tarkovcraft.client.ClientLoadoutCache;
 import com.tarkovcraft.client.WorldInteractState;
 import com.tarkovcraft.entity.CorpseEntity;
@@ -15,8 +16,10 @@ import com.tarkovcraft.item.TarkovCaseItem;
 import com.tarkovcraft.loadout.PlayerLoadout;
 import com.tarkovcraft.loadout.PlayerLoadoutHolder;
 import com.tarkovcraft.screen.TarkovScreenHandler;
+import com.tarkovcraft.screen.TarkovWorkbenchScreenHandler;
 import com.tarkovcraft.search.ContainerSearchMemory;
 import com.tarkovcraft.search.SearchSession;
+import com.tarkovcraft.workbench.WorkbenchInventoryHelper;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -26,9 +29,11 @@ import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.ItemEntity;
 import net.minecraft.entity.projectile.ProjectileUtil;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.network.PacketByteBuf;
+import net.minecraft.registry.Registries;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.sound.SoundCategory;
 import net.minecraft.sound.SoundEvents;
@@ -51,6 +56,7 @@ public final class TarkovNetworking {
 	public static final Identifier S2C_LOADOUT_SYNC = new Identifier(TarkovCraftMod.MOD_ID, "loadout_sync");
 	public static final Identifier S2C_SCREEN_STATE = new Identifier(TarkovCraftMod.MOD_ID, "screen_state");
 	public static final Identifier S2C_HEALTH_SYNC = new Identifier(TarkovCraftMod.MOD_ID, "health_sync");
+	public static final Identifier S2C_WORKBENCH_SYNC = new Identifier(TarkovCraftMod.MOD_ID, "workbench_sync");
 
 	// C2S
 	public static final Identifier C2S_OPEN_OWN_INVENTORY = new Identifier(TarkovCraftMod.MOD_ID, "open_own_inventory");
@@ -65,6 +71,8 @@ public final class TarkovNetworking {
 	public static final Identifier C2S_INTERACT = new Identifier(TarkovCraftMod.MOD_ID, "interact");
 	public static final Identifier C2S_OPEN_CASE = new Identifier(TarkovCraftMod.MOD_ID, "open_case");
 	public static final Identifier C2S_CLOSE_CASE = new Identifier(TarkovCraftMod.MOD_ID, "close_case");
+	public static final Identifier C2S_WORKBENCH_CRAFT_AMMO = new Identifier(TarkovCraftMod.MOD_ID, "workbench_craft_ammo");
+	public static final Identifier C2S_WORKBENCH_CRAFT_GEAR = new Identifier(TarkovCraftMod.MOD_ID, "workbench_craft_gear");
 
 	// Locations
 	public static final byte LOC_EQUIPMENT = 0;
@@ -357,6 +365,26 @@ public final class TarkovNetworking {
 			});
 		});
 
+		ServerPlayNetworking.registerGlobalReceiver(C2S_WORKBENCH_CRAFT_AMMO, (server, player, handler, buf, responseSender) -> {
+			String ammoId = buf.readString(64);
+			byte tierOrdinal = buf.readByte();
+			boolean upgradeFromFmj = buf.readBoolean();
+			server.execute(() -> {
+				if (player.currentScreenHandler instanceof TarkovWorkbenchScreenHandler wb) {
+					wb.handleCraftAmmo(player, ammoId, tierOrdinal, upgradeFromFmj);
+				}
+			});
+		});
+
+		ServerPlayNetworking.registerGlobalReceiver(C2S_WORKBENCH_CRAFT_GEAR, (server, player, handler, buf, responseSender) -> {
+			Identifier targetId = buf.readIdentifier();
+			server.execute(() -> {
+				if (player.currentScreenHandler instanceof TarkovWorkbenchScreenHandler wb) {
+					wb.handleCraftGear(player, targetId);
+				}
+			});
+		});
+
 		ServerPlayNetworking.registerGlobalReceiver(C2S_MOVE_ITEM, (server, player, handler, buf, responseSender) -> {
 			byte srcLoc = buf.readByte();
 			int srcIdx = buf.readVarInt();
@@ -438,6 +466,10 @@ public final class TarkovNetworking {
 		}
 
 		if (blockHit.getType() == HitResult.Type.BLOCK) {
+			if (player.getWorld().getBlockState(blockHit.getBlockPos()).getBlock() instanceof TarkovWorkbenchBlock) {
+				TarkovWorkbenchScreenHandler.openForPlayer(player, blockHit.getBlockPos());
+				return;
+			}
 			BlockEntity be = player.getWorld().getBlockEntity(blockHit.getBlockPos());
 			if (be instanceof SearchableLootBlockEntity lootBe) {
 				lootBe.openForPlayer(player);
@@ -484,6 +516,25 @@ public final class TarkovNetworking {
 		PacketByteBuf buf = PacketByteBufs.create();
 		snapshot.write(buf);
 		ServerPlayNetworking.send(player, S2C_SCREEN_STATE, buf);
+	}
+
+	public static void sendWorkbenchSync(ServerPlayerEntity player, WorkbenchInventoryHelper.SyncPayload payload) {
+		PacketByteBuf buf = PacketByteBufs.create();
+		buf.writeVarInt(payload.itemCounts().size());
+		for (var entry : payload.itemCounts().entrySet()) {
+			buf.writeIdentifier(Registries.ITEM.getId(entry.getKey()));
+			buf.writeVarInt(entry.getValue());
+		}
+		buf.writeVarInt(payload.fmjAmmoCounts().size());
+		for (var entry : payload.fmjAmmoCounts().entrySet()) {
+			buf.writeString(entry.getKey(), 64);
+			buf.writeVarInt(entry.getValue());
+		}
+		buf.writeVarInt(payload.extraCalibers().size());
+		for (String ammoId : payload.extraCalibers()) {
+			buf.writeString(ammoId, 64);
+		}
+		ServerPlayNetworking.send(player, S2C_WORKBENCH_SYNC, buf);
 	}
 
 	@Environment(EnvType.CLIENT)

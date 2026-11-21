@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "tarkovcraft:block/tarkov_workbench" },
+    "facing=east":  { "model": "tarkovcraft:block/tarkov_workbench", "y": 90 },
+    "facing=south": { "model": "tarkovcraft:block/tarkov_workbench", "y": 180 },
+    "facing=west":  { "model": "tarkovcraft:block/tarkov_workbench", "y": 270 }
+  }
+}

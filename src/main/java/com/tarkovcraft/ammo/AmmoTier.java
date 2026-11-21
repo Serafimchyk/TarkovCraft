@@ -16,12 +16,13 @@ import net.minecraft.util.Identifier;
  * - IGN (Ultra-AP / Сверхбронебойные BS/Igolnik/M995/M61): -15% flesh damage, +28 penetration (Class 5-6)
  */
 public enum AmmoTier {
-	HP("hp", "HP", 1.30f, -12, 0.70f, Formatting.GREEN),
-	FMJ("fmj", "PS/FMJ", 1.00f, 0, 1.00f, Formatting.GRAY),
-	AP("ap", "BP/AP", 0.92f, 16, 1.25f, Formatting.GOLD),
-	IGN("ign", "BS/M995", 0.85f, 28, 1.50f, Formatting.RED);
+	HP("hp", "HP", 1.30f, -12, 0.70f, Formatting.GREEN, 0xFF55FF55),
+	FMJ("fmj", "PS/FMJ", 1.00f, 0, 1.00f, Formatting.GRAY, 0xFFB0B8C0),
+	AP("ap", "BP/AP", 0.92f, 16, 1.25f, Formatting.GOLD, 0xFFFFAA00),
+	IGN("ign", "BS/M995", 0.85f, 28, 1.50f, Formatting.RED, 0xFFFF5555);
 
 	public static final String NBT_AMMO_TIER = "TarkovAmmoTier";
+	public static final String NBT_AMMO_TIER_ALIAS = "tarkovcraft_ammo_tier";
 	public static final String NBT_LOADED_TIER = "TarkovLoadedTier";
 
 	private final String id;
@@ -30,14 +31,16 @@ public enum AmmoTier {
 	private final int penetrationDelta;
 	private final float armorWearMultiplier;
 	private final Formatting color;
+	private final int argbColor;
 
-	AmmoTier(String id, String badge, float damageMultiplier, int penetrationDelta, float armorWearMultiplier, Formatting color) {
+	AmmoTier(String id, String badge, float damageMultiplier, int penetrationDelta, float armorWearMultiplier, Formatting color, int argbColor) {
 		this.id = id;
 		this.badge = badge;
 		this.damageMultiplier = damageMultiplier;
 		this.penetrationDelta = penetrationDelta;
 		this.armorWearMultiplier = armorWearMultiplier;
 		this.color = color;
+		this.argbColor = argbColor;
 	}
 
 	public String getId() {
@@ -64,8 +67,21 @@ public enum AmmoTier {
 		return color;
 	}
 
+	public int getArgbColor() {
+		return argbColor;
+	}
+
 	public String getTranslationKey() {
 		return "ammotier.tarkovcraft." + id;
+	}
+
+	public static String formatArmorClassTarget(int pen) {
+		if (pen >= 55) return "Class 6";
+		if (pen >= 45) return "Class 5";
+		if (pen >= 35) return "Class 4";
+		if (pen >= 25) return "Class 3";
+		if (pen >= 15) return "Class 2";
+		return "Class 1 / Flesh";
 	}
 
 	public static AmmoTier byId(String id) {
@@ -87,6 +103,22 @@ public enum AmmoTier {
 		return stack.hasNbt() && stack.getNbt() != null && stack.getNbt().contains("AmmoId");
 	}
 
+	public static boolean isTaczGunStack(ItemStack stack) {
+		if (stack == null || stack.isEmpty()) return false;
+		Identifier id = Registries.ITEM.getId(stack.getItem());
+		if ("tacz".equals(id.getNamespace()) && "modern_kinetic_gun".equals(id.getPath())) {
+			return true;
+		}
+		return stack.hasNbt() && stack.getNbt() != null && stack.getNbt().contains("GunId");
+	}
+
+	public static String getAmmoId(ItemStack stack) {
+		if (stack == null || stack.isEmpty() || !stack.hasNbt() || stack.getNbt() == null) {
+			return "";
+		}
+		return stack.getNbt().getString("AmmoId");
+	}
+
 	public static AmmoTier getFromAmmoStack(ItemStack stack) {
 		if (stack == null || stack.isEmpty() || !stack.hasNbt() || stack.getNbt() == null) {
 			return FMJ;
@@ -94,6 +126,9 @@ public enum AmmoTier {
 		NbtCompound nbt = stack.getNbt();
 		if (nbt.contains(NBT_AMMO_TIER)) {
 			return byId(nbt.getString(NBT_AMMO_TIER));
+		}
+		if (nbt.contains(NBT_AMMO_TIER_ALIAS)) {
+			return byId(nbt.getString(NBT_AMMO_TIER_ALIAS));
 		}
 		return FMJ;
 	}

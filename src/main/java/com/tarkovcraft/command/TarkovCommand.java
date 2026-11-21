@@ -4,7 +4,9 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.FloatArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.tarkovcraft.airdrop.AirdropManager;
 import com.tarkovcraft.block.SearchableLootBlockEntity;
+import com.tarkovcraft.config.TarkovConfig;
 import com.tarkovcraft.entity.CorpseEntity;
 import com.tarkovcraft.grid.ContainerItemHelper;
 import com.tarkovcraft.grid.GridContainer;
@@ -15,6 +17,7 @@ import com.tarkovcraft.health.InjuryType;
 import com.tarkovcraft.loadout.EquipmentSlotType;
 import com.tarkovcraft.loadout.PlayerLoadout;
 import com.tarkovcraft.loadout.PlayerLoadoutHolder;
+import com.tarkovcraft.loot.TarkovLootPool;
 import com.tarkovcraft.registry.ModBlocks;
 import com.tarkovcraft.registry.ModEntities;
 import com.tarkovcraft.registry.ModItems;
@@ -56,6 +59,21 @@ public final class TarkovCommand {
 				.executes(ctx -> spawnTestCorpse(ctx.getSource())))
 			.then(CommandManager.literal("clear_corpses")
 				.executes(ctx -> clearCorpses(ctx.getSource())))
+			.then(CommandManager.literal("reload")
+				.executes(ctx -> reloadConfig(ctx.getSource())))
+			.then(CommandManager.literal("airdrop")
+				.executes(ctx -> spawnAirdropNear(ctx.getSource()))
+				.then(CommandManager.literal("here")
+					.executes(ctx -> spawnAirdropHere(ctx.getSource())))
+				.then(CommandManager.literal("interval")
+					.then(CommandManager.argument("minutes", IntegerArgumentType.integer(1, 1440))
+						.executes(ctx -> setAirdropInterval(
+							ctx.getSource(),
+							IntegerArgumentType.getInteger(ctx, "minutes")
+						))
+					)
+				)
+			)
 			.then(CommandManager.literal("heal")
 				.executes(ctx -> healFull(ctx.getSource())))
 			.then(CommandManager.literal("bleed")
@@ -241,15 +259,44 @@ public final class TarkovCommand {
 		player.getWorld().setBlockState(pos, ModBlocks.WEAPON_CRATE.getDefaultState());
 		BlockEntity be = player.getWorld().getBlockEntity(pos);
 		if (be instanceof SearchableLootBlockEntity lootBe) {
-			GridContainer grid = lootBe.getGrid();
-			grid.tryAutoPlace(new ItemStack(Items.IRON_INGOT, 5));
-			grid.tryAutoPlace(new ItemStack(ModItems.SCAV_VEST));
-			grid.tryAutoPlace(new ItemStack(Items.GOLDEN_APPLE, 1));
-			grid.tryAutoPlace(new ItemStack(Items.ENCHANTED_GOLDEN_APPLE));
-			grid.tryAutoPlace(new ItemStack(ModItems.SSH68_HELMET));
-			lootBe.markDirty();
+			lootBe.populateFromPool(TarkovLootPool.MILITARY, player.getWorld().getRandom());
 		}
 		source.sendFeedback(() -> Text.literal("[TarkovCraft] Spawned Weapon Crate at " + pos.toShortString()), false);
+		return 1;
+	}
+
+	private static int reloadConfig(ServerCommandSource source) {
+		TarkovConfig.loadOrCreate();
+		AirdropManager.onConfigReloaded();
+		source.sendFeedback(() -> Text.translatable("message.tarkovcraft.config_reloaded"), true);
+		return 1;
+	}
+
+	private static int spawnAirdropNear(ServerCommandSource source) {
+		ServerPlayerEntity player = source.getPlayer();
+		if (player == null) {
+			return 0;
+		}
+		AirdropManager.spawnAirdropNear(player);
+		return 1;
+	}
+
+	private static int spawnAirdropHere(ServerCommandSource source) {
+		ServerPlayerEntity player = source.getPlayer();
+		if (player == null) {
+			return 0;
+		}
+		AirdropManager.spawnAirdropAt(player.getServerWorld(), player.getBlockX(), player.getBlockZ(), true);
+		return 1;
+	}
+
+	private static int setAirdropInterval(ServerCommandSource source, int minutes) {
+		TarkovConfig cfg = TarkovConfig.get();
+		cfg.airdropIntervalMinutes = minutes;
+		cfg.validateAndClamp();
+		TarkovConfig.save();
+		AirdropManager.onConfigReloaded();
+		source.sendFeedback(() -> Text.literal("[TarkovCraft] Airdrop interval set to " + cfg.airdropIntervalMinutes + " min."), true);
 		return 1;
 	}
 

@@ -234,7 +234,8 @@ public class TarkovScreenHandler extends ScreenHandler {
 		List<SearchTarget> externalTargets = getExternalSearchTargets();
 		List<SearchTarget> ownTargets = getOwnSearchTargets(serverPlayer);
 
-		boolean stateChanged = searchSession.tickQueue(true, externalTargets, ownTargets);
+		boolean ownInventoryOpen = (mode == MODE_OWN_INVENTORY);
+		boolean stateChanged = searchSession.tickQueue(ownInventoryOpen, externalTargets, ownTargets);
 
 		if (mode == MODE_OWN_INVENTORY && activeCaseUuid != null && resolveActiveCaseHandle() == null) {
 			stateChanged = true;
@@ -575,12 +576,20 @@ public class TarkovScreenHandler extends ScreenHandler {
 		ItemStack peek = peekSource(loadout, playerId, srcLoc, srcIdx, srcEntryId);
 		if (peek.isEmpty()) return;
 
-		EquipmentSlotType targetSlot = findEmptyEquipSlotFor(loadout, peek);
+		EquipmentSlotType targetSlot = findEquipOrHotswapSlotFor(loadout, peek);
 		if (targetSlot == null) return;
 
 		ItemStack removed = extractSource(loadout, srcLoc, srcIdx, srcEntryId, peek.getCount());
 		if (!removed.isEmpty()) {
-			loadout.setEquipment(targetSlot, removed);
+			ItemStack droppedOld = equipWithHotswap(loadout, playerId, targetSlot, removed);
+			if (!droppedOld.isEmpty()) {
+				serverPlayer.dropItem(droppedOld, false);
+				serverPlayer.sendMessage(
+					Text.translatable("message.tarkovcraft.hotswap_dropped", droppedOld.getName())
+						.formatted(net.minecraft.util.Formatting.YELLOW),
+					true
+				);
+			}
 			markExternalDirty();
 			syncToClient(serverPlayer);
 		}
@@ -1174,6 +1183,113 @@ public class TarkovScreenHandler extends ScreenHandler {
 	}
 
 	@Nullable
+	private static EquipmentSlotType findEquipOrHotswapSlotFor(PlayerLoadout loadout, ItemStack stack) {
+		if (stack.getItem() instanceof BackpackItem) {
+			return EquipmentSlotType.BACKPACK;
+		}
+		if (stack.getItem() instanceof TacticalRigItem) {
+			return EquipmentSlotType.RIG;
+		}
+		return findEmptyEquipSlotFor(loadout, stack);
+	}
+
+	/**
+	 * Equips {@code newStack} into {@code slot}. If {@code slot} already holds an item,
+	 * tries to place the previous item safely into the player's inventory (Pockets -> Rig -> new Backpack,
+	 * enforcing container nesting/recursion rules). Returns the previous stack if it could not fit
+	 * (caller must drop it with all its contents), or {@link ItemStack#EMPTY} if it fit or slot was empty.
+	 */
+	public static ItemStack equipWithHotswap(
+		PlayerLoadout loadout,
+		@Nullable UUID playerId,
+		EquipmentSlotType slot,
+		ItemStack newStack
+	) {
+		ItemStack oldStack = loadout.getEquipment(slot).copy();
+		loadout.setEquipment(slot, newStack);
+		if (oldStack.isEmpty()) {
+			return ItemStack.EMPTY;
+		}
+		ItemStack toStore = oldStack.copy();
+		if (tryInsertContainerSafely(loadout, playerId, toStore) && toStore.isEmpty()) {
+			return ItemStack.EMPTY;
+		}
+		return oldStack;
+	}
+
+	/**
+	 * Safely inserts an unequipped item (including a backpack or rig with its loot) into
+	 * Pockets -> Rig -> Backpack while enforcing anti-recursion and max nesting depth (&lt; 2 inside worn containers).
+	 */
+	public static boolean tryInsertContainerSafely(
+		PlayerLoadout loadout,
+		@Nullable UUID playerId,
+		ItemStack incoming
+	) {
+		if (incoming == null || incoming.isEmpty()) {
+			return false;
+		}
+		if (!ContainerItemHelper.isContainerItem(incoming)) {
+			return loadout.tryInsertItem(incoming, playerId);
+		}
+
+		// 1. Pockets (if 1x1)
+		if (loadout.canPlaceInPocket(incoming)) {
+			for (int i = 0; i < PlayerLoadout.POCKET_COUNT; i++) {
+				if (loadout.getPocket(i).isEmpty()) {
+					loadout.setPocket(i, incoming.copy());
+					incoming.setCount(0);
+					return true;
+				}
+			}
+		}
+
+		// Anti-nesting rule: only containers of depth < 2 (i.e. not already holding another container) can sit inside Rig/Backpack
+		if (ContainerItemHelper.getNestingDepth(incoming) >= 2) {
+			return false;
+		}
+
+		// 2. Equipped Rig
+		ItemStack rig = loadout.getEquipment(EquipmentSlotType.RIG);
+		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
+			UUID rigId = ContainerItemHelper.getContainerUuid(rig);
+			boolean revealed = !ContainerItemHelper.requiresSearch(rig)
+				|| (playerId != null && ContainerItemHelper.getSearchMemory(rig).isGridRevealed(playerId));
+			if (revealed && (rigId == null || !ContainerItemHelper.containsContainerId(incoming, rigId))) {
+				List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
+				for (GridContainer grid : grids) {
+					if (grid.tryAutoPlace(incoming)) {
+						ContainerItemHelper.writeRigGrids(rig, grids);
+						if (incoming.isEmpty()) {
+							return true;
+						}
+						break;
+					}
+				}
+			}
+		}
+
+		// 3. Equipped Backpack
+		ItemStack bp = loadout.getEquipment(EquipmentSlotType.BACKPACK);
+		if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem) {
+			UUID bpId = ContainerItemHelper.getContainerUuid(bp);
+			boolean revealed = !ContainerItemHelper.requiresSearch(bp)
+				|| (playerId != null && ContainerItemHelper.getSearchMemory(bp).isGridRevealed(playerId));
+			if (revealed && (bpId == null || !ContainerItemHelper.containsContainerId(incoming, bpId))) {
+				GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
+				if (bpGrid.tryAutoPlace(incoming)) {
+					ContainerItemHelper.writeBackpackGrid(bp, bpGrid);
+					if (incoming.isEmpty()) {
+						return true;
+					}
+				}
+			}
+		}
+
+		return incoming.isEmpty();
+	}
+
+	@Nullable
 	private static EquipmentSlotType findEmptyEquipSlotFor(PlayerLoadout loadout, ItemStack stack) {
 		if (stack.getItem() instanceof BackpackItem && loadout.getEquipment(EquipmentSlotType.BACKPACK).isEmpty()) {
 			return EquipmentSlotType.BACKPACK;
@@ -1246,6 +1362,11 @@ public class TarkovScreenHandler extends ScreenHandler {
 			return;
 		}
 
+		// 2b. Prevent no-op drop onto the exact same equipment slot
+		if (srcLoc == TarkovNetworking.LOC_EQUIPMENT && dstLoc == TarkovNetworking.LOC_EQUIPMENT && srcIdx == dstIdx) {
+			return;
+		}
+
 		// 3. Validate destination BEFORE mutating source
 		if (!canInsertIntoDestination(loadout, playerId, movingPreview, dstLoc, dstIdx, dstX, dstY, dstRotated)) {
 			return;
@@ -1256,7 +1377,26 @@ public class TarkovScreenHandler extends ScreenHandler {
 		if (removed.isEmpty()) {
 			return;
 		}
-		boolean inserted = insertIntoDestination(loadout, playerId, removed, dstLoc, dstIdx, dstX, dstY, dstRotated);
+		boolean inserted;
+		if (dstLoc == TarkovNetworking.LOC_EQUIPMENT) {
+			EquipmentSlotType dstSlot = slotByOrdinal(dstIdx);
+			if (dstSlot != null) {
+				ItemStack droppedOld = equipWithHotswap(loadout, playerId, dstSlot, removed);
+				if (!droppedOld.isEmpty()) {
+					serverPlayer.dropItem(droppedOld, false);
+					serverPlayer.sendMessage(
+						Text.translatable("message.tarkovcraft.hotswap_dropped", droppedOld.getName())
+							.formatted(net.minecraft.util.Formatting.YELLOW),
+						true
+					);
+				}
+				inserted = true;
+			} else {
+				inserted = false;
+			}
+		} else {
+			inserted = insertIntoDestination(loadout, playerId, removed, dstLoc, dstIdx, dstX, dstY, dstRotated);
+		}
 		if (!inserted) {
 			serverPlayer.dropItem(removed, false);
 		}
@@ -1527,7 +1667,8 @@ public class TarkovScreenHandler extends ScreenHandler {
 		return switch (loc) {
 			case TarkovNetworking.LOC_EQUIPMENT -> {
 				EquipmentSlotType slot = slotByOrdinal(idx);
-				yield slot != null && slot.accepts(stack) && loadout.getEquipment(slot).isEmpty();
+				boolean allowHotswap = slot == EquipmentSlotType.BACKPACK || slot == EquipmentSlotType.RIG;
+				yield slot != null && slot.accepts(stack) && (loadout.getEquipment(slot).isEmpty() || allowHotswap);
 			}
 			case TarkovNetworking.LOC_POCKET ->
 				idx >= 0 && idx < PlayerLoadout.POCKET_COUNT

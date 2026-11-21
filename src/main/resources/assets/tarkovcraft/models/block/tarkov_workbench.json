@@ -1,0 +1,12 @@
+{
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "particle": "tarkovcraft:block/tarkov_workbench_side",
+    "down": "tarkovcraft:block/tarkov_workbench_bottom",
+    "up": "tarkovcraft:block/tarkov_workbench_top",
+    "north": "tarkovcraft:block/tarkov_workbench_front",
+    "south": "tarkovcraft:block/tarkov_workbench_side",
+    "east": "tarkovcraft:block/tarkov_workbench_side",
+    "west": "tarkovcraft:block/tarkov_workbench_side"
+  }
+}
