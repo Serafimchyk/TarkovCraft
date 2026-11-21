@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/keys_dlya_granat_5e2af5"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/broneplita_tallcom_guardian_656fa5"
+  }
+}

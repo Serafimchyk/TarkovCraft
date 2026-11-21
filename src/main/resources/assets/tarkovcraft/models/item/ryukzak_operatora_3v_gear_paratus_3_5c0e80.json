@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/ryukzak_operatora_3v_gear_paratus_3_5c0e80"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/broneplita_esbi_level_iv_bok_64afdb"
+  }
+}

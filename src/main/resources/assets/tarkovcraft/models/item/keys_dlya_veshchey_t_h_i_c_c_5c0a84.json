@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/keys_dlya_veshchey_t_h_i_c_c_5c0a84"
+  }
+}

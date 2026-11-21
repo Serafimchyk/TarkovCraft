@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/svetozvukovaya_granata_model_7290_619256"
+  }
+}

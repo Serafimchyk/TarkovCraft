@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/remenno_plechevaya_sistema_gear_craf_5fd4c6"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/shlem_ballistic_armor_co_bastion_od_66b5f6"
+  }
+}

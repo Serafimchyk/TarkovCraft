@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/shlem_diamond_age_novasteel_oliva_6a8339"
+  }
+}

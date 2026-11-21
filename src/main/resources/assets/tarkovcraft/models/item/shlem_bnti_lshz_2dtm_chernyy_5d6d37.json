@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/shlem_bnti_lshz_2dtm_chernyy_5d6d37"
+  }
+}

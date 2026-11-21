@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/ryukzak_eberlestock_g2_gunslinger_ii_6034d2"
+  }
+}

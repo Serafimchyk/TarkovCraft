@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/regenerativnyy_preparat_propital_5c0e53"
+  }
+}

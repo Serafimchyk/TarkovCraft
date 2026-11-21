@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/bronezhilet_nfm_thor_concealable_rei_609e85"
+  }
+}

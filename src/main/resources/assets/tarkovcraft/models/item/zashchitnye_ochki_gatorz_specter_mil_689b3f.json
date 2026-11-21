@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/zashchitnye_ochki_gatorz_specter_mil_689b3f"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/shokoladnyy_batonchik_slickers_544fb6"
+  }
+}

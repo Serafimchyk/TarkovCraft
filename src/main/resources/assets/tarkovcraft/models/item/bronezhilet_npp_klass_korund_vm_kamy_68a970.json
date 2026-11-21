@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/bronezhilet_npp_klass_korund_vm_kamy_68a970"
+  }
+}

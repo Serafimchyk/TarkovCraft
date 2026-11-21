@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/neprostoy_bumazhnik_loui_peeton_6937ec"
+  }
+}

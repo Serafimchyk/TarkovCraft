@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/razgruzochnaya_nagrudnaya_sistema_sp_674589"
+  }
+}

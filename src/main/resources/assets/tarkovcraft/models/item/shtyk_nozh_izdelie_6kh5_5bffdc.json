@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/shtyk_nozh_izdelie_6kh5_5bffdc"
+  }
+}

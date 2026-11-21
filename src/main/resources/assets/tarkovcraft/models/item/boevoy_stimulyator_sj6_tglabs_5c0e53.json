@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/boevoy_stimulyator_sj6_tglabs_5c0e53"
+  }
+}

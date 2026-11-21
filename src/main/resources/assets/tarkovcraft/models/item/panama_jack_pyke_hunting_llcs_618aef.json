@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/panama_jack_pyke_hunting_llcs_618aef"
+  }
+}

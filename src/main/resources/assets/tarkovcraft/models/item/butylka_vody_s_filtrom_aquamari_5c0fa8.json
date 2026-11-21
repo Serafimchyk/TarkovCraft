@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/butylka_vody_s_filtrom_aquamari_5c0fa8"
+  }
+}

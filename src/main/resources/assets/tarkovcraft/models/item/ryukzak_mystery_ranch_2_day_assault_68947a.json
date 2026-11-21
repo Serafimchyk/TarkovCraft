@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/ryukzak_mystery_ranch_2_day_assault_68947a"
+  }
+}

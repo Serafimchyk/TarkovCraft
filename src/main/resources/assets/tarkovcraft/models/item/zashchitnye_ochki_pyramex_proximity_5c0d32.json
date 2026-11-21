@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/zashchitnye_ochki_pyramex_proximity_5c0d32"
+  }
+}

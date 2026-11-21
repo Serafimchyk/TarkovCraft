@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/broneshlem_lshz_5_vulkan_5_kamuflyaz_68a987"
+  }
+}

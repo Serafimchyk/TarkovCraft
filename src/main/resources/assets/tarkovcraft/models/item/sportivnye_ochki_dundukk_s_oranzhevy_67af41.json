@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/sportivnye_ochki_dundukk_s_oranzhevy_67af41"
+  }
+}

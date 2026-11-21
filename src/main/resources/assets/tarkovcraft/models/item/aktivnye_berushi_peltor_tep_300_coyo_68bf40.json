@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/aktivnye_berushi_peltor_tep_300_coyo_68bf40"
+  }
+}

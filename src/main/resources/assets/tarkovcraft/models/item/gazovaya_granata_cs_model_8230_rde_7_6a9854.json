@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/gazovaya_granata_cs_model_8230_rde_7_6a9854"
+  }
+}

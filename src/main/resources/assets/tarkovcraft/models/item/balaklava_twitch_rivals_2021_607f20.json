@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/balaklava_twitch_rivals_2021_607f20"
+  }
+}

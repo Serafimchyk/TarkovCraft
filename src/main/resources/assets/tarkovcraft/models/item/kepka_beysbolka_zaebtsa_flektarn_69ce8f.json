@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/kepka_beysbolka_zaebtsa_flektarn_69ce8f"
+  }
+}

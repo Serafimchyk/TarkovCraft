@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/oruzheynyy_keys_t_h_i_c_c_5b6d9c"
+  }
+}

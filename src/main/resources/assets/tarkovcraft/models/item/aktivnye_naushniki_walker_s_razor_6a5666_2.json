@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/aktivnye_naushniki_walker_s_razor_6a5666_2"
+  }
+}

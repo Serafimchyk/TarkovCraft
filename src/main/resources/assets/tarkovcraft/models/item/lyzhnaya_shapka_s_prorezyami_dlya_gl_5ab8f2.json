@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/lyzhnaya_shapka_s_prorezyami_dlya_gl_5ab8f2"
+  }
+}

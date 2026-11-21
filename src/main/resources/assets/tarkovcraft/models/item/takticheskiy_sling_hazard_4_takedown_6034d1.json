@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/takticheskiy_sling_hazard_4_takedown_6034d1"
+  }
+}

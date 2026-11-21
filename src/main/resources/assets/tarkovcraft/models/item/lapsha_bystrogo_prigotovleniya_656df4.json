@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/lapsha_bystrogo_prigotovleniya_656df4"
+  }
+}

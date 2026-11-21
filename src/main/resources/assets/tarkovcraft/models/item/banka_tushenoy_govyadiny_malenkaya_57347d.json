@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/banka_tushenoy_govyadiny_malenkaya_57347d"
+  }
+}

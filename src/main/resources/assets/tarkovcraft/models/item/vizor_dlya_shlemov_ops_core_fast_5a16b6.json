@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/vizor_dlya_shlemov_ops_core_fast_5a16b6"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/shlem_highcom_striker_achhc_iiia_che_5b40e3"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/palka_govyazhey_kolbasy_solenyy_pes_635a75"
+  }
+}

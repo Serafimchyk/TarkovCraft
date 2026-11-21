@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/miller_bros_blades_m_2_tactical_swor_68d16e"
+  }
+}

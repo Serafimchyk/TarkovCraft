@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/ryukzak_direct_action_dragon_egg_mar_656f19"
+  }
+}

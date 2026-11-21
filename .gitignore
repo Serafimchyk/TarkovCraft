@@ -1,0 +1,12 @@
+.gradle/
+build/
+run/
+out/
+logs/
+mods/
+.idea/
+.vscode/
+*.iml
+*.log
+tree.txt
+ассеты/

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/bronezhilet_mf_untar_5ab8e4"
+  }
+}

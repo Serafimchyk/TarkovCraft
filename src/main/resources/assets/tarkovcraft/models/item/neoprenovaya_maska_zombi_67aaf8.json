@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/neoprenovaya_maska_zombi_67aaf8"
+  }
+}

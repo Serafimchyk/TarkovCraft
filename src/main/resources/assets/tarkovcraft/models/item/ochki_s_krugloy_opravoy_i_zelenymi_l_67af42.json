@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/ochki_s_krugloy_opravoy_i_zelenymi_l_67af42"
+  }
+}

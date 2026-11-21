@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/ryukzak_reydovyy_6sh118_flora_tsifra_5df8a4"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/obshchevoyskovoy_shlem_6b47_ratnik_b_5aa7cf"
+  }
+}

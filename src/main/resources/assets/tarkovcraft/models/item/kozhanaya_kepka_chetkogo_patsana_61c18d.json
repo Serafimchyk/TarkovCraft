@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/kozhanaya_kepka_chetkogo_patsana_61c18d"
+  }
+}

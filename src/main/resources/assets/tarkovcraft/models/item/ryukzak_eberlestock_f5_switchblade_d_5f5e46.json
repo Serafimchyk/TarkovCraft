@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/ryukzak_eberlestock_f5_switchblade_d_5f5e46"
+  }
+}

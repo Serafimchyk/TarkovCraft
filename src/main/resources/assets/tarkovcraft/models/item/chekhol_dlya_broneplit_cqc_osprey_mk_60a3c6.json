@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/chekhol_dlya_broneplit_cqc_osprey_mk_60a3c6"
+  }
+}

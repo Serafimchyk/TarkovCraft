@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/bronezhilet_6b45_flora_tsifra_68948a"
+  }
+}

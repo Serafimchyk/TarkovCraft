@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/freym_sistema_mystery_ranch_nice_com_628bc7"
+  }
+}

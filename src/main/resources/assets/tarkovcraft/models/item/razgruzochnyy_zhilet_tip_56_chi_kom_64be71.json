@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/razgruzochnyy_zhilet_tip_56_chi_kom_64be71"
+  }
+}

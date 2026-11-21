@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/broneplastiny_kustarnye_dlya_6b13_sp_656efd"
+  }
+}

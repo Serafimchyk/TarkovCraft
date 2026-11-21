@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/bronezhilet_iotv_gen4_mobilnyy_multi_5b44d0"
+  }
+}

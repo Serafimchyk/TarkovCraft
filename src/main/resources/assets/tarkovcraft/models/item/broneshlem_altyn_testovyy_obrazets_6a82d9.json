@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/broneshlem_altyn_testovyy_obrazets_6a82d9"
+  }
+}

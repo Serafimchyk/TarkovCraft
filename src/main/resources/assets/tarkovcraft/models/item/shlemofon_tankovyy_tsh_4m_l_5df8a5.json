@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/shlemofon_tankovyy_tsh_4m_l_5df8a5"
+  }
+}

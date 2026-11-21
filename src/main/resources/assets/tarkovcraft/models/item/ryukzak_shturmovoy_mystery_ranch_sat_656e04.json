@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/ryukzak_shturmovoy_mystery_ranch_sat_656e04"
+  }
+}

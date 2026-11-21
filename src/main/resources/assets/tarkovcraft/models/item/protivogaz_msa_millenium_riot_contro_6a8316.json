@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/protivogaz_msa_millenium_riot_contro_6a8316"
+  }
+}

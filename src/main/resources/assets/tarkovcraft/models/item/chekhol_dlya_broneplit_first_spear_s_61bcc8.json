@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/chekhol_dlya_broneplit_first_spear_s_61bcc8"
+  }
+}

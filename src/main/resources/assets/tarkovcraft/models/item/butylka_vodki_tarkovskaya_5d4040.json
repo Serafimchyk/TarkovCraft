@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/butylka_vodki_tarkovskaya_5d4040"
+  }
+}

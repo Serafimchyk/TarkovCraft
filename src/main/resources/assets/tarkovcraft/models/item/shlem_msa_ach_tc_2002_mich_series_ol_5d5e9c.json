@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/shlem_msa_ach_tc_2002_mich_series_ol_5d5e9c"
+  }
+}

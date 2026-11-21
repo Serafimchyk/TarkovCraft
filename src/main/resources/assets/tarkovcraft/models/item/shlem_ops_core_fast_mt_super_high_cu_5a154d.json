@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/shlem_ops_core_fast_mt_super_high_cu_5a154d"
+  }
+}

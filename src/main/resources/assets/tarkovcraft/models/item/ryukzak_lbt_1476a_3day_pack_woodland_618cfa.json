@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/ryukzak_lbt_1476a_3day_pack_woodland_618cfa"
+  }
+}

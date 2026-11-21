@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/kiba_arms_tactical_tomahawk_57cd37"
+  }
+}

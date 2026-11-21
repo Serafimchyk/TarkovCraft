@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/turisticheskiy_ryukzak_lolkek_3f_tra_5f5e45"
+  }
+}

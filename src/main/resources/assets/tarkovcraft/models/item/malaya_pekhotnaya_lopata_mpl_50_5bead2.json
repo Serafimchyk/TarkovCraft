@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/malaya_pekhotnaya_lopata_mpl_50_5bead2"
+  }
+}

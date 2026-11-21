@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/okhotnichiy_zhilet_umka_m33_set1_oli_6034cf"
+  }
+}

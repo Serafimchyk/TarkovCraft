@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/shlem_galvion_caiman_hybrid_multicam_68a9b3"
+  }
+}

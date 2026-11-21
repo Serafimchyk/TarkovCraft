@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/butylka_viski_dan_jackiel_5d403f"
+  }
+}

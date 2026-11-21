@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/diy_razgruzochnaya_nagrudnaya_sistem_5fd4c4"
+  }
+}

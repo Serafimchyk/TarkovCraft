@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/svarochnaya_maska_tagilly_ubey_60a7ad"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/sportivnye_solntsezashchitnye_ochki_5aa2b9"
+  }
+}

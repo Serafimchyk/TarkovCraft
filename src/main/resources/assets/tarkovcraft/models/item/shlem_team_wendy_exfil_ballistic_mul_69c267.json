@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/shlem_team_wendy_exfil_ballistic_mul_69c267"
+  }
+}

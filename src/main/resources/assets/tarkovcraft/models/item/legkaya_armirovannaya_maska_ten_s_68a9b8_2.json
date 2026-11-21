@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/legkaya_armirovannaya_maska_ten_s_68a9b8_2"
+  }
+}

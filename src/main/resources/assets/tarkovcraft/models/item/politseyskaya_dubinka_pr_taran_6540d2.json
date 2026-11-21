@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/politseyskaya_dubinka_pr_taran_6540d2"
+  }
+}

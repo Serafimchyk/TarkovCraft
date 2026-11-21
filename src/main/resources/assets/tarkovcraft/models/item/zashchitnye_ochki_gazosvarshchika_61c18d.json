@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/zashchitnye_ochki_gazosvarshchika_61c18d"
+  }
+}

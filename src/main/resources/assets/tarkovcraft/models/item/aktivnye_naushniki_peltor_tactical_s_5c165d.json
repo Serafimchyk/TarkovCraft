@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/aktivnye_naushniki_peltor_tactical_s_5c165d"
+  }
+}

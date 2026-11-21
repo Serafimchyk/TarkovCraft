@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/meditsinskiy_ryukzak_lbt_2670_slim_f_5e4abc"
+  }
+}

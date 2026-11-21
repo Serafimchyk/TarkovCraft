@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/aktivnye_naushniki_msa_sordin_suprem_5aa2ba"
+  }
+}

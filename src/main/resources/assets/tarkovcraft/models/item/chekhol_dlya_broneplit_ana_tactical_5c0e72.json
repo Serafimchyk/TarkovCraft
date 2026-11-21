@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/chekhol_dlya_broneplit_ana_tactical_5c0e72"
+  }
+}

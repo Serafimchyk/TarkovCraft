@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/ryukzak_shturmovoy_camelbak_tri_zip_66b5f2"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/individualnaya_takticheskaya_aptechk_60098a"
+  }
+}

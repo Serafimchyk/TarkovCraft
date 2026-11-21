@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/aktivnye_naushniki_ops_core_rac_dlya_5a16b9"
+  }
+}

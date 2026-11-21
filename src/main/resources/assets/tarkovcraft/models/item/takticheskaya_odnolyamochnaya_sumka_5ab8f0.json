@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/takticheskaya_odnolyamochnaya_sumka_5ab8f0"
+  }
+}

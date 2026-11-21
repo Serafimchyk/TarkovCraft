@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/nozh_bars_a_2607_damask_57e26e"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/termosumka_dlya_napitkov_hot_rod_6937ec"
+  }
+}

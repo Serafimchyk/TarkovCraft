@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/ryukzak_vertx_ready_pack_krasnyy_66b5f2"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "tarkovcraft",
+  "version": "${version}",
+  "name": "TarkovCraft",
+  "description": "Tarkov-inspired tactical inventory, grid storage, equipment, corpse looting, and two-stage search mechanics for Minecraft 1.20.1 Fabric.",
+  "authors": [
+    "TarkovCraft Team"
+  ],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.tarkovcraft.TarkovCraftMod"
+    ],
+    "client": [
+      "com.tarkovcraft.client.TarkovCraftClient"
+    ]
+  },
+  "mixins": [
+    "tarkovcraft.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "minecraft": "~1.20.1",
+    "java": ">=17",
+    "fabric-api": "*"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/razgruzochnyy_zhilet_lbt_1961a_load_68bee2"
+  }
+}

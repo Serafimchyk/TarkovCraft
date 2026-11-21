@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/razgruzochnaya_sistema_blue_force_ge_6a7b44"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/chekhol_dlya_broneplit_npp_klass_bag_628d06"
+  }
+}

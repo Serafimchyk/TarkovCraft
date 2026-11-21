@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/ballisticheskaya_maska_atomic_defens_67a4b7"
+  }
+}

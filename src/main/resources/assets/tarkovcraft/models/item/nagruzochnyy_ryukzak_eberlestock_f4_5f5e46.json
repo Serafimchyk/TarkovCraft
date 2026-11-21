@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/nagruzochnyy_ryukzak_eberlestock_f4_5f5e46"
+  }
+}

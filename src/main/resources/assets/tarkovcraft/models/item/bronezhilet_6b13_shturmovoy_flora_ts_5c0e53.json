@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/bronezhilet_6b13_shturmovoy_flora_ts_5c0e53"
+  }
+}

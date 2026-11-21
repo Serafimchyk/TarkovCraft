@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/premiumnyy_kvas_norvinskiy_yadrenyy_5e8f34"
+  }
+}

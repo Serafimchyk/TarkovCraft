@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/devtas_samurai_menpo_mask_68bee2"
+  }
+}

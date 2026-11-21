@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/razgruzochnyy_zhilet_ana_tactical_al_68a85a"
+  }
+}

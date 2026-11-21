@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/butylka_samogona_lyutyy_toporist_5d1b37"
+  }
+}

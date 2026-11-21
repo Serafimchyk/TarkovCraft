@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/boevoy_ranets_5_11_tactical_rush_100_674587"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/keys_dlya_strimerskikh_predmetov_66bc98"
+  }
+}

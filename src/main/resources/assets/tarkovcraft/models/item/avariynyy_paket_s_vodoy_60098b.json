@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/avariynyy_paket_s_vodoy_60098b"
+  }
+}

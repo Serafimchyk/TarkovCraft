@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/razgruzochnyy_zhilet_stich_profi_che_69cfbf"
+  }
+}

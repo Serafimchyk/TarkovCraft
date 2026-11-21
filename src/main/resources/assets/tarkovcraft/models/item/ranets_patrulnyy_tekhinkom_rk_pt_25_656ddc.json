@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/ranets_patrulnyy_tekhinkom_rk_pt_25_656ddc"
+  }
+}

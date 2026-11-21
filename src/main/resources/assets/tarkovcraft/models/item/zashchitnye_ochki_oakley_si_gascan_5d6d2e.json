@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/zashchitnye_ochki_oakley_si_gascan_5d6d2e"
+  }
+}

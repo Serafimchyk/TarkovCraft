@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/keys_derzhatel_dlya_klyuch_kart_619cbf"
+  }
+}

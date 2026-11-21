@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/shtyk_nozh_er_fulcrum_bayonet_54491b"
+  }
+}

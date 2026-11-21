@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/ballisticheskie_ochki_6b34_5b432b"
+  }
+}

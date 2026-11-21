@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/respirator_gentex_ops_core_sotr_689b40"
+  }
+}

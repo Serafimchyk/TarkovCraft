@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/boevoy_ranets_ana_tactical_beta_2_ol_5b44c6"
+  }
+}

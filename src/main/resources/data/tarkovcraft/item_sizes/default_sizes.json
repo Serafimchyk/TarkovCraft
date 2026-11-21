@@ -1,0 +1,35 @@
+{
+  "items": {
+    "tacz:modern_kinetic_gun": { "width": 4, "height": 2 },
+    "tacz:ammo": { "width": 1, "height": 1 },
+    "tacz:ammo_box": { "width": 2, "height": 2 },
+    "tacz:attachment": { "width": 1, "height": 1 },
+    "minecraft:iron_sword": { "width": 1, "height": 2 },
+    "minecraft:diamond_sword": { "width": 1, "height": 2 },
+    "minecraft:netherite_sword": { "width": 1, "height": 2 },
+    "minecraft:bow": { "width": 1, "height": 3 },
+    "minecraft:crossbow": { "width": 2, "height": 2 }
+  },
+  "tacz_guns": {
+    "tacz:glock_17": { "width": 2, "height": 1 },
+    "tacz:deagle": { "width": 2, "height": 1 },
+    "tacz:cz75": { "width": 2, "height": 1 },
+    "tacz:m1911": { "width": 2, "height": 1 },
+    "tacz:mp5": { "width": 3, "height": 2 },
+    "tacz:ump45": { "width": 3, "height": 2 },
+    "tacz:vector45": { "width": 3, "height": 2 },
+    "tacz:ai_awp": { "width": 5, "height": 2 },
+    "tacz:m249": { "width": 5, "height": 2 }
+  },
+  "tacz_attachments": {
+    "tacz:light_extended_mag_1": { "width": 1, "height": 1 },
+    "tacz:light_extended_mag_2": { "width": 1, "height": 1 },
+    "tacz:light_extended_mag_3": { "width": 1, "height": 2 },
+    "tacz:extended_mag_1": { "width": 1, "height": 2 },
+    "tacz:extended_mag_2": { "width": 1, "height": 2 },
+    "tacz:extended_mag_3": { "width": 2, "height": 2 },
+    "tacz:sniper_extended_mag_1": { "width": 1, "height": 2 },
+    "tacz:sniper_extended_mag_2": { "width": 1, "height": 2 },
+    "tacz:sniper_extended_mag_3": { "width": 2, "height": 2 }
+  }
+}

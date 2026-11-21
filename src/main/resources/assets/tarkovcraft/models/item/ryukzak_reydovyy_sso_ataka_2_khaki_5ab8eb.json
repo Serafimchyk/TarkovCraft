@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/ryukzak_reydovyy_sso_ataka_2_khaki_5ab8eb"
+  }
+}

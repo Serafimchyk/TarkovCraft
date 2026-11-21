@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/ryukzak_hazard_4_drawbridge_coyote_t_60a272"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "required": true,
+  "package": "com.tarkovcraft.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [
+    "PlayerEntityMixin",
+    "PlayerInventoryMixin",
+    "LivingEntityDeathMixin",
+    "ItemEntityPickupMixin",
+    "ServerPlayNetworkHandlerMixin",
+    "ArmorItemMixin"
+  ],
+  "client": [
+    "MinecraftClientMixin",
+    "InGameHudMixin",
+    "ItemEntityRendererMixin",
+    "KeyBindingMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

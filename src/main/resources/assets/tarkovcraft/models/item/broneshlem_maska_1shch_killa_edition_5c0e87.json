@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/broneshlem_maska_1shch_killa_edition_5c0e87"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/stimulyator_perfotoran_sinyaya_krov_637b62"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/razgruzka_umtbs_6sh112_razvedchik_st_5929a2"
+  }
+}

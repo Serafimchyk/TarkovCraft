@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/paket_ananasovogo_soka_armiya_rossii_544fb6"
+  }
+}

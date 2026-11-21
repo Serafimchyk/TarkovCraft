@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/kovboyskaya_shlyapa_5aa2b9"
+  }
+}

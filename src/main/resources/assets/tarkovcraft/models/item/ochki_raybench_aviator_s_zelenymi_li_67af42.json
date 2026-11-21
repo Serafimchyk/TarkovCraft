@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/ochki_raybench_aviator_s_zelenymi_li_67af42"
+  }
+}

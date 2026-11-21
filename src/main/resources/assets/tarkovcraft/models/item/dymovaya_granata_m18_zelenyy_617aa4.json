@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/dymovaya_granata_m18_zelenyy_617aa4"
+  }
+}

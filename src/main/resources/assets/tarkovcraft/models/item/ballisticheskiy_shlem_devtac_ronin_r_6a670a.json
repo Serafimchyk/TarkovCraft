@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/ballisticheskiy_shlem_devtac_ronin_r_6a670a"
+  }
+}

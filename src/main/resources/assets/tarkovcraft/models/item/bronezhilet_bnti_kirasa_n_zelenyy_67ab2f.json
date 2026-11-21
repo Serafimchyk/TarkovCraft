@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/bronezhilet_bnti_kirasa_n_zelenyy_67ab2f"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/bronezhilet_5_11_tactical_hexgrid_pl_5fd4c4"
+  }
+}

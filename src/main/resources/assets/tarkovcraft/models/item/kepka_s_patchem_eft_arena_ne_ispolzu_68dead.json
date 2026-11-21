@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tarkovcraft:item/kepka_s_patchem_eft_arena_ne_ispolzu_68dead"
+  }
+}
