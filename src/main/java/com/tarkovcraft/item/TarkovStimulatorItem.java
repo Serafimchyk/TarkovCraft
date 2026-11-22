@@ -34,6 +34,7 @@ import java.util.function.Supplier;
  */
 public class TarkovStimulatorItem extends Item implements TarkovSizedItem {
 	public static final int COOLDOWN_TICKS = 30;
+	public static final int USE_DURATION_TICKS = 35;
 
 	public record EffectSpec(
 		Supplier<StatusEffect> effectSupplier,
@@ -284,13 +285,10 @@ public class TarkovStimulatorItem extends Item implements TarkovSizedItem {
 		if (!(user instanceof ServerPlayerEntity sp)) {
 			return TypedActionResult.fail(stack);
 		}
-		if (!applyStimulator(sp, stack)) {
-			return TypedActionResult.fail(stack);
+		if (com.tarkovcraft.health.MedicalUseManager.startFromHand(sp, hand, stack)) {
+			return TypedActionResult.success(stack, false);
 		}
-		if (stack.isEmpty() && !sp.isCreative()) {
-			sp.setStackInHand(hand, ItemStack.EMPTY);
-		}
-		return TypedActionResult.success(sp.getStackInHand(hand), false);
+		return TypedActionResult.fail(stack);
 	}
 
 	public static boolean applyStimulator(ServerPlayerEntity player, ItemStack stack) {
@@ -378,6 +376,7 @@ public class TarkovStimulatorItem extends Item implements TarkovSizedItem {
 			Formatting color = spec.negative() ? Formatting.RED : Formatting.BLUE;
 			tooltip.add(Text.translatable(key, effText, spec.durationSeconds()).formatted(color));
 		}
+		tooltip.add(Text.translatable("tooltip.tarkovcraft.med_use_time", "1.75").formatted(Formatting.DARK_AQUA));
 		tooltip.add(Text.translatable("tooltip.tarkovcraft.item_size",
 			storedItemSize.width(), storedItemSize.height()).formatted(Formatting.GRAY));
 		tooltip.add(Text.translatable("tooltip.tarkovcraft.med_weight",

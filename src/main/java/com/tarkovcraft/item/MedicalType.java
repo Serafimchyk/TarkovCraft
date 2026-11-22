@@ -7,28 +7,28 @@ import com.tarkovcraft.search.ItemRarityTier;
  * Specifications for all TarkovCraft EFT medical items.
  */
 public enum MedicalType {
-	BANDAGE("bandage", 1, 1, CapacityMode.USES, 2, 0, true, false, false, 0.0f, 0, 0.0f, 0.05f, ItemRarityTier.COMMON, 15),
-	CAT_TOURNIQUET("cat_tourniquet", 1, 1, CapacityMode.USES, 1, 0, false, true, false, 0.0f, 0, 0.0f, 0.12f, ItemRarityTier.COMMON, 20),
-	SPLINT("splint", 1, 1, CapacityMode.USES, 1, 0, false, false, true, 0.0f, 0, 0.0f, 0.20f, ItemRarityTier.COMMON, 20),
-	ALU_SPLINT("alu_splint", 1, 1, CapacityMode.USES, 5, 0, false, false, true, 0.0f, 0, 0.0f, 0.35f, ItemRarityTier.UNCOMMON, 20),
-	ANALGIN("analgin", 1, 1, CapacityMode.USES, 4, 0, false, false, false, 0.0f, 1800, 1.5f, 0.06f, ItemRarityTier.COMMON, 15),
-	AI2_MEDKIT("ai2_medkit", 1, 1, CapacityMode.HP_POOL, 100, 50, false, false, false, 0.0f, 0, 0.0f, 0.15f, ItemRarityTier.COMMON, 20),
-	SALEWA_MEDKIT("salewa_medkit", 1, 2, CapacityMode.HP_POOL, 400, 85, true, true, false, 0.0f, 0, 0.0f, 0.60f, ItemRarityTier.UNCOMMON, 25),
-	CMS_KIT("cms_kit", 2, 1, CapacityMode.USES, 5, 0, false, false, false, 0.55f, 0, 0.8f, 0.65f, ItemRarityTier.RARE, 40),
-	SURV12_KIT("surv12_kit", 3, 1, CapacityMode.USES, 15, 0, false, false, true, 0.80f, 0, 1.0f, 1.00f, ItemRarityTier.EPIC, 45),
+	BANDAGE("bandage", 1, 1, CapacityMode.USES, 2, 0, true, false, false, 0.0f, 0, 0.0f, 0.05f, ItemRarityTier.COMMON, 15, 40),
+	CAT_TOURNIQUET("cat_tourniquet", 1, 1, CapacityMode.USES, 1, 0, false, true, false, 0.0f, 0, 0.0f, 0.12f, ItemRarityTier.COMMON, 20, 40),
+	SPLINT("splint", 1, 1, CapacityMode.USES, 1, 0, false, false, true, 0.0f, 0, 0.0f, 0.20f, ItemRarityTier.COMMON, 20, 60),
+	ALU_SPLINT("alu_splint", 1, 1, CapacityMode.USES, 5, 0, false, false, true, 0.0f, 0, 0.0f, 0.35f, ItemRarityTier.UNCOMMON, 20, 60),
+	ANALGIN("analgin", 1, 1, CapacityMode.USES, 4, 0, false, false, false, 0.0f, 1800, 1.5f, 0.06f, ItemRarityTier.COMMON, 15, 40),
+	AI2_MEDKIT("ai2_medkit", 1, 1, CapacityMode.HP_POOL, 100, 50, false, false, false, 0.0f, 0, 0.0f, 0.15f, ItemRarityTier.COMMON, 20, 45),
+	SALEWA_MEDKIT("salewa_medkit", 1, 2, CapacityMode.HP_POOL, 400, 85, true, true, false, 0.0f, 0, 0.0f, 0.60f, ItemRarityTier.UNCOMMON, 25, 70),
+	CMS_KIT("cms_kit", 2, 1, CapacityMode.USES, 5, 0, false, false, false, 0.55f, 0, 0.8f, 0.65f, ItemRarityTier.RARE, 40, 100),
+	SURV12_KIT("surv12_kit", 3, 1, CapacityMode.USES, 15, 0, false, false, true, 0.80f, 0, 1.0f, 1.00f, ItemRarityTier.EPIC, 45, 110),
 	// 12 additional EFT medical presets
-	ARMY_BANDAGE("army_bandage", 1, 1, CapacityMode.USES, 2, 0, true, false, false, 0.0f, 0, 0.0f, 0.05f, ItemRarityTier.COMMON, 15),
-	ESMARCH("esmarch", 1, 1, CapacityMode.USES, 1, 0, false, true, false, 0.0f, 0, 0.0f, 0.16f, ItemRarityTier.COMMON, 25),
-	CALOK_B("calok_b", 1, 1, CapacityMode.USES, 3, 0, false, true, false, 0.0f, 0, 0.0f, 0.14f, ItemRarityTier.UNCOMMON, 20),
-	TIGZRESQ_SPLINT("tigzresq_splint", 1, 1, CapacityMode.USES, 3, 0, false, false, true, 0.0f, 0, 0.0f, 0.25f, ItemRarityTier.UNCOMMON, 20),
-	VASELINE("vaseline", 1, 1, CapacityMode.USES, 6, 0, false, false, false, 0.0f, 3600, 1.0f, 0.08f, ItemRarityTier.RARE, 25),
-	GOLDEN_STAR("golden_star", 1, 1, CapacityMode.USES, 10, 0, false, false, false, 0.0f, 4200, 1.2f, 0.05f, ItemRarityTier.EPIC, 30),
-	IBUPROFEN("ibuprofen", 1, 1, CapacityMode.USES, 15, 0, false, false, false, 0.0f, 3400, 1.0f, 0.07f, ItemRarityTier.RARE, 20),
-	AUGMENTIN("augmentin", 1, 1, CapacityMode.USES, 1, 0, false, false, false, 0.0f, 2200, 0.5f, 0.08f, ItemRarityTier.UNCOMMON, 20),
-	CAR_MEDKIT("car_medkit", 2, 1, CapacityMode.HP_POOL, 220, 70, true, false, false, 0.0f, 0, 0.0f, 0.35f, ItemRarityTier.COMMON, 20),
-	IFAK("ifak", 1, 1, CapacityMode.HP_POOL, 300, 60, true, true, false, 0.0f, 0, 0.0f, 0.25f, ItemRarityTier.UNCOMMON, 25),
-	AFAK("afak", 1, 1, CapacityMode.HP_POOL, 400, 75, true, true, false, 0.0f, 0, 0.0f, 0.30f, ItemRarityTier.RARE, 25),
-	GRIZZLY("grizzly", 2, 2, CapacityMode.HP_POOL, 1800, 175, true, true, true, 0.0f, 0, 0.0f, 1.60f, ItemRarityTier.EPIC, 30);
+	ARMY_BANDAGE("army_bandage", 1, 1, CapacityMode.USES, 2, 0, true, false, false, 0.0f, 0, 0.0f, 0.05f, ItemRarityTier.COMMON, 15, 40),
+	ESMARCH("esmarch", 1, 1, CapacityMode.USES, 1, 0, false, true, false, 0.0f, 0, 0.0f, 0.16f, ItemRarityTier.COMMON, 25, 40),
+	CALOK_B("calok_b", 1, 1, CapacityMode.USES, 3, 0, false, true, false, 0.0f, 0, 0.0f, 0.14f, ItemRarityTier.UNCOMMON, 20, 40),
+	TIGZRESQ_SPLINT("tigzresq_splint", 1, 1, CapacityMode.USES, 3, 0, false, false, true, 0.0f, 0, 0.0f, 0.25f, ItemRarityTier.UNCOMMON, 20, 60),
+	VASELINE("vaseline", 1, 1, CapacityMode.USES, 6, 0, false, false, false, 0.0f, 3600, 1.0f, 0.08f, ItemRarityTier.RARE, 25, 40),
+	GOLDEN_STAR("golden_star", 1, 1, CapacityMode.USES, 10, 0, false, false, false, 0.0f, 4200, 1.2f, 0.05f, ItemRarityTier.EPIC, 30, 40),
+	IBUPROFEN("ibuprofen", 1, 1, CapacityMode.USES, 15, 0, false, false, false, 0.0f, 3400, 1.0f, 0.07f, ItemRarityTier.RARE, 20, 40),
+	AUGMENTIN("augmentin", 1, 1, CapacityMode.USES, 1, 0, false, false, false, 0.0f, 2200, 0.5f, 0.08f, ItemRarityTier.UNCOMMON, 20, 40),
+	CAR_MEDKIT("car_medkit", 2, 1, CapacityMode.HP_POOL, 220, 70, true, false, false, 0.0f, 0, 0.0f, 0.35f, ItemRarityTier.COMMON, 20, 60),
+	IFAK("ifak", 1, 1, CapacityMode.HP_POOL, 300, 60, true, true, false, 0.0f, 0, 0.0f, 0.25f, ItemRarityTier.UNCOMMON, 25, 60),
+	AFAK("afak", 1, 1, CapacityMode.HP_POOL, 400, 75, true, true, false, 0.0f, 0, 0.0f, 0.30f, ItemRarityTier.RARE, 25, 60),
+	GRIZZLY("grizzly", 2, 2, CapacityMode.HP_POOL, 1800, 175, true, true, true, 0.0f, 0, 0.0f, 1.60f, ItemRarityTier.EPIC, 30, 70);
 
 	public static final int SALEWA_LIGHT_BLEED_COST = 45;
 	public static final int SALEWA_HEAVY_BLEED_COST = 135;
@@ -54,6 +54,7 @@ public enum MedicalType {
 	private final float weightKg;
 	private final ItemRarityTier rarityTier;
 	private final int cooldownTicks;
+	private final int useDurationTicks;
 
 	MedicalType(
 		String id,
@@ -70,7 +71,8 @@ public enum MedicalType {
 		float exhaustionCost,
 		float weightKg,
 		ItemRarityTier rarityTier,
-		int cooldownTicks
+		int cooldownTicks,
+		int useDurationTicks
 	) {
 		this.id = id;
 		this.gridWidth = gridWidth;
@@ -87,6 +89,7 @@ public enum MedicalType {
 		this.weightKg = weightKg;
 		this.rarityTier = rarityTier;
 		this.cooldownTicks = cooldownTicks;
+		this.useDurationTicks = useDurationTicks;
 	}
 
 	public String getId() {
@@ -147,6 +150,10 @@ public enum MedicalType {
 
 	public int getCooldownTicks() {
 		return cooldownTicks;
+	}
+
+	public int getUseDurationTicks() {
+		return useDurationTicks;
 	}
 
 	public int getLightBleedCost() {

@@ -22,8 +22,8 @@ import net.minecraft.world.World;
 import org.joml.Vector3f;
 
 public class AirdropEntity extends Entity {
-	private static final double DESCENT_SPEED = -0.14;
-	private static final int MAX_AIR_TICKS = 1200;
+	public static final double DESCENT_SPEED = -0.065;
+	public static final int MAX_AIR_TICKS = 3600;
 	private static final DustParticleEffect RED_FLARE_DUST =
 		new DustParticleEffect(new Vector3f(0.92f, 0.14f, 0.14f), 2.2f);
 
@@ -51,7 +51,7 @@ public class AirdropEntity extends Entity {
 
 	@Override
 	public boolean shouldRender(double distance) {
-		return distance < 192.0 * 192.0;
+		return distance < 256.0 * 256.0;
 	}
 
 	@Override

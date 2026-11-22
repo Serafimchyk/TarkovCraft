@@ -1,7 +1,9 @@
 package com.tarkovcraft;
 
 import com.tarkovcraft.ammo.AmmoReloadTracker;
+import com.tarkovcraft.ammo.AmmoTier;
 import com.tarkovcraft.command.TarkovCommand;
+import com.tarkovcraft.container.VanillaContainerBridge;
 import com.tarkovcraft.grid.ItemSizeRegistry;
 import com.tarkovcraft.health.BodyHealthTicker;
 import com.tarkovcraft.loadout.PlayerLoadoutHolder;
@@ -16,13 +18,20 @@ import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
+import net.minecraft.block.BlockState;
 import net.minecraft.resource.ResourceManager;
 import net.minecraft.resource.ResourceType;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.ActionResult;
+import net.minecraft.util.Hand;
 import net.minecraft.util.Identifier;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.GameRules;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,11 +68,12 @@ public class TarkovCraftMod implements ModInitializer {
 			}
 		});
 
-		// Tick open TarkovScreenHandlers + bleeding/injury penalties + TaCZ reload tracking + Airdrops
+		// Tick open TarkovScreenHandlers + bleeding/injury penalties + TaCZ reload tracking + Airdrops + MedUse
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
 			com.tarkovcraft.airdrop.AirdropManager.tickServer(server);
 			for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
 				BodyHealthTicker.tickPlayer(player);
+				com.tarkovcraft.health.MedicalUseManager.tickPlayer(player);
 				AmmoReloadTracker.tickPlayer(player);
 				if (player.currentScreenHandler instanceof TarkovScreenHandler tsh) {
 					tsh.tickServer(player);
@@ -71,9 +81,10 @@ public class TarkovCraftMod implements ModInitializer {
 			}
 		});
 
-		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
-			AmmoReloadTracker.removePlayer(handler.getPlayer().getUuid())
-		);
+		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+			AmmoReloadTracker.removePlayer(handler.getPlayer().getUuid());
+			com.tarkovcraft.health.MedicalUseManager.removePlayer(handler.getPlayer().getUuid());
+		});
 
 		// Sync loadout & body health when player joins
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
@@ -106,6 +117,52 @@ public class TarkovCraftMod implements ModInitializer {
 			if (newPlayer instanceof PlayerLoadoutHolder holder) {
 				holder.tarkovcraft$syncLoadout();
 				holder.tarkovcraft$syncBodyHealth();
+			}
+		});
+
+		// Vanilla storage containers: track player-placed containers so hourly city auto-loot never overwrites personal storage,
+		// and intercept Survival/Adventure RMB into EFT search UI (respecting Shift+RMB, Creative, and TaCZ ADS)
+		java.util.Queue<java.util.Map.Entry<ServerWorld, BlockPos>> pendingPlayerPlaced = new java.util.concurrent.ConcurrentLinkedQueue<>();
+		ServerTickEvents.END_SERVER_TICK.register(server -> {
+			java.util.Map.Entry<ServerWorld, BlockPos> placed;
+			while ((placed = pendingPlayerPlaced.poll()) != null) {
+				VanillaContainerBridge.markPlayerPlaced(placed.getKey(), placed.getValue());
+			}
+		});
+
+		UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
+			if (player.isSpectator()) {
+				return ActionResult.PASS;
+			}
+			BlockPos pos = hitResult.getBlockPos();
+			BlockState state = world.getBlockState(pos);
+			if (!world.isClient && world instanceof ServerWorld sw) {
+				net.minecraft.item.ItemStack held = player.getStackInHand(hand);
+				if (held.getItem() instanceof net.minecraft.item.BlockItem bi
+					&& VanillaContainerBridge.isSupportedBlock(bi.getBlock())
+					&& (!VanillaContainerBridge.isSupportedBlock(state.getBlock()) || player.shouldCancelInteraction() || player.isCreative())) {
+					BlockPos placePos = state.isReplaceable() ? pos : pos.offset(hitResult.getSide());
+					pendingPlayerPlaced.add(java.util.Map.entry(sw, placePos.toImmutable()));
+				}
+			}
+			if (!VanillaContainerBridge.isSupportedBlock(state.getBlock())) {
+				return ActionResult.PASS;
+			}
+			if (player.shouldCancelInteraction() || player.isCreative()) {
+				return ActionResult.PASS;
+			}
+			if (AmmoTier.isTaczGunStack(player.getMainHandStack()) || AmmoTier.isTaczGunStack(player.getStackInHand(hand))) {
+				return ActionResult.FAIL;
+			}
+			if (!world.isClient && hand == Hand.MAIN_HAND && player instanceof ServerPlayerEntity sp) {
+				VanillaContainerBridge.tryOpenForPlayer(sp, pos);
+			}
+			return ActionResult.SUCCESS;
+		});
+
+		PlayerBlockBreakEvents.AFTER.register((world, player, pos, state, blockEntity) -> {
+			if (world instanceof ServerWorld serverWorld) {
+				VanillaContainerBridge.removeForBrokenBlock(serverWorld, pos, state);
 			}
 		});
 

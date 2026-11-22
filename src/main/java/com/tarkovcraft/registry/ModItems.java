@@ -3,6 +3,7 @@ package com.tarkovcraft.registry;
 import com.tarkovcraft.TarkovCraftMod;
 import com.tarkovcraft.ammo.AmmoTier;
 import com.tarkovcraft.ammo.TaCZCaliberCatalog;
+import com.tarkovcraft.block.SearchableLootBlock;
 import com.tarkovcraft.grid.ItemSize;
 import com.tarkovcraft.health.HitZone;
 import com.tarkovcraft.item.ArmorMaterialType;
@@ -12,6 +13,7 @@ import com.tarkovcraft.item.TacticalRigItem;
 import com.tarkovcraft.item.TarkovArmorItem;
 import com.tarkovcraft.item.TarkovMedicalItem;
 import com.tarkovcraft.loadout.EquipmentSlotType;
+import com.tarkovcraft.loot.TarkovLootPool;
 import net.fabricmc.fabric.api.item.v1.FabricItemSettings;
 import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
 import net.minecraft.item.Item;
@@ -207,6 +209,12 @@ public final class ModItems {
 				entries.add(ModBlocks.TECHNICAL_CRATE);
 				entries.add(ModBlocks.AIRDROP_CRATE);
 				entries.add(ModBlocks.TARKOV_WORKBENCH);
+				// Preconfigured loot crates for map builders (lazy loot generation on first open)
+				for (TarkovLootPool pool : TarkovLootPool.values()) {
+					if (pool != TarkovLootPool.SCAV_POCKET) {
+						entries.add(SearchableLootBlock.createLootCrateStack(pool));
+					}
+				}
 				TarkovItemCatalog.getTacticalItems().forEach(entries::add);
 			})
 			.build()
@@ -225,7 +233,7 @@ public final class ModItems {
 					return;
 				}
 				for (TaCZCaliberCatalog.CaliberSpec spec : TaCZCaliberCatalog.getAllKnownCalibers()) {
-					for (AmmoTier tier : AmmoTier.values()) {
+					for (AmmoTier tier : spec.getAllowedTiersList()) {
 						entries.add(AmmoTier.createTaczAmmoStack(spec.ammoId(), tier, 1));
 					}
 				}

@@ -25,23 +25,32 @@ import java.util.Locale;
  */
 @Environment(EnvType.CLIENT)
 public final class TarkovInspectWindow {
-	private static final int WIN_W = 232;
-	private static final int WIN_H = 192;
+	private static final int WIN_W = 256;
+	private static final int WIN_H = 224;
 	private static final int HEADER_H = 20;
 
 	private final ItemStack stack;
 	private int x;
 	private int y;
+	private int scrollY = 0;
+	private int maxScrollY = 0;
 	private boolean draggingHeader = false;
 
 	public TarkovInspectWindow(ItemStack stack, int screenW, int screenH) {
+		this(stack, screenW, screenH, 0);
+	}
+
+	public TarkovInspectWindow(ItemStack stack, int screenW, int screenH, int cascadeIndex) {
 		this.stack = stack.copy();
-		this.x = Math.max(8, (screenW - WIN_W) / 2);
-		this.y = Math.max(8, (screenH - WIN_H) / 2);
+		int offset = cascadeIndex * 16;
+		this.x = Math.max(8, (screenW - WIN_W) / 2 + offset);
+		this.y = Math.max(8, (screenH - WIN_H) / 2 + offset);
+		clampToScreen(screenW, screenH);
 	}
 
 	public void render(DrawContext ctx, TextRenderer tr, int mouseX, int mouseY, int screenW, int screenH) {
 		clampToScreen(screenW, screenH);
+		TarkovUiTheme.clearDepthBuffer(ctx);
 
 		ctx.getMatrices().push();
 		ctx.getMatrices().translate(0.0f, 0.0f, TarkovUiTheme.Z_MODAL);
@@ -75,6 +84,9 @@ public final class TarkovInspectWindow {
 		ctx.drawItem(stack, -8, -8);
 		ctx.getMatrices().pop();
 
+		// Clear OpenGL depth buffer after 3D item draw so labels/lines/subsequent windows never get clipped
+		TarkovUiTheme.clearDepthBuffer(ctx);
+
 		ItemSize size = ItemSizeRegistry.getSize(stack);
 		TarkovUiTheme.drawRightAlignedFlatText(ctx, tr, size.width() + "x" + size.height(),
 			previewX + 67, previewY + 60, TarkovUiTheme.TEXT_SECONDARY, TarkovUiTheme.TEXT_SCALE_SMALL);
@@ -106,41 +118,91 @@ public final class TarkovInspectWindow {
 
 		FoodComponent fc = stack.getItem().getFoodComponent();
 		if (fc != null) {
-			int sat = Math.round(fc.getHunger() * fc.getSaturationModifier() * 2.0f);
+			int energy = fc.getHunger() * 5;
+			int sat = Math.round(fc.getHunger() * fc.getSaturationModifier() * 10.0f);
 			TarkovUiTheme.drawFlatText(ctx, tr,
-				Text.translatable("ui.tarkovcraft.inspect_food", fc.getHunger(), sat).getString(),
+				Text.translatable("ui.tarkovcraft.inspect_food", energy, sat).getString(),
 				metaX, metaY, 0xFF77B85A, TarkovUiTheme.TEXT_SCALE_SMALL);
 		}
 
-		// Divider & detailed tooltip lines
+		// Divider & scrollable colored tooltip lines
 		int detY = previewY + 76;
 		ctx.fill(x + 8, detY, x + WIN_W - 8, detY + 1, TarkovUiTheme.BORDER_PANEL);
 		detY += 5;
 
-		List<String> details = collectDetailLines();
-		int maxLines = Math.max(1, (y + WIN_H - 6 - detY) / 9);
-		for (int i = 0; i < Math.min(details.size(), maxLines); i++) {
-			String line = tr.trimToWidth(details.get(i), Math.round((WIN_W - 18) / TarkovUiTheme.TEXT_SCALE_SMALL));
-			TarkovUiTheme.drawFlatText(ctx, tr, line, x + 8, detY + i * 9, TarkovUiTheme.TEXT_SECONDARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+		int boxBottom = y + WIN_H - 6;
+		int viewH = Math.max(12, boxBottom - detY);
+		List<Text> details = collectDetailLines();
+		int lineH = 10;
+		maxScrollY = Math.max(0, details.size() * lineH - viewH);
+		scrollY = Math.max(0, Math.min(scrollY, maxScrollY));
+
+		ctx.enableScissor(x + 6, detY, x + WIN_W - 6, boxBottom);
+		float s = TarkovUiTheme.TEXT_SCALE_SMALL;
+		int maxUnscaledW = Math.round((WIN_W - 22) / s);
+		for (int i = 0; i < details.size(); i++) {
+			int ly = detY + i * lineH - scrollY;
+			if (ly + lineH < detY || ly > boxBottom) {
+				continue;
+			}
+			Text line = details.get(i);
+			String plain = line.getString();
+			if (tr.getWidth(plain) > maxUnscaledW) {
+				String trimmed = tr.trimToWidth(plain, maxUnscaledW - tr.getWidth("...")) + "...";
+				line = Text.literal(trimmed).setStyle(line.getStyle());
+			}
+			ctx.getMatrices().push();
+			ctx.getMatrices().scale(s, s, 1.0f);
+			ctx.drawText(tr, line, Math.round((x + 8) / s), Math.round(ly / s), TarkovUiTheme.TEXT_SECONDARY, false);
+			ctx.getMatrices().pop();
+		}
+		ctx.disableScissor();
+
+		if (maxScrollY > 0) {
+			int sbX = x + WIN_W - 6;
+			ctx.fill(sbX, detY, sbX + 2, boxBottom, 0x6620242A);
+			int thumbH = Math.max(10, Math.round(viewH * (viewH / (float) (viewH + maxScrollY))));
+			int thumbY = detY + Math.round((viewH - thumbH) * (scrollY / (float) maxScrollY));
+			ctx.fill(sbX, thumbY, sbX + 2, thumbY + thumbH, TarkovUiTheme.ACCENT_SAND);
 		}
 
 		ctx.getMatrices().pop();
 	}
 
-	private List<String> collectDetailLines() {
-		List<String> out = new ArrayList<>();
+	private List<Text> collectDetailLines() {
+		List<Text> out = new ArrayList<>();
 		MinecraftClient mc = MinecraftClient.getInstance();
-		TooltipContext ctx = (mc != null && mc.options.advancedItemTooltips)
-			? TooltipContext.ADVANCED
-			: TooltipContext.BASIC;
+		boolean advanced = mc != null && mc.options.advancedItemTooltips;
+		TooltipContext ctx = advanced ? TooltipContext.ADVANCED : TooltipContext.BASIC;
 		List<Text> tooltip = stack.getTooltip(mc != null ? mc.player : null, ctx);
 		for (int i = 1; i < tooltip.size(); i++) {
-			String s = tooltip.get(i).getString().trim();
-			if (!s.isEmpty()) {
-				out.add(s);
+			Text t = tooltip.get(i);
+			String s = t.getString().trim();
+			if (s.isEmpty()) {
+				continue;
 			}
+			if (!advanced && isTechnicalDebugLine(s)) {
+				continue;
+			}
+			out.add(t);
 		}
 		return out;
+	}
+
+	private static boolean isTechnicalDebugLine(String s) {
+		String lower = s.toLowerCase(Locale.ROOT);
+		if (lower.startsWith("nbt:") || lower.startsWith("gunid:") || lower.equals("tacz:modern_kinetic_gun")) {
+			return true;
+		}
+		return lower.matches("^[a-z0-9_]+:[a-z0-9_./-]+$");
+	}
+
+	public boolean handleMouseScrolled(double mx, double my, double amount) {
+		if (!contains(mx, my) || maxScrollY <= 0) {
+			return false;
+		}
+		scrollY = Math.max(0, Math.min(maxScrollY, scrollY - (int) Math.round(amount * 14)));
+		return true;
 	}
 
 	public boolean contains(double mx, double my) {

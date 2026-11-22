@@ -1,0 +1,1048 @@
+
+// ========== .\src\main\java\com\tarkovcraft\screen\TarkovWorkbenchScreenHandler.java ==========
+package com.tarkovcraft.screen;
+
+import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.ammo.TaCZCaliberCatalog;
+import com.tarkovcraft.block.TarkovWorkbenchBlock;
+import com.tarkovcraft.network.TarkovNetworking;
+import com.tarkovcraft.registry.ModScreenHandlers;
+import com.tarkovcraft.workbench.TarkovWorkbenchRecipes;
+import com.tarkovcraft.workbench.WorkbenchInventoryHelper;
+import net.fabricmc.fabric.api.screenhandler.v1.ExtendedScreenHandlerFactory;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.network.PacketByteBuf;
+import net.minecraft.registry.Registries;
+import net.minecraft.screen.ScreenHandler;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.math.BlockPos;
+import org.jetbrains.annotations.Nullable;
+
+/**
+ * Server-authoritative ScreenHandler for the Tarkov Armor & Ammo Workbench.
+ */
+public class TarkovWorkbenchScreenHandler extends ScreenHandler {
+	private final BlockPos workbenchPos;
+
+	public TarkovWorkbenchScreenHandler(int syncId, PlayerInventory inv, BlockPos workbenchPos) {
+		super(ModScreenHandlers.TARKOV_WORKBENCH_SCREEN_HANDLER, syncId);
+		this.workbenchPos = workbenchPos;
+	}
+
+	public static TarkovWorkbenchScreenHandler fromClientBuf(int syncId, PlayerInventory inv, PacketByteBuf buf) {
+		BlockPos pos = buf.readBlockPos();
+		return new TarkovWorkbenchScreenHandler(syncId, inv, pos);
+	}
+
+	public static void openForPlayer(ServerPlayerEntity player, BlockPos pos) {
+		player.openHandledScreen(new ExtendedScreenHandlerFactory() {
+			@Override
+			public void writeScreenOpeningData(ServerPlayerEntity p, PacketByteBuf buf) {
+				buf.writeBlockPos(pos);
+			}
+
+			@Override
+			public Text getDisplayName() {
+				return Text.translatable("screen.tarkovcraft.workbench");
+			}
+
+			@Nullable
+			@Override
+			public ScreenHandler createMenu(int syncId, PlayerInventory inv, PlayerEntity p) {
+				return new TarkovWorkbenchScreenHandler(syncId, inv, pos);
+			}
+		});
+		if (player.currentScreenHandler instanceof TarkovWorkbenchScreenHandler wb) {
+			wb.syncResources(player);
+		}
+	}
+
+	public BlockPos getWorkbenchPos() {
+		return workbenchPos;
+	}
+
+	@Override
+	public ItemStack quickMove(PlayerEntity player, int slot) {
+		return ItemStack.EMPTY;
+	}
+
+	@Override
+	public boolean canUse(PlayerEntity player) {
+		return player.getWorld().getBlockState(workbenchPos).getBlock() instanceof TarkovWorkbenchBlock
+			&& player.squaredDistanceTo(workbenchPos.toCenterPos()) <= 36.0;
+	}
+
+	public void syncResources(ServerPlayerEntity player) {
+		WorkbenchInventoryHelper.SyncPayload payload = WorkbenchInventoryHelper.collectSyncPayload(player);
+		TarkovNetworking.sendWorkbenchSync(player, payload);
+	}
+
+	public void handleCraftAmmo(ServerPlayerEntity player, String ammoId, byte tierOrdinal, boolean upgradeFromFmj) {
+		if (!canUse(player) || player.isSpectator() || !player.isAlive()) {
+			return;
+		}
+		if (!TaCZCaliberCatalog.isBallisticAmmoId(ammoId)) {
+			return;
+		}
+		AmmoTier[] tiers = AmmoTier.values();
+		if (tierOrdinal < 0 || tierOrdinal >= tiers.length) {
+			return;
+		}
+		AmmoTier tier = tiers[tierOrdinal];
+		WorkbenchInventoryHelper.craftAmmo(player, ammoId, tier, upgradeFromFmj);
+		syncResources(player);
+	}
+
+	public void handleCraftGear(ServerPlayerEntity player, Identifier targetItemId) {
+		if (!canUse(player) || player.isSpectator() || !player.isAlive() || targetItemId == null) {
+			return;
+		}
+		if (!Registries.ITEM.containsId(targetItemId)) {
+			return;
+		}
+		Item item = Registries.ITEM.get(targetItemId);
+		if (!TarkovWorkbenchRecipes.isCraftableGear(item)) {
+			return;
+		}
+		WorkbenchInventoryHelper.craftGear(player, item);
+		syncResources(player);
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\search\ContainerSearchMemory.java ==========
+package com.tarkovcraft.search;
+
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtElement;
+import net.minecraft.nbt.NbtList;
+import net.minecraft.nbt.NbtString;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
+/**
+ * Tracks per-player search progress for a container (or wearable backpack/rig):
+ * - Whether the initial 1-second grid reveal is finished for a specific player.
+ * - Which specific GridEntry UUIDs have been discovered by that player.
+ * Already-searched containers and items stay revealed permanently for that player,
+ * while other players must search them independently.
+ */
+public final class ContainerSearchMemory {
+	private final Map<UUID, PlayerProgress> byPlayer = new HashMap<>();
+
+	public static final class PlayerProgress {
+		private boolean gridRevealed;
+		private final Set<UUID> discoveredEntries = new HashSet<>();
+
+		public boolean isGridRevealed() {
+			return gridRevealed;
+		}
+
+		public void setGridRevealed(boolean gridRevealed) {
+			this.gridRevealed = gridRevealed;
+		}
+
+		public Set<UUID> getDiscoveredEntries() {
+			return discoveredEntries;
+		}
+
+		public boolean isEntryDiscovered(UUID entryId) {
+			return discoveredEntries.contains(entryId);
+		}
+
+		public void markEntryDiscovered(UUID entryId) {
+			discoveredEntries.add(entryId);
+		}
+	}
+
+	public PlayerProgress getOrCreate(UUID playerId) {
+		return byPlayer.computeIfAbsent(playerId, k -> new PlayerProgress());
+	}
+
+	public boolean isGridRevealed(UUID playerId) {
+		PlayerProgress progress = byPlayer.get(playerId);
+		return progress != null && progress.isGridRevealed();
+	}
+
+	public void markGridRevealed(UUID playerId) {
+		getOrCreate(playerId).setGridRevealed(true);
+	}
+
+	public boolean isEntryDiscovered(UUID playerId, UUID entryId) {
+		PlayerProgress progress = byPlayer.get(playerId);
+		return progress != null && progress.isEntryDiscovered(entryId);
+	}
+
+	public void markEntryDiscovered(UUID playerId, UUID entryId) {
+		PlayerProgress progress = getOrCreate(playerId);
+		progress.setGridRevealed(true);
+		progress.markEntryDiscovered(entryId);
+	}
+
+	public void markAllDiscovered(UUID playerId, Iterable<UUID> entryIds) {
+		PlayerProgress progress = getOrCreate(playerId);
+		progress.setGridRevealed(true);
+		for (UUID id : entryIds) {
+			progress.markEntryDiscovered(id);
+		}
+	}
+
+	public void resetForPlayer(UUID playerId) {
+		byPlayer.remove(playerId);
+	}
+
+	public void resetAll() {
+		byPlayer.clear();
+	}
+
+	public NbtCompound toNbt() {
+		NbtCompound root = new NbtCompound();
+		NbtList playersList = new NbtList();
+		for (Map.Entry<UUID, PlayerProgress> entry : byPlayer.entrySet()) {
+			NbtCompound pNbt = new NbtCompound();
+			pNbt.putUuid("PlayerId", entry.getKey());
+			pNbt.putBoolean("GridRevealed", entry.getValue().isGridRevealed());
+			NbtList ids = new NbtList();
+			for (UUID itemId : entry.getValue().getDiscoveredEntries()) {
+				ids.add(NbtString.of(itemId.toString()));
+			}
+			pNbt.put("Discovered", ids);
+			playersList.add(pNbt);
+		}
+		root.put("Players", playersList);
+		return root;
+	}
+
+	public static ContainerSearchMemory fromNbt(NbtCompound nbt) {
+		ContainerSearchMemory memory = new ContainerSearchMemory();
+		if (nbt == null) {
+			return memory;
+		}
+		NbtList playersList = nbt.getList("Players", NbtElement.COMPOUND_TYPE);
+		for (int i = 0; i < playersList.size(); i++) {
+			NbtCompound pNbt = playersList.getCompound(i);
+			if (!pNbt.containsUuid("PlayerId")) {
+				continue;
+			}
+			UUID playerId = pNbt.getUuid("PlayerId");
+			PlayerProgress progress = memory.getOrCreate(playerId);
+			progress.setGridRevealed(pNbt.getBoolean("GridRevealed"));
+			NbtList ids = pNbt.getList("Discovered", NbtElement.STRING_TYPE);
+			for (int j = 0; j < ids.size(); j++) {
+				try {
+					progress.markEntryDiscovered(UUID.fromString(ids.getString(j)));
+				} catch (IllegalArgumentException ignored) {
+				}
+			}
+		}
+		return memory;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\search\ItemRarityRegistry.java ==========
+package com.tarkovcraft.search;
+
+import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.config.TarkovConfig;
+import com.tarkovcraft.item.TarkovArmorItem;
+import com.tarkovcraft.item.TarkovCaseItem;
+import com.tarkovcraft.item.TarkovSizedItem;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.registry.Registries;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.Rarity;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Resolves search duration tier for any ItemStack based on item rarity.
+ */
+public final class ItemRarityRegistry {
+	private static final Map<Identifier, ItemRarityTier> OVERRIDES = new HashMap<>();
+
+	static {
+		OVERRIDES.put(new Identifier("tacz", "modern_kinetic_gun"), ItemRarityTier.RARE);
+		OVERRIDES.put(new Identifier("tacz", "ammo_box"), ItemRarityTier.UNCOMMON);
+		OVERRIDES.put(new Identifier("tacz", "attachment"), ItemRarityTier.UNCOMMON);
+	}
+
+	private ItemRarityRegistry() {
+	}
+
+	public static void register(Identifier itemId, ItemRarityTier tier) {
+		OVERRIDES.put(itemId, tier);
+	}
+
+	public static ItemRarityTier getTier(ItemStack stack) {
+		if (stack == null || stack.isEmpty()) {
+			return ItemRarityTier.COMMON;
+		}
+		if (AmmoTier.isTaczAmmoStack(stack)) {
+			return switch (AmmoTier.getFromAmmoStack(stack)) {
+				case IGN -> ItemRarityTier.EPIC;
+				case AP -> ItemRarityTier.RARE;
+				case FMJ -> ItemRarityTier.UNCOMMON;
+				case HP -> ItemRarityTier.COMMON;
+			};
+		}
+		Item item = stack.getItem();
+		Identifier id = Registries.ITEM.getId(item);
+		ItemRarityTier override = OVERRIDES.get(id);
+		if (override != null) {
+			return override;
+		}
+		if (item instanceof TarkovArmorItem armor) {
+			ItemRarityTier base = armor.getRarityTier();
+			int ac = armor.getArmorClass();
+			if (ac >= 5) {
+				return maxTier(base, ItemRarityTier.EPIC);
+			}
+			if (ac == 4) {
+				return maxTier(base, ItemRarityTier.RARE);
+			}
+			if (ac >= 2) {
+				return maxTier(base, ItemRarityTier.UNCOMMON);
+			}
+			return base;
+		}
+		if (item instanceof TarkovCaseItem caseItem) {
+			int slots = caseItem.getGridWidth() * caseItem.getGridHeight();
+			if (slots >= 25) {
+				return maxTier(caseItem.getRarityTier(), ItemRarityTier.EPIC);
+			}
+			if (slots >= 9) {
+				return maxTier(caseItem.getRarityTier(), ItemRarityTier.RARE);
+			}
+			return caseItem.getRarityTier();
+		}
+		if (item instanceof TarkovSizedItem sized) {
+			return sized.getRarityTier();
+		}
+		Rarity rarity = stack.getRarity();
+		return switch (rarity) {
+			case COMMON -> ItemRarityTier.COMMON;
+			case UNCOMMON -> ItemRarityTier.UNCOMMON;
+			case RARE -> ItemRarityTier.RARE;
+			case EPIC -> ItemRarityTier.EPIC;
+		};
+	}
+
+	private static ItemRarityTier maxTier(ItemRarityTier a, ItemRarityTier b) {
+		return a.ordinal() >= b.ordinal() ? a : b;
+	}
+
+	public static int getSearchTicks(ItemStack stack) {
+		int base = getTier(stack).getSearchTicks();
+		return Math.max(4, Math.round(base * TarkovConfig.get().searchTimeMultiplier));
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\search\ItemRarityTier.java ==========
+package com.tarkovcraft.search;
+
+public enum ItemRarityTier {
+	COMMON(10),    // 0.5s
+	UNCOMMON(20),  // 1.0s
+	RARE(36),      // 1.8s
+	EPIC(56);      // 2.8s
+
+	private final int searchTicks;
+
+	ItemRarityTier(int searchTicks) {
+		this.searchTicks = searchTicks;
+	}
+
+	public int getSearchTicks() {
+		return searchTicks;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\search\SearchSession.java ==========
+package com.tarkovcraft.search;
+
+import com.tarkovcraft.grid.GridEntry;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Server-authoritative 2-stage search state machine supporting ordered search queues:
+ * - External targets (e.g. Loot Crate, or on a Corpse: Pockets -> Tactical Rig -> Backpack)
+ *   are searched automatically in order while looting.
+ * - Own taken containers (Backpack / Rig stripped from a corpse) ONLY search while
+ *   ownInventoryOpen == true (never in the background!).
+ *
+ * Stage 1: Fixed 20-tick (1.0s) reveal of container slots -> exposes item silhouettes.
+ * Stage 2: Searches each undiscovered item individually; duration depends on item rarity.
+ */
+public final class SearchSession {
+	public static final int GRID_REVEAL_TICKS = 20; // 1.0 second at 20 TPS
+
+	public enum Stage {
+		IDLE,
+		REVEALING_GRID,
+		SEARCHING_ITEM
+	}
+
+	private final UUID playerId;
+	private Stage stage = Stage.IDLE;
+	@Nullable
+	private UUID activeTargetId;
+	@Nullable
+	private UUID activeEntryId;
+	@Nullable
+	private UUID prioritizedTargetId;
+	private int progressTicks;
+	private int totalTicks;
+
+	public SearchSession(UUID playerId) {
+		this.playerId = playerId;
+	}
+
+	public Stage getStage() {
+		return stage;
+	}
+
+	@Nullable
+	public UUID getActiveTargetId() {
+		return activeTargetId;
+	}
+
+	@Nullable
+	public UUID getActiveEntryId() {
+		return activeEntryId;
+	}
+
+	public int getProgressTicks() {
+		return progressTicks;
+	}
+
+	public int getTotalTicks() {
+		return totalTicks;
+	}
+
+	public float getProgressRatio() {
+		if (totalTicks <= 0) {
+			return 0.0f;
+		}
+		return Math.min(1.0f, (float) progressTicks / (float) totalTicks);
+	}
+
+	public void prioritizeTarget(@Nullable UUID targetId) {
+		this.prioritizedTargetId = targetId;
+	}
+
+	public void reset() {
+		this.stage = Stage.IDLE;
+		this.activeTargetId = null;
+		this.activeEntryId = null;
+		this.prioritizedTargetId = null;
+		this.progressTicks = 0;
+		this.totalTicks = 0;
+	}
+
+	/**
+	 * Convenience overload for single external + single own backpack target.
+	 */
+	public boolean tick(boolean ownInventoryOpen, @Nullable SearchTarget externalTarget, @Nullable SearchTarget ownBackpackTarget) {
+		List<SearchTarget> ext = externalTarget == null ? List.of() : List.of(externalTarget);
+		List<SearchTarget> own = ownBackpackTarget == null ? List.of() : List.of(ownBackpackTarget);
+		return tickQueue(ownInventoryOpen, ext, own);
+	}
+
+	/**
+	 * Advances search by 1 server tick across ordered external and own container queues.
+	 * External targets always search before own taken containers; own taken containers
+	 * ONLY search while ownInventoryOpen == true.
+	 */
+	public boolean tickQueue(boolean ownInventoryOpen, List<SearchTarget> externalTargets, List<SearchTarget> ownTargets) {
+		SearchTarget target = selectActiveTarget(ownInventoryOpen, externalTargets, ownTargets);
+		if (target == null) {
+			if (stage != Stage.IDLE) {
+				reset();
+				return true;
+			}
+			return false;
+		}
+
+		if (!target.getTargetId().equals(activeTargetId)) {
+			activeTargetId = target.getTargetId();
+			activeEntryId = null;
+			progressTicks = 0;
+			totalTicks = 0;
+		}
+
+		// Stage 1: Reveal grid slots (fixed 1 second) -> silhouettes appear
+		if (!target.isGridRevealed(playerId)) {
+			if (stage != Stage.REVEALING_GRID) {
+				stage = Stage.REVEALING_GRID;
+				activeEntryId = null;
+				progressTicks = 0;
+				totalTicks = com.tarkovcraft.config.TarkovConfig.get().getContainerRevealTicks();
+			}
+			progressTicks++;
+			if (progressTicks >= totalTicks) {
+				target.getMemory().markGridRevealed(playerId);
+				target.markDirty();
+				progressTicks = 0;
+				totalTicks = 0;
+				stage = Stage.IDLE;
+				return true;
+			}
+			return false;
+		}
+
+		// Stage 2: Search each undiscovered item individually by rarity
+		GridEntry nextEntry = target.findNextUndiscoveredEntry(playerId);
+		if (nextEntry == null) {
+			reset();
+			return false;
+		}
+
+		if (stage != Stage.SEARCHING_ITEM || !nextEntry.getEntryId().equals(activeEntryId)) {
+			stage = Stage.SEARCHING_ITEM;
+			activeEntryId = nextEntry.getEntryId();
+			progressTicks = 0;
+			totalTicks = ItemRarityRegistry.getSearchTicks(nextEntry.getStack());
+		}
+
+		progressTicks++;
+		if (progressTicks >= totalTicks) {
+			target.getMemory().markEntryDiscovered(playerId, nextEntry.getEntryId());
+			target.markDirty();
+			activeEntryId = null;
+			progressTicks = 0;
+			totalTicks = 0;
+			stage = Stage.IDLE;
+			return true;
+		}
+		return false;
+	}
+
+	@Nullable
+	private SearchTarget selectActiveTarget(boolean ownInventoryOpen, List<SearchTarget> externalTargets, List<SearchTarget> ownTargets) {
+		if (prioritizedTargetId != null) {
+			for (SearchTarget t : externalTargets) {
+				if (t != null && prioritizedTargetId.equals(t.getTargetId()) && !t.isFullySearched(playerId)) {
+					return t;
+				}
+			}
+			if (ownInventoryOpen) {
+				for (SearchTarget t : ownTargets) {
+					if (t != null && prioritizedTargetId.equals(t.getTargetId()) && !t.isFullySearched(playerId)) {
+						return t;
+					}
+				}
+			}
+			prioritizedTargetId = null;
+		}
+		for (SearchTarget t : externalTargets) {
+			if (t != null && !t.isFullySearched(playerId)) {
+				return t;
+			}
+		}
+		if (ownInventoryOpen) {
+			for (SearchTarget t : ownTargets) {
+				if (t != null && !t.isFullySearched(playerId)) {
+					return t;
+				}
+			}
+		}
+		return null;
+	}
+
+	public static boolean canTakeEntry(UUID playerId, SearchTarget target, UUID entryId) {
+		return target.isGridRevealed(playerId) && target.getMemory().isEntryDiscovered(playerId, entryId);
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\search\SearchTarget.java ==========
+package com.tarkovcraft.search;
+
+import com.tarkovcraft.grid.GridContainer;
+import com.tarkovcraft.grid.GridEntry;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Represents a searchable container (one or more grids + its per-player search memory).
+ */
+public final class SearchTarget {
+	private final UUID targetId;
+	private final List<GridContainer> grids;
+	private final ContainerSearchMemory memory;
+	private final Runnable onDirty;
+
+	public SearchTarget(UUID targetId, List<GridContainer> grids, ContainerSearchMemory memory, Runnable onDirty) {
+		this.targetId = targetId;
+		this.grids = grids;
+		this.memory = memory;
+		this.onDirty = onDirty;
+	}
+
+	public UUID getTargetId() {
+		return targetId;
+	}
+
+	public List<GridContainer> getGrids() {
+		return grids;
+	}
+
+	public ContainerSearchMemory getMemory() {
+		return memory;
+	}
+
+	public void markDirty() {
+		if (onDirty != null) {
+			onDirty.run();
+		}
+	}
+
+	public boolean isGridRevealed(UUID playerId) {
+		return memory.isGridRevealed(playerId);
+	}
+
+	@Nullable
+	public GridEntry findNextUndiscoveredEntry(UUID playerId) {
+		for (GridContainer grid : grids) {
+			for (GridEntry entry : grid.getEntries()) {
+				if (!entry.getStack().isEmpty() && !memory.isEntryDiscovered(playerId, entry.getEntryId())) {
+					return entry;
+				}
+			}
+		}
+		return null;
+	}
+
+	public boolean isFullySearched(UUID playerId) {
+		return isGridRevealed(playerId) && findNextUndiscoveredEntry(playerId) == null;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\TarkovCraftMod.java ==========
+package com.tarkovcraft;
+
+import com.tarkovcraft.ammo.AmmoReloadTracker;
+import com.tarkovcraft.command.TarkovCommand;
+import com.tarkovcraft.grid.ItemSizeRegistry;
+import com.tarkovcraft.health.BodyHealthTicker;
+import com.tarkovcraft.loadout.PlayerLoadoutHolder;
+import com.tarkovcraft.network.TarkovNetworking;
+import com.tarkovcraft.registry.ModBlocks;
+import com.tarkovcraft.registry.ModEntities;
+import com.tarkovcraft.registry.ModItems;
+import com.tarkovcraft.registry.ModScreenHandlers;
+import com.tarkovcraft.screen.TarkovScreenHandler;
+import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
+import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
+import net.minecraft.resource.ResourceManager;
+import net.minecraft.resource.ResourceType;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.util.Identifier;
+import net.minecraft.world.GameRules;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class TarkovCraftMod implements ModInitializer {
+	public static final String MOD_ID = "tarkovcraft";
+	public static final Logger LOGGER = LoggerFactory.getLogger("TarkovCraft");
+
+	@Override
+	public void onInitialize() {
+		com.tarkovcraft.config.TarkovConfig.loadOrCreate();
+		ModBlocks.init();
+		ModItems.init();
+		ModEntities.init();
+		ModScreenHandlers.init();
+		com.tarkovcraft.worldgen.ModWorldGen.init();
+		com.tarkovcraft.entity.MobGearSpawner.register();
+		TarkovNetworking.registerServerReceivers();
+
+		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
+			TarkovCommand.register(dispatcher)
+		);
+
+		// Reload JSON item sizes from datapacks
+		ResourceManagerHelper.get(ResourceType.SERVER_DATA).registerReloadListener(new SimpleSynchronousResourceReloadListener() {
+			@Override
+			public Identifier getFabricId() {
+				return new Identifier(MOD_ID, "item_sizes");
+			}
+
+			@Override
+			public void reload(ResourceManager manager) {
+				ItemSizeRegistry.reloadFromResources(manager);
+			}
+		});
+
+		// Tick open TarkovScreenHandlers + bleeding/injury penalties + TaCZ reload tracking + Airdrops
+		ServerTickEvents.END_SERVER_TICK.register(server -> {
+			com.tarkovcraft.airdrop.AirdropManager.tickServer(server);
+			for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+				BodyHealthTicker.tickPlayer(player);
+				AmmoReloadTracker.tickPlayer(player);
+				if (player.currentScreenHandler instanceof TarkovScreenHandler tsh) {
+					tsh.tickServer(player);
+				}
+			}
+		});
+
+		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
+			AmmoReloadTracker.removePlayer(handler.getPlayer().getUuid())
+		);
+
+		// Sync loadout & body health when player joins
+		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+			ServerPlayerEntity player = handler.getPlayer();
+			if (player instanceof PlayerLoadoutHolder holder) {
+				holder.tarkovcraft$syncLoadout();
+				holder.tarkovcraft$syncBodyHealth();
+			}
+		});
+
+		// Keep loadout & health on dimension change or KEEP_INVENTORY; reset body health on respawn
+		ServerPlayerEvents.COPY_FROM.register((oldPlayer, newPlayer, alive) -> {
+			if (oldPlayer instanceof PlayerLoadoutHolder oldHolder && newPlayer instanceof PlayerLoadoutHolder newHolder) {
+				boolean keepInv = oldPlayer.getWorld().getGameRules().getBoolean(GameRules.KEEP_INVENTORY);
+				if (alive || keepInv) {
+					newHolder.tarkovcraft$getLoadout().readNbt(oldHolder.tarkovcraft$getLoadout().writeNbt());
+				}
+				if (alive) {
+					newHolder.tarkovcraft$getBodyHealth().readNbt(oldHolder.tarkovcraft$getBodyHealth().writeNbt());
+				} else {
+					newHolder.tarkovcraft$getBodyHealth().resetFull();
+				}
+			}
+		});
+
+		ServerLifecycleEvents.SERVER_STARTED.register(server -> com.tarkovcraft.airdrop.AirdropManager.resetTimer());
+		ServerLifecycleEvents.SERVER_STOPPED.register(server -> com.tarkovcraft.airdrop.AirdropManager.resetTimer());
+
+		ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> {
+			if (newPlayer instanceof PlayerLoadoutHolder holder) {
+				holder.tarkovcraft$syncLoadout();
+				holder.tarkovcraft$syncBodyHealth();
+			}
+		});
+
+		LOGGER.info("TarkovCraft initialized (Grid Inventory, Zonal Armor, Ballistic Ammo, Workbench, Worldgen & Airdrops).");
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\workbench\TarkovWorkbenchRecipes.java ==========
+package com.tarkovcraft.workbench;
+
+import com.tarkovcraft.TarkovCraftMod;
+import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.ammo.TaCZCaliberCatalog;
+import com.tarkovcraft.item.BackpackItem;
+import com.tarkovcraft.item.TacticalRigItem;
+import com.tarkovcraft.item.TarkovArmorItem;
+import com.tarkovcraft.item.TarkovArmorRepairItem;
+import com.tarkovcraft.loadout.EquipmentSlotType;
+import com.tarkovcraft.registry.ModItems;
+import com.tarkovcraft.registry.TarkovItemCatalog;
+import net.minecraft.item.Item;
+import net.minecraft.item.Items;
+import net.minecraft.registry.Registries;
+import net.minecraft.util.Identifier;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Deterministic recipe engine for the Tarkov Workbench:
+ * - AMMO tab: scratch crafting & FMJ -> HP/AP/IGN reloading for any TaCZ ballistic caliber.
+ * - ARMOR & GEAR tab: auto-generated recipes for all Helmets, Body Armor, Face Masks, Plates/Repair Kits, Rigs, and Backpacks.
+ */
+public final class TarkovWorkbenchRecipes {
+	private static final Map<GearCategory, List<GearRecipe>> GEAR_CACHE = new EnumMap<>(GearCategory.class);
+	public record Ingredient(Item item, int count) {
+	}
+
+	public record AmmoRecipe(
+		String ammoId,
+		AmmoTier tier,
+		boolean upgradeFromFmj,
+		int batchSize,
+		int requiredFmjCount,
+		List<Ingredient> materials
+	) {
+	}
+
+	public enum GearCategory {
+		HELMET("ui.tarkovcraft.wb_cat_helmets"),
+		BODY_ARMOR("ui.tarkovcraft.wb_cat_armor"),
+		FACE_MASK("ui.tarkovcraft.wb_cat_masks"),
+		PLATES_REPAIR("ui.tarkovcraft.wb_cat_plates"),
+		RIG("ui.tarkovcraft.wb_cat_rigs"),
+		BACKPACK("ui.tarkovcraft.wb_cat_backpacks");
+
+		private final String translationKey;
+
+		GearCategory(String translationKey) {
+			this.translationKey = translationKey;
+		}
+
+		public String getTranslationKey() {
+			return translationKey;
+		}
+	}
+
+	public record GearRecipe(
+		Item resultItem,
+		GearCategory category,
+		List<Ingredient> materials
+	) {
+	}
+
+	private TarkovWorkbenchRecipes() {
+	}
+
+	public static AmmoRecipe getAmmoRecipe(String ammoId, AmmoTier tier, boolean upgradeFromFmj) {
+		TaCZCaliberCatalog.CaliberSpec spec = TaCZCaliberCatalog.getSpecOrDynamic(ammoId);
+		int m = spec.group().getMaterialMultiplier();
+		int batch = spec.getBatchSize();
+		AmmoTier safeTier = tier != null ? tier : AmmoTier.FMJ;
+		boolean isUpgrade = upgradeFromFmj && safeTier != AmmoTier.FMJ;
+
+		List<Ingredient> mats = new ArrayList<>();
+		if (isUpgrade) {
+			switch (safeTier) {
+				case HP -> {
+					mats.add(new Ingredient(Items.COPPER_INGOT, m));
+					mats.add(new Ingredient(Items.REDSTONE, 2 * m));
+				}
+				case AP -> {
+					mats.add(new Ingredient(Items.GOLD_INGOT, 2 * m));
+					mats.add(new Ingredient(Items.GUNPOWDER, m));
+					mats.add(new Ingredient(Items.REDSTONE, m));
+				}
+				case IGN -> {
+					mats.add(new Ingredient(Items.DIAMOND, m));
+					mats.add(new Ingredient(Items.BLAZE_POWDER, 2 * m));
+					mats.add(new Ingredient(Items.GUNPOWDER, m));
+				}
+				default -> {
+				}
+			}
+			return new AmmoRecipe(spec.ammoId(), safeTier, true, batch, batch, List.copyOf(mats));
+		}
+
+		switch (safeTier) {
+			case FMJ -> {
+				mats.add(new Ingredient(Items.IRON_INGOT, 2 * m));
+				mats.add(new Ingredient(Items.COPPER_INGOT, 2 * m));
+				mats.add(new Ingredient(Items.GUNPOWDER, 2 * m));
+			}
+			case HP -> {
+				mats.add(new Ingredient(Items.IRON_INGOT, m));
+				mats.add(new Ingredient(Items.COPPER_INGOT, 3 * m));
+				mats.add(new Ingredient(Items.GUNPOWDER, 2 * m));
+				mats.add(new Ingredient(Items.REDSTONE, 2 * m));
+			}
+			case AP -> {
+				mats.add(new Ingredient(Items.IRON_INGOT, 2 * m));
+				mats.add(new Ingredient(Items.GOLD_INGOT, 2 * m));
+				mats.add(new Ingredient(Items.GUNPOWDER, 3 * m));
+				mats.add(new Ingredient(Items.REDSTONE, 2 * m));
+			}
+			case IGN -> {
+				mats.add(new Ingredient(Items.IRON_INGOT, 3 * m));
+				mats.add(new Ingredient(Items.DIAMOND, m));
+				mats.add(new Ingredient(Items.BLAZE_POWDER, 2 * m));
+				mats.add(new Ingredient(Items.GUNPOWDER, 3 * m));
+			}
+		}
+		return new AmmoRecipe(spec.ammoId(), safeTier, false, batch, 0, List.copyOf(mats));
+	}
+
+	public static boolean isCraftableGear(Item item) {
+		if (item == null || item == Items.AIR) {
+			return false;
+		}
+		Identifier id = Registries.ITEM.getId(item);
+		if (!TarkovCraftMod.MOD_ID.equals(id.getNamespace())) {
+			return false;
+		}
+		return item instanceof TarkovArmorItem
+			|| item instanceof TarkovArmorRepairItem
+			|| item instanceof TacticalRigItem
+			|| item instanceof BackpackItem;
+	}
+
+	public static synchronized List<GearRecipe> getGearRecipes(GearCategory category) {
+		List<GearRecipe> cached = GEAR_CACHE.get(category);
+		if (cached != null) {
+			return cached;
+		}
+		List<Item> candidates = new ArrayList<>();
+		switch (category) {
+			case HELMET -> {
+				candidates.add(ModItems.SSH68_HELMET);
+				candidates.add(ModItems.RATNIK_6B47_HELMET);
+				candidates.add(ModItems.ALTYN_HELMET);
+				for (Item it : TarkovItemCatalog.getArmorItems()) {
+					if (it instanceof TarkovArmorItem armor && armor.getTargetSlot() == EquipmentSlotType.HELMET) {
+						candidates.add(it);
+					}
+				}
+			}
+			case BODY_ARMOR -> {
+				candidates.add(ModItems.PACA_ARMOR);
+				candidates.add(ModItems.PRESS_ARMOR);
+				candidates.add(ModItems.ZABRALO_ARMOR);
+				for (Item it : TarkovItemCatalog.getArmorItems()) {
+					if (it instanceof TarkovArmorItem armor && armor.getTargetSlot() == EquipmentSlotType.BODY_ARMOR) {
+						candidates.add(it);
+					}
+				}
+			}
+			case FACE_MASK -> {
+				candidates.add(ModItems.BALACLAVA_MASK);
+				candidates.add(ModItems.DEATH_SHADOW_MASK);
+				for (Item it : TarkovItemCatalog.getArmorItems()) {
+					if (it instanceof TarkovArmorItem armor && armor.getTargetSlot() == EquipmentSlotType.FACE_MASK) {
+						candidates.add(it);
+					}
+				}
+			}
+			case PLATES_REPAIR -> {
+				for (Item it : TarkovItemCatalog.getArmorItems()) {
+					if (it instanceof TarkovArmorRepairItem) {
+						candidates.add(it);
+					}
+				}
+			}
+			case RIG -> {
+				candidates.add(ModItems.SCAV_VEST);
+				candidates.add(ModItems.BANK_ROBBER_RIG);
+				candidates.add(ModItems.TRITON_RIG);
+				candidates.addAll(TarkovItemCatalog.getRigItems());
+			}
+			case BACKPACK -> {
+				candidates.add(ModItems.SLING_BACKPACK);
+				candidates.add(ModItems.BERKUT_BACKPACK);
+				candidates.add(ModItems.TRIZIP_BACKPACK);
+				candidates.addAll(TarkovItemCatalog.getBackpackItems());
+			}
+		}
+
+		List<GearRecipe> out = new ArrayList<>(candidates.size());
+		for (Item item : candidates) {
+			out.add(new GearRecipe(item, category, computeGearIngredients(item)));
+		}
+		List<GearRecipe> immutable = Collections.unmodifiableList(out);
+		GEAR_CACHE.put(category, immutable);
+		return immutable;
+	}
+
+	public static List<Ingredient> computeGearIngredients(Item item) {
+		List<Ingredient> mats = new ArrayList<>();
+		if (item instanceof TarkovArmorItem armor) {
+			double s = switch (armor.getTargetSlot()) {
+				case BODY_ARMOR -> 1.5;
+				case HELMET -> 1.0;
+				case FACE_MASK -> 0.75;
+				default -> 1.0;
+			};
+			int ac = armor.getArmorClass();
+			switch (ac) {
+				case 0 -> {
+					mats.add(new Ingredient(Items.LEATHER, ceilMul(2, s)));
+					mats.add(new Ingredient(Items.STRING, ceilMul(2, s)));
+					if (armor.isGasProtection()) {
+						mats.add(new Ingredient(Items.GLASS, 2));
+						mats.add(new Ingredient(Items.COAL, 2));
+					}
+				}
+				case 1 -> {
+					mats.add(new Ingredient(Items.LEATHER, ceilMul(3, s)));
+					mats.add(new Ingredient(Items.COPPER_INGOT, ceilMul(2, s)));
+					mats.add(new Ingredient(Items.IRON_INGOT, ceilMul(2, s)));
+				}
+				case 2 -> {
+					mats.add(new Ingredient(Items.LEATHER, ceilMul(4, s)));
+					mats.add(new Ingredient(Items.IRON_INGOT, ceilMul(4, s)));
+					mats.add(new Ingredient(Items.STRING, ceilMul(2, s)));
+				}
+				case 3 -> {
+					mats.add(new Ingredient(Items.LEATHER, ceilMul(4, s)));
+					mats.add(new Ingredient(Items.IRON_INGOT, ceilMul(6, s)));
+					mats.add(new Ingredient(Items.GOLD_INGOT, ceilMul(2, s)));
+				}
+				case 4 -> {
+					mats.add(new Ingredient(Items.LEATHER, ceilMul(4, s)));
+					mats.add(new Ingredient(Items.IRON_INGOT, ceilMul(8, s)));
+					mats.add(new Ingredient(Items.DIAMOND, ceilMul(2, s)));
+					mats.add(new Ingredient(Items.GOLD_INGOT, ceilMul(2, s)));
+				}
+				case 5 -> {
+					mats.add(new Ingredient(Items.LEATHER, ceilMul(4, s)));
+					mats.add(new Ingredient(Items.IRON_INGOT, ceilMul(10, s)));
+					mats.add(new Ingredient(Items.DIAMOND, ceilMul(4, s)));
+					mats.add(new Ingredient(Items.OBSIDIAN, ceilMul(3, s)));
+				}
+				default -> {
+					mats.add(new Ingredient(Items.LEATHER, ceilMul(4, s)));
+					mats.add(new Ingredient(Items.IRON_BLOCK, ceilMul(2, s)));
+					mats.add(new Ingredient(Items.DIAMOND, ceilMul(6, s)));
+					mats.add(new Ingredient(Items.OBSIDIAN, ceilMul(4, s)));
+					mats.add(new Ingredient(Items.NETHERITE_SCRAP, Math.max(1, (int) Math.round(s))));
+				}
+			}
+		} else if (item instanceof TarkovArmorRepairItem repair) {
+			int rep = repair.getRepairAmount();
+			mats.add(new Ingredient(Items.IRON_INGOT, Math.max(2, rep / 10)));
+			mats.add(new Ingredient(Items.COPPER_INGOT, Math.max(2, rep / 15)));
+			if (rep >= 40) {
+				mats.add(new Ingredient(Items.DIAMOND, 1));
+			} else if (rep >= 25) {
+				mats.add(new Ingredient(Items.GOLD_INGOT, 1));
+			}
+		} else if (item instanceof TacticalRigItem rig) {
+			int totalCells = rig.getCompartmentLayouts().stream().mapToInt(sz -> sz.width() * sz.height()).sum();
+			mats.add(new Ingredient(Items.LEATHER, Math.max(3, totalCells / 3)));
+			mats.add(new Ingredient(Items.STRING, Math.max(4, totalCells / 2)));
+			mats.add(new Ingredient(Items.IRON_INGOT, Math.max(1, totalCells / 8)));
+			if (totalCells >= 18) {
+				mats.add(new Ingredient(Items.GOLD_INGOT, 2));
+			}
+		} else if (item instanceof BackpackItem bp) {
+			int cells = bp.getGridWidth() * bp.getGridHeight();
+			mats.add(new Ingredient(Items.LEATHER, Math.max(4, cells / 4)));
+			mats.add(new Ingredient(Items.STRING, Math.max(4, cells / 3)));
+			mats.add(new Ingredient(Items.IRON_INGOT, Math.max(1, cells / 12)));
+			if (cells >= 30) {
+				mats.add(new Ingredient(Items.DIAMOND, 2));
+			}
+		}
+		return List.copyOf(mats);
+	}
+
+	private static int ceilMul(int base, double scale) {
+		return Math.max(1, (int) Math.ceil(base * scale));
+	}
+}

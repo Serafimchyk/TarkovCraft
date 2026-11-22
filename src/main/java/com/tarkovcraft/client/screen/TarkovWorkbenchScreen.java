@@ -251,7 +251,13 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 
 			final int idx = i;
 			if (ammoListClip.contains(mouseX, mouseY)) {
-				buttons.add(new ClickButton(row, () -> selectedCaliberIndex = idx));
+				buttons.add(new ClickButton(row, () -> {
+					selectedCaliberIndex = idx;
+					selectedTier = calibers.get(idx).clampTier(selectedTier);
+					if (selectedTier == AmmoTier.FMJ) {
+						upgradeFromFmj = false;
+					}
+				}));
 			}
 			cy += ROW_H;
 		}
@@ -263,6 +269,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 
 		// Right details column
 		TaCZCaliberCatalog.CaliberSpec spec = calibers.get(selectedCaliberIndex);
+		selectedTier = spec.clampTier(selectedTier);
 		int rx = rightX + 12;
 		int rw = rightW - 24;
 		int ry = py + 12;
@@ -286,18 +293,25 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		for (int i = 0; i < tiers.length; i++) {
 			AmmoTier t = tiers[i];
 			Rect tr = new Rect(rx + i * (tierW + gap), ry, tierW, 18);
-			boolean sel = t == selectedTier;
-			boolean hov = tr.contains(mouseX, mouseY);
-			context.fill(tr.x, tr.y, tr.x + tr.w, tr.y + tr.h, sel ? 0xFF23272D : (hov ? 0xFF1A1E24 : TarkovUiTheme.BG_SLOT));
-			context.drawBorder(tr.x, tr.y, tr.w, tr.h, sel ? t.getArgbColor() : (hov ? TarkovUiTheme.BORDER_HOVER : TarkovUiTheme.BORDER_CELL));
-			TarkovUiTheme.drawCenteredFlatText(context, textRenderer, t.getBadge(), tr.x + tr.w / 2, tr.y + 6,
-				t.getArgbColor(), TarkovUiTheme.TEXT_SCALE_SMALL);
-			buttons.add(new ClickButton(tr, () -> {
-				selectedTier = t;
-				if (selectedTier == AmmoTier.FMJ) {
-					upgradeFromFmj = false;
-				}
-			}));
+			boolean allowed = spec.isTierAllowed(t);
+			boolean sel = allowed && t == selectedTier;
+			boolean hov = allowed && tr.contains(mouseX, mouseY);
+			int bgCol = !allowed ? 0x66101215 : (sel ? 0xFF23272D : (hov ? 0xFF1A1E24 : TarkovUiTheme.BG_SLOT));
+			int bdCol = !allowed ? 0xFF1D2024 : (sel ? t.getArgbColor() : (hov ? TarkovUiTheme.BORDER_HOVER : TarkovUiTheme.BORDER_CELL));
+			int txtCol = !allowed ? 0xFF4A4E55 : t.getArgbColor();
+			String label = allowed ? t.getBadge() : (t.getBadge() + " N/A");
+			context.fill(tr.x, tr.y, tr.x + tr.w, tr.y + tr.h, bgCol);
+			context.drawBorder(tr.x, tr.y, tr.w, tr.h, bdCol);
+			TarkovUiTheme.drawCenteredFlatText(context, textRenderer, label, tr.x + tr.w / 2, tr.y + 6,
+				txtCol, TarkovUiTheme.TEXT_SCALE_SMALL);
+			if (allowed) {
+				buttons.add(new ClickButton(tr, () -> {
+					selectedTier = t;
+					if (selectedTier == AmmoTier.FMJ) {
+						upgradeFromFmj = false;
+					}
+				}));
+			}
 		}
 		ry += 24;
 

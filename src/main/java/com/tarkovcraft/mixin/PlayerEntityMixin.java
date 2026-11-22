@@ -85,6 +85,7 @@ public abstract class PlayerEntityMixin implements PlayerLoadoutHolder {
 		}
 		if (nbt.contains("TarkovCraftHealth", NbtElement.COMPOUND_TYPE)) {
 			tarkovcraft$bodyHealth.readNbt(nbt.getCompound("TarkovCraftHealth"));
+			tarkovcraft$bodyHealth.clearActiveMedUse();
 		}
 	}
 

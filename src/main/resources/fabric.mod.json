@@ -15,6 +15,12 @@
     ],
     "client": [
       "com.tarkovcraft.client.TarkovCraftClient"
+    ],
+    "modmenu": [
+      "com.tarkovcraft.client.compat.TarkovModMenuIntegration"
+    ],
+    "emi": [
+      "com.tarkovcraft.client.compat.TarkovEmiPlugin"
     ]
   },
   "mixins": [

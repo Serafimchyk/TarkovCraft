@@ -12,6 +12,8 @@ base {
 
 repositories {
 	mavenCentral()
+	maven { url "https://maven.terraformersmc.com/" }
+	maven { url "https://maven.shedaniel.me/" }
 }
 
 dependencies {
@@ -19,6 +21,13 @@ dependencies {
 	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
 	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+	// Optional client integrations (zero hard dependency at runtime)
+	modCompileOnly "com.terraformersmc:modmenu:7.2.2"
+	modCompileOnly("me.shedaniel.cloth:cloth-config-fabric:11.1.136") {
+		exclude(group: "net.fabricmc.fabric-api")
+	}
+	modCompileOnly "dev.emi:emi-fabric:1.1.18+1.20.1:api"
 
 	testImplementation "net.fabricmc:fabric-loader-junit:${project.loader_version}"
 	testImplementation "org.junit.jupiter:junit-jupiter:5.11.0"

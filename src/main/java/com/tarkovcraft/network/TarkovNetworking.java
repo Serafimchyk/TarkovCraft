@@ -84,6 +84,7 @@ public final class TarkovNetworking {
 	public static final byte LOC_DROP = 6;
 	public static final byte LOC_CORPSE_RIG_GRID = 7;     // Corpse rig OR ground rig compartments
 	public static final byte LOC_CORPSE_BACKPACK_GRID = 8;
+	public static final byte LOC_FLOATING_CONTAINER = 9;   // Floating container window: idx = (winIdx << 8) | (subGridIdx & 0xFF)
 
 	private TarkovNetworking() {
 	}
@@ -180,6 +181,22 @@ public final class TarkovNetworking {
 		}
 	}
 
+	public record OpenContainerView(
+		UUID containerUuid,
+		String title,
+		List<GridView> grids
+	) {
+		public void write(PacketByteBuf buf) {
+			buf.writeUuid(containerUuid);
+			buf.writeString(title == null ? "" : title);
+			ScreenStateSnapshot.writeGridList(buf, grids);
+		}
+
+		public static OpenContainerView read(PacketByteBuf buf) {
+			return new OpenContainerView(buf.readUuid(), buf.readString(), ScreenStateSnapshot.readGridList(buf));
+		}
+	}
+
 	public record ScreenStateSnapshot(
 		byte mode,
 		String externalTitle,
@@ -192,8 +209,27 @@ public final class TarkovNetworking {
 		byte searchStage,
 		@Nullable UUID searchTargetId,
 		@Nullable UUID searchEntryId,
-		float searchProgress
+		float searchProgress,
+		List<OpenContainerView> openContainers
 	) {
+		public ScreenStateSnapshot(
+			byte mode,
+			String externalTitle,
+			List<GridView> ownRigViews,
+			@Nullable GridView ownBackpackView,
+			@Nullable GridView externalGridView,
+			@Nullable PlayerLoadout corpseLoadout,
+			List<GridView> corpseRigViews,
+			@Nullable GridView corpseBackpackView,
+			byte searchStage,
+			@Nullable UUID searchTargetId,
+			@Nullable UUID searchEntryId,
+			float searchProgress
+		) {
+			this(mode, externalTitle, ownRigViews, ownBackpackView, externalGridView, corpseLoadout,
+				corpseRigViews, corpseBackpackView, searchStage, searchTargetId, searchEntryId, searchProgress, List.of());
+		}
+
 		public void write(PacketByteBuf buf) {
 			buf.writeByte(mode);
 			buf.writeString(externalTitle == null ? "" : externalTitle);
@@ -213,6 +249,11 @@ public final class TarkovNetworking {
 			buf.writeBoolean(searchEntryId != null);
 			if (searchEntryId != null) buf.writeUuid(searchEntryId);
 			buf.writeFloat(searchProgress);
+			List<OpenContainerView> open = openContainers == null ? List.of() : openContainers;
+			buf.writeVarInt(open.size());
+			for (OpenContainerView v : open) {
+				v.write(buf);
+			}
 		}
 
 		public static ScreenStateSnapshot read(PacketByteBuf buf) {
@@ -232,17 +273,22 @@ public final class TarkovNetworking {
 			UUID targetId = buf.readBoolean() ? buf.readUuid() : null;
 			UUID entryId = buf.readBoolean() ? buf.readUuid() : null;
 			float progress = buf.readFloat();
-			return new ScreenStateSnapshot(mode, title, ownRig, bpView, extView, corpse, corpseRig, corpseBp, stage, targetId, entryId, progress);
+			int openCount = buf.readVarInt();
+			List<OpenContainerView> open = new ArrayList<>(openCount);
+			for (int i = 0; i < openCount; i++) {
+				open.add(OpenContainerView.read(buf));
+			}
+			return new ScreenStateSnapshot(mode, title, ownRig, bpView, extView, corpse, corpseRig, corpseBp, stage, targetId, entryId, progress, open);
 		}
 
-		private static void writeGridList(PacketByteBuf buf, List<GridView> list) {
+		static void writeGridList(PacketByteBuf buf, List<GridView> list) {
 			buf.writeVarInt(list.size());
 			for (GridView v : list) {
 				v.write(buf);
 			}
 		}
 
-		private static List<GridView> readGridList(PacketByteBuf buf) {
+		static List<GridView> readGridList(PacketByteBuf buf) {
 			int n = buf.readVarInt();
 			List<GridView> out = new ArrayList<>(n);
 			for (int i = 0; i < n; i++) {
@@ -358,9 +404,11 @@ public final class TarkovNetworking {
 		});
 
 		ServerPlayNetworking.registerGlobalReceiver(C2S_CLOSE_CASE, (server, player, handler, buf, responseSender) -> {
+			boolean hasUuid = buf.readableBytes() >= 1 && buf.readBoolean();
+			UUID containerUuid = hasUuid ? buf.readUuid() : null;
 			server.execute(() -> {
 				if (player.currentScreenHandler instanceof TarkovScreenHandler tsh) {
-					tsh.handleCloseCase(player);
+					tsh.handleCloseCase(player, containerUuid);
 				}
 			});
 		});
@@ -473,7 +521,9 @@ public final class TarkovNetworking {
 			BlockEntity be = player.getWorld().getBlockEntity(blockHit.getBlockPos());
 			if (be instanceof SearchableLootBlockEntity lootBe) {
 				lootBe.openForPlayer(player);
+				return;
 			}
+			com.tarkovcraft.container.VanillaContainerBridge.tryOpenForPlayer(player, blockHit.getBlockPos());
 		}
 	}
 

@@ -9,6 +9,7 @@ import com.tarkovcraft.grid.ContainerItemHelper;
 import com.tarkovcraft.grid.ItemSize;
 import com.tarkovcraft.grid.ItemSizeRegistry;
 import com.tarkovcraft.health.BodyPart;
+import com.tarkovcraft.health.BodyPartHealth;
 import com.tarkovcraft.health.MedicalHelper;
 import com.tarkovcraft.item.BackpackItem;
 import com.tarkovcraft.item.MedicalType;
@@ -35,8 +36,10 @@ import org.joml.Quaternionf;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -51,11 +54,13 @@ import java.util.UUID;
 public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 	private static final int TAB_GEAR = 0;
 	private static final int TAB_HEALTH = 1;
+	private static final int MAX_INSPECT_WINDOWS = 6;
 
 	private int activeTab = TAB_GEAR;
 	private final List<InteractiveRegion> regions = new ArrayList<>();
 	private final List<ActionButton> actionButtons = new ArrayList<>();
 	private final List<BodyHealthHudHelper.PartHitbox> healthPartHitboxes = new ArrayList<>();
+	private final List<BodyHealthHudHelper.QuickHealHitbox> quickHealHitboxes = new ArrayList<>();
 	private final List<HealthMedSlot> healthMedSlots = new ArrayList<>();
 
 	@Nullable
@@ -65,12 +70,24 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 	private DragState drag;
 	@Nullable
 	private ContextMenu contextMenu;
+	private final List<TarkovInspectWindow> inspectWindows = new ArrayList<>();
+	private final Map<UUID, int[]> floatingWinPos = new HashMap<>();
+	private final List<FloatingWindowLayout> floatingLayouts = new ArrayList<>();
 	@Nullable
-	private TarkovInspectWindow inspectWindow;
+	private UUID draggingFloatingUuid = null;
 	@Nullable
 	private TarkovSplitModal splitModal;
 	@Nullable
 	private SelectedTarget selectedTarget;
+
+	private record FloatingWindowLayout(
+		UUID uuid,
+		Rect bounds,
+		Rect headerRect,
+		Rect closeRect,
+		@Nullable Rect searchRect
+	) {
+	}
 
 	private Rect tabGearBtn;
 	private Rect tabHealthBtn;
@@ -241,16 +258,17 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 
 		PlayerLoadout loadout = ClientLoadoutCache.getLoadout();
 		TarkovNetworking.ScreenStateSnapshot snap = ClientLoadoutCache.getScreenState();
-		boolean hasExternal = handler.getMode() != TarkovScreenHandler.MODE_OWN_INVENTORY
-			|| (snap != null && snap.externalGridView() != null);
+		boolean hasExternal = handler.getMode() != TarkovScreenHandler.MODE_OWN_INVENTORY;
 
 		renderTopBar(context, mouseX, mouseY);
 
 		int bodyY = TarkovUiTheme.TOP_BAR_H + TarkovUiTheme.OUTER_PAD;
 		int bodyH = Math.max(140, this.height - bodyY - TarkovUiTheme.QUICK_BAR_H - TarkovUiTheme.OUTER_PAD - 6);
 
+		floatingLayouts.clear();
 		if (activeTab == TAB_HEALTH && client != null && client.player != null) {
 			healthPartHitboxes.clear();
+			quickHealHitboxes.clear();
 			healthMedSlots.clear();
 			int hx = TarkovUiTheme.OUTER_PAD;
 			int hw = this.width - TarkovUiTheme.OUTER_PAD * 2;
@@ -261,12 +279,17 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			int medStripY = bodyY + bodyH - TarkovUiTheme.STATS_BAR_H - medStripH - 4;
 			List<HealthMedSlot> collectedMeds = collectOwnMedicalItems(loadout, snap);
 			ItemStack selectedMedStack = resolveSelectedMedStack(collectedMeds);
+			List<BodyHealthHudHelper.QuickHealMed> qMeds = new ArrayList<>(collectedMeds.size());
+			for (HealthMedSlot ms : collectedMeds) {
+				qMeds.add(new BodyHealthHudHelper.QuickHealMed(ms.loc(), ms.idx(), ms.entryId(), ms.stack()));
+			}
 
 			BodyHealthHudHelper.drawDetailedHealthTab(
 				context, textRenderer, client.player,
 				hx, bodyY, hw, medStripY - bodyY - 2,
-				selectedMedStack, healthPartHitboxes, mouseX, mouseY
+				selectedMedStack, healthPartHitboxes, qMeds, quickHealHitboxes, mouseX, mouseY
 			);
+			drawMedUseStripIfActive(context, hx + 8, bodyY + 6);
 			drawHealthMedicalStrip(context, hx + 6, medStripY, hw - 12, medStripH, collectedMeds, mouseX, mouseY);
 			drawBottomStatsStrip(context, loadout, hx + 6, bodyY + bodyH - TarkovUiTheme.STATS_BAR_H - 2, hw - 12);
 			leftColumnArea = null;
@@ -298,24 +321,32 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			} else {
 				rightScrollArea = null;
 			}
+			drawMedUseStripIfActive(context, centerX + 6, bodyY + 3);
 		}
 
 		renderQuickUseBar(context, loadout, mouseX, mouseY);
 
+		if (activeTab == TAB_GEAR && snap != null && !snap.openContainers().isEmpty()) {
+			renderFloatingContainerWindows(context, snap, mouseX, mouseY);
+		}
+
 		// Floating layers (drag ghost z=320, modals z=420, context menu & tooltip z=500)
 		if (drag != null && drag.active) {
+			TarkovUiTheme.clearDepthBuffer(context);
 			renderDragPreview(context, mouseX, mouseY);
 		}
-		if (inspectWindow != null) {
-			inspectWindow.render(context, textRenderer, mouseX, mouseY, this.width, this.height);
+		for (TarkovInspectWindow win : inspectWindows) {
+			win.render(context, textRenderer, mouseX, mouseY, this.width, this.height);
 		}
 		if (splitModal != null) {
+			TarkovUiTheme.clearDepthBuffer(context);
 			splitModal.render(context, textRenderer, mouseX, mouseY);
 		}
 		if (contextMenu != null) {
+			TarkovUiTheme.clearDepthBuffer(context);
 			renderContextMenu(context, mouseX, mouseY);
 		} else if ((drag == null || !drag.active)
-			&& (inspectWindow == null || !inspectWindow.contains(mouseX, mouseY))
+			&& !isOverAnyInspectWindow(mouseX, mouseY)
 			&& (splitModal == null || !splitModal.contains(mouseX, mouseY))) {
 			renderHoverTooltip(context, mouseX, mouseY);
 		}
@@ -596,8 +627,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 
 		String header = snap.externalTitle().isEmpty() ? "LOOT" : snap.externalTitle().toUpperCase();
 		UUID firstUnsearched = findFirstUnsearchedTarget(snap);
-		boolean ownOpenCase = handler.getMode() == TarkovScreenHandler.MODE_OWN_INVENTORY && snap.externalGridView() != null;
-		int btnW = firstUnsearched != null ? 54 : (ownOpenCase ? 18 : 0);
+		int btnW = firstUnsearched != null ? 54 : 0;
 		String trimmedHeader = textRenderer.trimToWidth(header, Math.round((area.w - pad * 2 - btnW - 8) / TarkovUiTheme.TEXT_SCALE_SMALL));
 		TarkovUiTheme.drawFlatText(context, textRenderer, trimmedHeader, area.x + pad, area.y + 6,
 			TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
@@ -614,14 +644,6 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			TarkovUiTheme.drawCenteredFlatText(context, textRenderer, btnTxt, searchBtn.x + searchBtn.w / 2, searchBtn.y + 3,
 				sHov ? TarkovUiTheme.HOVER_MENU_TEXT : TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
 			actionButtons.add(new ActionButton(searchBtn, area, () -> ClientNetworkSender.sendRequestSearch(firstUnsearched)));
-		} else if (ownOpenCase) {
-			Rect closeBtn = new Rect(area.x + area.w - 17, area.y + 3, 13, 11);
-			boolean cHov = closeBtn.contains(mouseX, mouseY);
-			context.fill(closeBtn.x, closeBtn.y, closeBtn.x + closeBtn.w, closeBtn.y + closeBtn.h,
-				cHov ? TarkovUiTheme.HOVER_MENU_BG : 0xFF281A1A);
-			TarkovUiTheme.drawCenteredFlatText(context, textRenderer, "X", closeBtn.x + 6, closeBtn.y + 2,
-				cHov ? TarkovUiTheme.HOVER_MENU_TEXT : 0xFFE57373, TarkovUiTheme.TEXT_SCALE_SMALL);
-			actionButtons.add(new ActionButton(closeBtn, area, ClientNetworkSender::sendCloseCase));
 		}
 
 		Rect scrollClip = new Rect(area.x, area.y + headerH + 1, area.w, area.h - headerH - 1);
@@ -631,7 +653,8 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		int startY = curY;
 
 		int maxCols = snap.externalGridView() != null ? Math.max(6, snap.externalGridView().width()) : 6;
-		int extCell = Math.max(12, Math.min(cellSize, (area.w - pad * 2 - 8) / maxCols));
+		int minCell = maxCols > 6 ? 10 : 12;
+		int extCell = Math.max(minCell, Math.min(cellSize, (area.w - pad * 2 - 8) / maxCols));
 
 		if (handler.getMode() == TarkovScreenHandler.MODE_CORPSE && snap.corpseLoadout() != null) {
 			PlayerLoadout corpseLo = snap.corpseLoadout();
@@ -1109,6 +1132,15 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 
 	private void renderHoverTooltip(DrawContext context, int mouseX, int mouseY) {
 		if (activeTab == TAB_HEALTH) {
+			for (BodyHealthHudHelper.QuickHealHitbox qh : quickHealHitboxes) {
+				if (qh.contains(mouseX, mouseY)) {
+					Text tip = Text.translatable("tooltip.tarkovcraft.quick_heal",
+						qh.med().stack().getName(),
+						Text.translatable(qh.part().getTranslationKey()));
+					TarkovUiTheme.drawFlatTooltip(context, textRenderer, List.of(tip), mouseX, mouseY, this.width, this.height);
+					return;
+				}
+			}
 			for (HealthMedSlot slot : healthMedSlots) {
 				if (slot.rect().contains(mouseX, mouseY)) {
 					TooltipContext ctx = (client != null && client.options.advancedItemTooltips)
@@ -1151,6 +1183,13 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			contextMenu = null;
 			return true;
 		}
+		for (int i = inspectWindows.size() - 1; i >= 0; i--) {
+			TarkovInspectWindow win = inspectWindows.get(i);
+			if (win.contains(mouseX, mouseY)) {
+				win.handleMouseScrolled(mouseX, mouseY, amount);
+				return true;
+			}
+		}
 		int step = (int) (-amount * 18);
 		if (centerScrollArea != null && centerScrollArea.contains(mouseX, mouseY)) {
 			centerScrollY = Math.max(0, Math.min(centerMaxScroll, centerScrollY + step));
@@ -1189,12 +1228,41 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			return true;
 		}
 
-		// 3. Inspect Window
-		if (inspectWindow != null && inspectWindow.contains(mouseX, mouseY)) {
-			if (button == 1 || inspectWindow.handleMouseClicked(mouseX, mouseY, button)) {
-				inspectWindow = null;
+		// 3. Inspect Windows (topmost first, brings clicked window to front)
+		for (int i = inspectWindows.size() - 1; i >= 0; i--) {
+			TarkovInspectWindow win = inspectWindows.get(i);
+			if (win.contains(mouseX, mouseY)) {
+				if (button == 1 || win.handleMouseClicked(mouseX, mouseY, button)) {
+					inspectWindows.remove(i);
+				} else if (i != inspectWindows.size() - 1) {
+					inspectWindows.remove(i);
+					inspectWindows.add(win);
+				}
+				return true;
 			}
-			return true;
+		}
+
+		// 3b. Floating container windows (close / search / header drag; body click blocks click-through)
+		if (activeTab == TAB_GEAR) {
+			for (int i = floatingLayouts.size() - 1; i >= 0; i--) {
+				FloatingWindowLayout fw = floatingLayouts.get(i);
+				if (!fw.bounds().contains(mouseX, mouseY)) {
+					continue;
+				}
+				if (button == 0 && fw.closeRect().contains(mouseX, mouseY)) {
+					ClientNetworkSender.sendCloseCase(fw.uuid());
+					return true;
+				}
+				if (button == 0 && fw.searchRect() != null && fw.searchRect().contains(mouseX, mouseY)) {
+					ClientNetworkSender.sendRequestSearch(fw.uuid());
+					return true;
+				}
+				if (button == 0 && fw.headerRect().contains(mouseX, mouseY)) {
+					draggingFloatingUuid = fw.uuid();
+					return true;
+				}
+				break;
+			}
 		}
 
 		// 4. Right-click: cancel drag OR clear selected med OR open dynamic EFT Context Menu
@@ -1275,7 +1343,14 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			return true;
 		}
 
-		// 8. Empty space in Left Column starts 3D player rotation
+		// 8. Block click-through when inside a floating container window
+		for (int i = floatingLayouts.size() - 1; i >= 0; i--) {
+			if (floatingLayouts.get(i).bounds().contains(mouseX, mouseY)) {
+				return true;
+			}
+		}
+
+		// 9. Empty space in Left Column starts 3D player rotation
 		if (leftColumnArea != null && leftColumnArea.contains(mouseX, mouseY) && findRegionAt(mouseX, mouseY) == null) {
 			rotatingPlayerModel = true;
 			selectedTarget = null;
@@ -1292,7 +1367,17 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			if (splitModal != null && splitModal.handleMouseDragged(mouseX)) {
 				return true;
 			}
-			if (inspectWindow != null && inspectWindow.handleMouseDragged(deltaX, deltaY, this.width, this.height)) {
+			for (int i = inspectWindows.size() - 1; i >= 0; i--) {
+				if (inspectWindows.get(i).handleMouseDragged(deltaX, deltaY, this.width, this.height)) {
+					return true;
+				}
+			}
+			if (draggingFloatingUuid != null) {
+				int[] pos = floatingWinPos.get(draggingFloatingUuid);
+				if (pos != null) {
+					pos[0] = Math.max(4, Math.min(this.width - 60, pos[0] + (int) Math.round(deltaX)));
+					pos[1] = Math.max(TarkovUiTheme.TOP_BAR_H + 2, Math.min(this.height - 40, pos[1] + (int) Math.round(deltaY)));
+				}
 				return true;
 			}
 			if (rotatingPlayerModel) {
@@ -1313,7 +1398,10 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 	public boolean mouseReleased(double mouseX, double mouseY, int button) {
 		if (button == 0) {
 			rotatingPlayerModel = false;
-			if (inspectWindow != null) inspectWindow.handleMouseReleased();
+			draggingFloatingUuid = null;
+			for (TarkovInspectWindow win : inspectWindows) {
+				win.handleMouseReleased();
+			}
 			if (splitModal != null) splitModal.handleMouseReleased();
 
 			if (drag != null) {
@@ -1352,8 +1440,14 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 				contextMenu = null;
 				return true;
 			}
-			if (inspectWindow != null) {
-				inspectWindow = null;
+			if (!inspectWindows.isEmpty()) {
+				inspectWindows.remove(inspectWindows.size() - 1);
+				return true;
+			}
+			TarkovNetworking.ScreenStateSnapshot snap = ClientLoadoutCache.getScreenState();
+			if (snap != null && !snap.openContainers().isEmpty()) {
+				UUID lastId = snap.openContainers().get(snap.openContainers().size() - 1).containerUuid();
+				ClientNetworkSender.sendCloseCase(lastId);
 				return true;
 			}
 			this.close();
@@ -1435,12 +1529,10 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			));
 		}
 
+		boolean isOwnWornContainer = target.loc() == TarkovNetworking.LOC_EQUIPMENT
+			&& (stack.getItem() instanceof BackpackItem || stack.getItem() instanceof TacticalRigItem);
 		if (stack.getItem() instanceof TarkovCaseItem
-			&& handler.getMode() == TarkovScreenHandler.MODE_OWN_INVENTORY
-			&& (target.loc() == TarkovNetworking.LOC_POCKET
-				|| target.loc() == TarkovNetworking.LOC_EQUIPMENT
-				|| target.loc() == TarkovNetworking.LOC_RIG_GRID
-				|| target.loc() == TarkovNetworking.LOC_BACKPACK_GRID)) {
+			|| ((stack.getItem() instanceof BackpackItem || stack.getItem() instanceof TacticalRigItem) && !isOwnWornContainer)) {
 			opts.add(new MenuOption(Text.translatable("ctx.tarkovcraft.open").getString(), () ->
 				ClientNetworkSender.sendOpenCase(target.loc(), target.idx(), target.entryId())
 			));
@@ -1475,9 +1567,12 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			));
 		}
 
-		opts.add(new MenuOption(Text.translatable("ctx.tarkovcraft.inspect").getString(), () ->
-			inspectWindow = new TarkovInspectWindow(stack, this.width, this.height)
-		));
+		opts.add(new MenuOption(Text.translatable("ctx.tarkovcraft.inspect").getString(), () -> {
+			if (inspectWindows.size() >= MAX_INSPECT_WINDOWS) {
+				inspectWindows.remove(0);
+			}
+			inspectWindows.add(new TarkovInspectWindow(stack, this.width, this.height, inspectWindows.size()));
+		}));
 
 		opts.add(new MenuOption(Text.translatable("ctx.tarkovcraft.discard").getString(), () ->
 			TarkovNetworking.sendMoveItem(target.loc(), target.idx(), target.entryId(),
@@ -1722,6 +1817,12 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 	}
 
 	private boolean handleHealthTabClick(double mouseX, double mouseY) {
+		for (BodyHealthHudHelper.QuickHealHitbox qh : quickHealHitboxes) {
+			if (qh.contains(mouseX, mouseY)) {
+				ClientNetworkSender.sendHealPart(qh.med().loc(), qh.med().idx(), qh.med().entryId(), qh.part());
+				return true;
+			}
+		}
 		for (HealthMedSlot slot : healthMedSlots) {
 			if (slot.rect().contains(mouseX, mouseY)) {
 				boolean isPainkillerOnly = slot.stack().getItem() instanceof TarkovMedicalItem med
@@ -1764,6 +1865,152 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			}
 		}
 		return null;
+	}
+
+	private boolean isOverAnyInspectWindow(double mx, double my) {
+		for (TarkovInspectWindow win : inspectWindows) {
+			if (win.contains(mx, my)) return true;
+		}
+		return false;
+	}
+
+	private void drawMedUseStripIfActive(DrawContext context, int x, int y) {
+		BodyPartHealth health = ClientLoadoutCache.getBodyHealth();
+		if (!health.isMedUseActive()) return;
+		net.minecraft.util.Identifier id = net.minecraft.util.Identifier.tryParse(health.getActiveMedItemId());
+		ItemStack icon = (id != null && net.minecraft.registry.Registries.ITEM.containsId(id))
+			? new ItemStack(net.minecraft.registry.Registries.ITEM.get(id))
+			: ItemStack.EMPTY;
+		String name = icon.isEmpty() ? "Med" : icon.getName().getString();
+		String secStr = String.format(Locale.ROOT, "%.1f", health.getActiveMedRemainingSeconds());
+		String label = Text.translatable("ui.tarkovcraft.med_using", name, secStr).getString();
+
+		int w = 136;
+		int h = 15;
+		context.fill(x, y, x + w, y + h, 0xE00C0F13);
+		context.drawBorder(x, y, w, h, 0xFF4CAF50);
+		context.fill(x + 2, y + h - 4, x + 2 + Math.round((w - 4) * health.getActiveMedProgress()), y + h - 2, 0xFF4CAF50);
+		TarkovUiTheme.drawFlatText(context, textRenderer,
+			TarkovUiTheme.trimWithEllipsis(textRenderer, label, w - 8, TarkovUiTheme.TEXT_SCALE_SMALL),
+			x + 4, y + 3, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+	}
+
+	private void renderFloatingContainerWindows(
+		DrawContext context, TarkovNetworking.ScreenStateSnapshot snap, int mouseX, int mouseY
+	) {
+		List<TarkovNetworking.OpenContainerView> open = snap.openContainers();
+		int fCell = Math.max(16, Math.min(22, cellSize));
+		int pad = 6;
+		int headerH = 18;
+
+		for (int winIdx = 0; winIdx < open.size(); winIdx++) {
+			TarkovNetworking.OpenContainerView view = open.get(winIdx);
+			List<TarkovNetworking.GridView> grids = view.grids();
+			if (grids.isEmpty()) continue;
+
+			// Compute layout dimensions (single grid or horizontal/wrapped multi-compartment rig)
+			int bodyW = 0;
+			int bodyH = 0;
+			int maxW = Math.min(this.width - 32, 320);
+			int rowX = 0;
+			int rowH = 0;
+			for (int gi = 0; gi < grids.size(); gi++) {
+				TarkovNetworking.GridView gv = grids.get(gi);
+				int gw = gv.width() * fCell;
+				int gh = gv.height() * fCell;
+				if (gi > 0 && rowX + gw + 4 > maxW - pad * 2) {
+					bodyH += rowH + 4;
+					rowX = 0;
+					rowH = 0;
+				}
+				rowX += gw + (gi > 0 && rowX > 0 ? 4 : 0);
+				bodyW = Math.max(bodyW, rowX);
+				rowH = Math.max(rowH, gh);
+			}
+			bodyH += rowH;
+			int winW = Math.max(118, bodyW + pad * 2);
+			int winH = headerH + pad + bodyH + pad;
+
+			int[] pos = floatingWinPos.computeIfAbsent(view.containerUuid(), k -> new int[]{
+				Math.max(12, (this.width - winW) / 2 + floatingWinPos.size() * 18),
+				Math.max(TarkovUiTheme.TOP_BAR_H + 10, (this.height - winH) / 2 + floatingWinPos.size() * 18)
+			});
+			pos[0] = Math.max(4, Math.min(this.width - winW - 4, pos[0]));
+			pos[1] = Math.max(TarkovUiTheme.TOP_BAR_H + 2, Math.min(this.height - winH - 4, pos[1]));
+			int wx = pos[0];
+			int wy = pos[1];
+
+			TarkovUiTheme.clearDepthBuffer(context);
+			context.getMatrices().push();
+			context.getMatrices().translate(0.0f, 0.0f, 220.0f + winIdx * 10.0f);
+
+			context.fill(wx, wy, wx + winW, wy + winH, TarkovUiTheme.BG_MODAL);
+			context.drawBorder(wx, wy, winW, winH, TarkovUiTheme.BORDER_POPUP);
+			context.fill(wx + 1, wy + 1, wx + winW - 1, wy + headerH, TarkovUiTheme.BG_MODAL_HEADER);
+			context.fill(wx + 1, wy + headerH, wx + winW - 1, wy + headerH + 1, TarkovUiTheme.BORDER_PANEL);
+
+			boolean unsearched = false;
+			for (TarkovNetworking.GridView gv : grids) {
+				if (!isGridFullySearched(gv)) {
+					unsearched = true;
+					break;
+				}
+			}
+
+			Rect closeRect = new Rect(wx + winW - 16, wy + 3, 13, 12);
+			boolean cHov = closeRect.contains(mouseX, mouseY);
+			context.fill(closeRect.x, closeRect.y, closeRect.x + closeRect.w, closeRect.y + closeRect.h,
+				cHov ? TarkovUiTheme.HOVER_MENU_BG : 0xFF281A1A);
+			TarkovUiTheme.drawCenteredFlatText(context, textRenderer, "X", closeRect.x + 6, closeRect.y + 3,
+				cHov ? TarkovUiTheme.HOVER_MENU_TEXT : 0xFFE57373, TarkovUiTheme.TEXT_SCALE_SMALL);
+
+			Rect searchRect = null;
+			int titleReserve = 22;
+			if (unsearched) {
+				String sTxt = Text.translatable("ui.tarkovcraft.search_btn").getString();
+				int sw = Math.max(42, Math.round(textRenderer.getWidth(sTxt) * TarkovUiTheme.TEXT_SCALE_SMALL) + 8);
+				searchRect = new Rect(closeRect.x - sw - 4, wy + 3, sw, 12);
+				boolean sHov = searchRect.contains(mouseX, mouseY);
+				context.fill(searchRect.x, searchRect.y, searchRect.x + searchRect.w, searchRect.y + searchRect.h,
+					sHov ? TarkovUiTheme.HOVER_MENU_BG : 0xFF283226);
+				context.drawBorder(searchRect.x, searchRect.y, searchRect.w, searchRect.h,
+					sHov ? TarkovUiTheme.BORDER_HOVER : TarkovUiTheme.ACCENT_SAND);
+				TarkovUiTheme.drawCenteredFlatText(context, textRenderer, sTxt,
+					searchRect.x + searchRect.w / 2, searchRect.y + 3,
+					sHov ? TarkovUiTheme.HOVER_MENU_TEXT : TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
+				titleReserve += sw + 6;
+			}
+
+			String title = TarkovUiTheme.trimWithEllipsis(textRenderer,
+				view.title().isEmpty() ? "CONTAINER" : view.title().toUpperCase(Locale.ROOT),
+				winW - pad - titleReserve, TarkovUiTheme.TEXT_SCALE_SMALL);
+			TarkovUiTheme.drawFlatText(context, textRenderer, title, wx + pad, wy + 6,
+				TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
+
+			Rect bounds = new Rect(wx, wy, winW, winH);
+			Rect headerRect = new Rect(wx, wy, winW, headerH);
+			floatingLayouts.add(new FloatingWindowLayout(view.containerUuid(), bounds, headerRect, closeRect, searchRect));
+
+			int gx = wx + pad;
+			int gy = wy + headerH + pad;
+			int curRowH = 0;
+			for (int gi = 0; gi < grids.size(); gi++) {
+				TarkovNetworking.GridView gv = grids.get(gi);
+				int gw = gv.width() * fCell;
+				int gh = gv.height() * fCell;
+				if (gi > 0 && gx + gw > wx + winW - pad + 1) {
+					gx = wx + pad;
+					gy += curRowH + 4;
+					curRowH = 0;
+				}
+				int encodedIdx = (winIdx << 8) | (gi & 0xFF);
+				drawGridView(context, gx, gy, bounds, TarkovNetworking.LOC_FLOATING_CONTAINER, encodedIdx, fCell, gv, snap, false, mouseX, mouseY);
+				gx += gw + 4;
+				curRowH = Math.max(curRowH, gh);
+			}
+
+			context.getMatrices().pop();
+		}
 	}
 
 	@Nullable

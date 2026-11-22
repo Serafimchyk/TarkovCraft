@@ -62,16 +62,46 @@ public class TarkovCraftClient implements ClientModInitializer {
 				lines.add(idx++, Text.translatable("tooltip.tarkovcraft.ammo_dmg_wear",
 					String.format(Locale.ROOT, "%.2f", tier.getDamageMultiplier()),
 					String.format(Locale.ROOT, "%.2f", tier.getArmorWearMultiplier())).formatted(Formatting.GRAY));
+				if (com.tarkovcraft.ammo.TaCZCaliberCatalog.isShotgunCaliber(ammoId)) {
+					if (tier == AmmoTier.HP) {
+						lines.add(idx++, Text.translatable("tooltip.tarkovcraft.ammo_shotgun_hp").formatted(Formatting.GREEN));
+					} else if (tier == AmmoTier.FMJ) {
+						lines.add(idx++, Text.translatable("tooltip.tarkovcraft.ammo_shotgun_fmj").formatted(Formatting.GRAY));
+					} else if (tier == AmmoTier.AP) {
+						lines.add(idx++, Text.translatable("tooltip.tarkovcraft.ammo_shotgun_ap").formatted(Formatting.GOLD));
+					}
+				}
 				if (tier == AmmoTier.FMJ) {
 					lines.add(idx, Text.translatable("tooltip.tarkovcraft.ammo_upgrade_hint").formatted(Formatting.DARK_GRAY));
 				}
 				return;
 			}
 			if (AmmoTier.isTaczGunStack(stack)) {
-				AmmoTier loaded = AmmoTier.getLoadedTierFromGun(stack);
+				TaCZGunInfoHelper.GunSummary info = TaCZGunInfoHelper.inspectGun(stack);
 				int idx = Math.min(1, lines.size());
-				lines.add(idx, Text.translatable("tooltip.tarkovcraft.gun_loaded_tier", loaded.getBadge())
-					.formatted(loaded.getColor()));
+				lines.add(idx++, Text.translatable("tooltip.tarkovcraft.gun_caliber", info.caliberName())
+					.formatted(Formatting.GOLD));
+				if (info.maxMag() > 0 || info.currentAmmo() > 0) {
+					if (info.bulletInBarrel()) {
+						lines.add(idx++, Text.translatable("tooltip.tarkovcraft.gun_ammo_count_chamber",
+							info.currentAmmo(), info.maxMag()).formatted(Formatting.WHITE));
+					} else {
+						lines.add(idx++, Text.translatable("tooltip.tarkovcraft.gun_ammo_count",
+							info.currentAmmo(), info.maxMag()).formatted(Formatting.WHITE));
+					}
+				}
+				if (!info.fireMode().isBlank()) {
+					lines.add(idx++, Text.translatable("tooltip.tarkovcraft.gun_fire_mode", info.fireMode())
+						.formatted(Formatting.GRAY));
+				}
+				lines.add(idx++, Text.translatable("tooltip.tarkovcraft.gun_loaded_tier_full",
+					info.loadedTier().getBadge(),
+					info.penetration(),
+					String.format(Locale.ROOT, "%.2f", info.loadedTier().getDamageMultiplier()))
+					.formatted(info.loadedTier().getColor()));
+				String allowedStr = String.join(", ", info.allowedTiers().stream().map(AmmoTier::getBadge).toList());
+				lines.add(idx, Text.translatable("tooltip.tarkovcraft.gun_allowed_tiers", allowedStr)
+					.formatted(Formatting.DARK_GRAY));
 				return;
 			}
 			if (!stack.isFood()) {
@@ -81,13 +111,10 @@ public class TarkovCraftClient implements ClientModInitializer {
 			if (fc == null) {
 				return;
 			}
-			int hunger = fc.getHunger();
-			float saturation = hunger * fc.getSaturationModifier() * 2.0f;
-			String satStr = Math.abs(saturation - Math.round(saturation)) < 0.05f
-				? String.valueOf(Math.round(saturation))
-				: String.format(Locale.ROOT, "%.1f", saturation);
+			int energy = fc.getHunger() * 5;
+			int sat = Math.round(fc.getHunger() * fc.getSaturationModifier() * 10.0f);
 			int insertIdx = Math.min(1, lines.size());
-			lines.add(insertIdx, Text.translatable("tooltip.tarkovcraft.food_stats", hunger, satStr)
+			lines.add(insertIdx, Text.translatable("tooltip.tarkovcraft.food_stats", energy, sat)
 				.formatted(Formatting.GREEN));
 		});
 

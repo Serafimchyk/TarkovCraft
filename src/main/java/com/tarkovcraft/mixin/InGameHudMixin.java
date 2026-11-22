@@ -1,12 +1,16 @@
 package com.tarkovcraft.mixin;
 
+import com.tarkovcraft.ammo.AmmoTier;
 import com.tarkovcraft.block.SearchableLootBlock;
 import com.tarkovcraft.block.TarkovWorkbenchBlock;
 import com.tarkovcraft.client.ClientLoadoutCache;
+import com.tarkovcraft.client.TaCZGunInfoHelper;
 import com.tarkovcraft.client.TarkovCraftClient;
 import com.tarkovcraft.client.WorldInteractState;
 import com.tarkovcraft.client.hud.BodyHealthHudHelper;
+import com.tarkovcraft.client.screen.TarkovUiTheme;
 import com.tarkovcraft.entity.CorpseEntity;
+import com.tarkovcraft.health.BodyPartHealth;
 import com.tarkovcraft.item.BackpackItem;
 import com.tarkovcraft.item.TacticalRigItem;
 import com.tarkovcraft.item.TarkovArmorItem;
@@ -69,7 +73,16 @@ public abstract class InGameHudMixin {
 
 	@Inject(method = "renderHotbar", at = @At("HEAD"), cancellable = true)
 	private void tarkovcraft$renderTarkovHud(float tickDelta, DrawContext context, CallbackInfo ci) {
-		if (client.player == null || client.player.isCreative() || client.player.isSpectator()) {
+		if (client.player == null) {
+			WorldInteractState.updateTarget(null);
+			return;
+		}
+		int screenW = client.getWindow().getScaledWidth();
+		int screenH = client.getWindow().getScaledHeight();
+		if (client.currentScreen == null && !client.player.isSpectator()) {
+			renderLoadedAmmoHud(context, screenW, screenH);
+		}
+		if (client.player.isCreative() || client.player.isSpectator()) {
 			WorldInteractState.updateTarget(null);
 			return;
 		}
@@ -81,8 +94,6 @@ public abstract class InGameHudMixin {
 		}
 
 		PlayerLoadout loadout = ClientLoadoutCache.getLoadout();
-		int screenW = client.getWindow().getScaledWidth();
-		int screenH = client.getWindow().getScaledHeight();
 
 		// 1. Top-right Tarkov Body-Part Silhouette HUD
 		BodyHealthHudHelper.drawCompactTopRight(context, client.textRenderer, client.player, screenW);
@@ -93,6 +104,9 @@ public abstract class InGameHudMixin {
 		} else {
 			WorldInteractState.updateTarget(null);
 		}
+
+		// 2b. Active medical application progress bar centered above hotbar
+		renderMedUseProgressBar(context, screenW, screenH);
 
 		// 3. Tarkov Quick-Use Hotbar (dynamic keybind labels)
 		int slotSize = 24;
@@ -198,6 +212,8 @@ public abstract class InGameHudMixin {
 				prompt = Text.translatable("prompt.tarkovcraft.search", key, Text.translatable(lootBlock.getContainerTitleKey()).getString());
 			} else if (state.getBlock() instanceof TarkovWorkbenchBlock wb) {
 				prompt = Text.translatable("prompt.tarkovcraft.workbench", key, wb.getName().getString());
+			} else if (com.tarkovcraft.container.VanillaContainerBridge.isSupportedBlock(state.getBlock())) {
+				prompt = Text.translatable("prompt.tarkovcraft.search", key, state.getBlock().getName().getString());
 			}
 		}
 
@@ -226,6 +242,69 @@ public abstract class InGameHudMixin {
 			int hw = client.textRenderer.getWidth(hint);
 			context.drawTextWithShadow(client.textRenderer, hint, x + w - hw - 4, y + 3, 0xFF7D8791);
 		}
+	}
+
+	@Unique
+	private void renderLoadedAmmoHud(DrawContext context, int screenW, int screenH) {
+		if (client.player == null) return;
+		ItemStack held = client.player.getMainHandStack();
+		if (!AmmoTier.isTaczGunStack(held)) {
+			return;
+		}
+		TaCZGunInfoHelper.GunSummary info = TaCZGunInfoHelper.inspectGun(held);
+		String badge = "[" + info.loadedTier().getBadge() + "] ";
+		String fullText = badge + info.caliberName();
+		float scale = 0.78f;
+		int maxTextW = 132;
+		int badgeW = Math.round(client.textRenderer.getWidth(badge) * scale);
+		String caliberTrim = TarkovUiTheme.trimWithEllipsis(client.textRenderer, info.caliberName(),
+			Math.max(24, maxTextW - badgeW), scale);
+		int totalW = badgeW + Math.round(client.textRenderer.getWidth(caliberTrim) * scale);
+		int boxW = Math.min(144, totalW + 12);
+		int boxH = 14;
+		int bx = screenW - boxW - 8;
+		int by = screenH - 64;
+
+		context.fill(bx, by, bx + boxW, by + boxH, 0xCC0D0E10);
+		context.fill(bx, by, bx + 2, by + boxH, info.loadedTier().getArgbColor());
+		context.drawBorder(bx, by, boxW, boxH, 0xFF2D3035);
+		TarkovUiTheme.drawFlatText(context, client.textRenderer, badge, bx + 6, by + 4,
+			info.loadedTier().getArgbColor(), scale);
+		TarkovUiTheme.drawFlatText(context, client.textRenderer, caliberTrim, bx + 6 + badgeW, by + 4,
+			TarkovUiTheme.TEXT_PRIMARY, scale);
+	}
+
+	@Unique
+	private void renderMedUseProgressBar(DrawContext context, int screenW, int screenH) {
+		BodyPartHealth health = ClientLoadoutCache.getBodyHealth();
+		if (!health.isMedUseActive()) {
+			return;
+		}
+		net.minecraft.util.Identifier id = net.minecraft.util.Identifier.tryParse(health.getActiveMedItemId());
+		ItemStack icon = (id != null && net.minecraft.registry.Registries.ITEM.containsId(id))
+			? new ItemStack(net.minecraft.registry.Registries.ITEM.get(id))
+			: ItemStack.EMPTY;
+		String itemName = icon.isEmpty() ? "Med" : icon.getName().getString();
+		String secStr = String.format(java.util.Locale.ROOT, "%.1f", health.getActiveMedRemainingSeconds());
+		String label = Text.translatable("ui.tarkovcraft.med_using", itemName, secStr).getString();
+
+		int boxW = 156;
+		int boxH = 18;
+		int bx = (screenW - boxW) / 2;
+		int by = screenH - 52;
+
+		context.fill(bx, by, bx + boxW, by + boxH, 0xDD0D0E10);
+		context.drawBorder(bx, by, boxW, boxH, 0xFF3A424A);
+		if (!icon.isEmpty()) {
+			TarkovUiTheme.drawScaledItem(context, icon, bx + 2, by + 1, 14, 14);
+		}
+		int barX = bx + 18;
+		int barW = boxW - 22;
+		int barY = by + 12;
+		context.fill(barX, barY, barX + barW, barY + 3, 0xFF1E2228);
+		context.fill(barX, barY, barX + Math.round(barW * health.getActiveMedProgress()), barY + 3, 0xFF4CAF50);
+		String trimmed = TarkovUiTheme.trimWithEllipsis(client.textRenderer, label, barW, 0.68f);
+		TarkovUiTheme.drawFlatText(context, client.textRenderer, trimmed, barX, by + 3, 0xFFE6E1D6, 0.68f);
 	}
 
 	@Unique

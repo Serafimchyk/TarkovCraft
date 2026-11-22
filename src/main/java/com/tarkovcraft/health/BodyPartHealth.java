@@ -38,6 +38,13 @@ public final class BodyPartHealth {
 	private int sprintPainTickCounter = 0;
 	private int stomachDrainTickCounter = 0;
 
+	// Active medical/stimulator application state (synced via S2C_HEALTH_SYNC)
+	private String activeMedItemId = "";
+	private int activeMedElapsedTicks = 0;
+	private int activeMedTotalTicks = 0;
+	@Nullable
+	private BodyPart activeMedTargetPart = null;
+
 	public record TickResult(
 		boolean stateChanged,
 		boolean killedByBloodLoss,
@@ -66,8 +73,46 @@ public final class BodyPartHealth {
 		bleedTickCounter = 0;
 		sprintPainTickCounter = 0;
 		stomachDrainTickCounter = 0;
+		clearActiveMedUse();
 		recentHits.clear();
 		lastFatalReport = null;
+	}
+
+	public void setActiveMedUse(String itemId, int elapsedTicks, int totalTicks, @Nullable BodyPart targetPart) {
+		this.activeMedItemId = itemId != null ? itemId : "";
+		this.activeMedElapsedTicks = Math.max(0, elapsedTicks);
+		this.activeMedTotalTicks = Math.max(0, totalTicks);
+		this.activeMedTargetPart = targetPart;
+	}
+
+	public void clearActiveMedUse() {
+		this.activeMedItemId = "";
+		this.activeMedElapsedTicks = 0;
+		this.activeMedTotalTicks = 0;
+		this.activeMedTargetPart = null;
+	}
+
+	public boolean isMedUseActive() {
+		return !activeMedItemId.isEmpty() && activeMedTotalTicks > 0;
+	}
+
+	public float getActiveMedProgress() {
+		if (!isMedUseActive()) return 0.0f;
+		return Math.max(0.0f, Math.min(1.0f, activeMedElapsedTicks / (float) activeMedTotalTicks));
+	}
+
+	public float getActiveMedRemainingSeconds() {
+		if (!isMedUseActive()) return 0.0f;
+		return Math.max(0, activeMedTotalTicks - activeMedElapsedTicks) / 20.0f;
+	}
+
+	public String getActiveMedItemId() {
+		return activeMedItemId;
+	}
+
+	@Nullable
+	public BodyPart getActiveMedTargetPart() {
+		return activeMedTargetPart;
 	}
 
 	public float getHp(BodyPart part) {
@@ -639,6 +684,15 @@ public final class BodyPartHealth {
 		root.putInt("SprintPainTick", sprintPainTickCounter);
 		root.putInt("StomachDrainTick", stomachDrainTickCounter);
 
+		if (isMedUseActive()) {
+			root.putString("ActiveMedItem", activeMedItemId);
+			root.putInt("ActiveMedElapsed", activeMedElapsedTicks);
+			root.putInt("ActiveMedTotal", activeMedTotalTicks);
+			if (activeMedTargetPart != null) {
+				root.putString("ActiveMedPart", activeMedTargetPart.getId());
+			}
+		}
+
 		NbtList hits = new NbtList();
 		for (DamageReport r : recentHits) {
 			hits.add(r.toNbt());
@@ -702,6 +756,17 @@ public final class BodyPartHealth {
 		bleedTickCounter = Math.max(0, root.getInt("BleedTick"));
 		sprintPainTickCounter = Math.max(0, root.getInt("SprintPainTick"));
 		stomachDrainTickCounter = Math.max(0, root.getInt("StomachDrainTick"));
+
+		if (root.contains("ActiveMedItem", NbtElement.STRING_TYPE) && root.getInt("ActiveMedTotal") > 0) {
+			this.activeMedItemId = root.getString("ActiveMedItem");
+			this.activeMedElapsedTicks = Math.max(0, root.getInt("ActiveMedElapsed"));
+			this.activeMedTotalTicks = Math.max(1, root.getInt("ActiveMedTotal"));
+			this.activeMedTargetPart = root.contains("ActiveMedPart", NbtElement.STRING_TYPE)
+				? BodyPart.byId(root.getString("ActiveMedPart"))
+				: null;
+		} else {
+			clearActiveMedUse();
+		}
 
 		recentHits.clear();
 		if (root.contains("RecentHits", NbtElement.LIST_TYPE)) {

@@ -1,6 +1,7 @@
 package com.tarkovcraft.client.hud;
 
 import com.tarkovcraft.client.ClientLoadoutCache;
+import com.tarkovcraft.client.screen.TarkovUiTheme;
 import com.tarkovcraft.health.BodyPart;
 import com.tarkovcraft.health.BodyPartHealth;
 import com.tarkovcraft.health.DamageReport;
@@ -8,10 +9,13 @@ import com.tarkovcraft.health.HitZone;
 import com.tarkovcraft.health.InjuryType;
 import com.tarkovcraft.health.MedicalHelper;
 import com.tarkovcraft.health.ZonalArmorHelper;
+import com.tarkovcraft.item.MedicalType;
+import com.tarkovcraft.item.TarkovMedicalItem;
 import com.tarkovcraft.loadout.PlayerLoadout;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.text.Text;
 import org.jetbrains.annotations.Nullable;
@@ -21,7 +25,11 @@ import com.tarkovcraft.client.screen.TarkovInventoryScreen;
 import net.minecraft.client.MinecraftClient;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * Renders the Tarkov-style body-part health silhouette, injury badges, painkiller timer,
@@ -36,6 +44,15 @@ public final class BodyHealthHudHelper {
 	};
 
 	public record PartHitbox(BodyPart part, int x, int y, int w, int h) {
+		public boolean contains(double mx, double my) {
+			return mx >= x && mx < x + w && my >= y && my < y + h;
+		}
+	}
+
+	public record QuickHealMed(byte loc, int idx, @Nullable UUID entryId, ItemStack stack) {
+	}
+
+	public record QuickHealHitbox(BodyPart part, QuickHealMed med, int x, int y, int w, int h) {
 		public boolean contains(double mx, double my) {
 			return mx >= x && mx < x + w && my >= y && my < y + h;
 		}
@@ -96,7 +113,14 @@ public final class BodyHealthHudHelper {
 		}
 		if (health.hasPainkiller()) {
 			int secs = (health.getPainkillerTicks() + 19) / 20;
-			drawHudBadge(context, textRenderer, x + boxW, py, "PK " + secs + "s", 0xDD143B34, 0xFF4FD1C5, 0xFFB2F5EA);
+			py = drawHudBadge(context, textRenderer, x + boxW, py, "PK " + secs + "s", 0xDD143B34, 0xFF4FD1C5, 0xFFB2F5EA);
+		}
+		if (player != null) {
+			int energy = Math.max(0, Math.min(100, player.getHungerManager().getFoodLevel() * 5));
+			int eBg = energy <= 15 ? 0xDD6A1414 : (energy <= 30 ? 0xDD4D3C12 : 0xDD14222D);
+			int eBorder = energy <= 15 ? 0xFFFF4444 : (energy <= 30 ? 0xFFE0B23B : 0xFF3E6888);
+			int eText = energy <= 15 ? 0xFFFFCCCC : (energy <= 30 ? 0xFFFFEEAA : 0xFF90CDF4);
+			drawHudBadge(context, textRenderer, x + boxW, py, "E:" + energy, eBg, eBorder, eText);
 		}
 	}
 
@@ -132,11 +156,30 @@ public final class BodyHealthHudHelper {
 		int mouseX,
 		int mouseY
 	) {
+		drawDetailedHealthTab(context, textRenderer, player, x, y, w, h, selectedMedStack, outHitboxes, null, null, mouseX, mouseY);
+	}
+
+	public static void drawDetailedHealthTab(
+		DrawContext context,
+		TextRenderer textRenderer,
+		PlayerEntity player,
+		int x,
+		int y,
+		int w,
+		int h,
+		@Nullable ItemStack selectedMedStack,
+		@Nullable List<PartHitbox> outHitboxes,
+		@Nullable List<QuickHealMed> availableMeds,
+		@Nullable List<QuickHealHitbox> outQuickHeals,
+		int mouseX,
+		int mouseY
+	) {
 		BodyPartHealth health = ClientLoadoutCache.getBodyHealth();
 		PlayerLoadout loadout = ClientLoadoutCache.getLoadout();
 
 		int silTop = y + 8;
-		drawSilhouetteWithZoneBars(context, textRenderer, health, x + w / 2, silTop, selectedMedStack, outHitboxes, mouseX, mouseY);
+		drawSilhouetteWithZoneBars(context, textRenderer, health, x + w / 2, silTop,
+			selectedMedStack, outHitboxes, availableMeds, outQuickHeals, mouseX, mouseY);
 
 		List<DamageReport> hits = health.getRecentHits();
 		int panelW = Math.min(w - 16, 420);
@@ -266,6 +309,22 @@ public final class BodyHealthHudHelper {
 		int mouseX,
 		int mouseY
 	) {
+		drawSilhouetteWithZoneBars(context, textRenderer, health, cx, top, selectedMedStack, outHitboxes, null, null, mouseX, mouseY);
+	}
+
+	public static void drawSilhouetteWithZoneBars(
+		DrawContext context,
+		TextRenderer textRenderer,
+		BodyPartHealth health,
+		int cx,
+		int top,
+		@Nullable ItemStack selectedMedStack,
+		@Nullable List<PartHitbox> outHitboxes,
+		@Nullable List<QuickHealMed> availableMeds,
+		@Nullable List<QuickHealHitbox> outQuickHeals,
+		int mouseX,
+		int mouseY
+	) {
 		drawInteractivePartRect(context, BodyPart.HEAD, cx - 10, top, 20, 20, health, selectedMedStack, outHitboxes, mouseX, mouseY);
 		drawInteractivePartRect(context, BodyPart.THORAX, cx - 15, top + 24, 30, 28, health, selectedMedStack, outHitboxes, mouseX, mouseY);
 		drawInteractivePartRect(context, BodyPart.STOMACH, cx - 13, top + 54, 26, 18, health, selectedMedStack, outHitboxes, mouseX, mouseY);
@@ -274,14 +333,14 @@ public final class BodyHealthHudHelper {
 		drawInteractivePartRect(context, BodyPart.LEFT_LEG, cx - 14, top + 74, 12, 46, health, selectedMedStack, outHitboxes, mouseX, mouseY);
 		drawInteractivePartRect(context, BodyPart.RIGHT_LEG, cx + 2, top + 74, 12, 46, health, selectedMedStack, outHitboxes, mouseX, mouseY);
 
-		drawZoneBar(context, textRenderer, cx + 38, top, BodyPart.HEAD, health, selectedMedStack, outHitboxes, mouseX, mouseY);
-		drawZoneBar(context, textRenderer, cx + 38, top + 24, BodyPart.THORAX, health, selectedMedStack, outHitboxes, mouseX, mouseY);
-		drawZoneBar(context, textRenderer, cx + 38, top + 48, BodyPart.STOMACH, health, selectedMedStack, outHitboxes, mouseX, mouseY);
-		drawZoneBar(context, textRenderer, cx + 38, top + 72, BodyPart.RIGHT_ARM, health, selectedMedStack, outHitboxes, mouseX, mouseY);
-		drawZoneBar(context, textRenderer, cx + 38, top + 96, BodyPart.RIGHT_LEG, health, selectedMedStack, outHitboxes, mouseX, mouseY);
+		drawZoneBar(context, textRenderer, cx + 38, top, BodyPart.HEAD, health, selectedMedStack, outHitboxes, availableMeds, outQuickHeals, true, mouseX, mouseY);
+		drawZoneBar(context, textRenderer, cx + 38, top + 24, BodyPart.THORAX, health, selectedMedStack, outHitboxes, availableMeds, outQuickHeals, true, mouseX, mouseY);
+		drawZoneBar(context, textRenderer, cx + 38, top + 48, BodyPart.STOMACH, health, selectedMedStack, outHitboxes, availableMeds, outQuickHeals, true, mouseX, mouseY);
+		drawZoneBar(context, textRenderer, cx + 38, top + 72, BodyPart.RIGHT_ARM, health, selectedMedStack, outHitboxes, availableMeds, outQuickHeals, true, mouseX, mouseY);
+		drawZoneBar(context, textRenderer, cx + 38, top + 96, BodyPart.RIGHT_LEG, health, selectedMedStack, outHitboxes, availableMeds, outQuickHeals, true, mouseX, mouseY);
 
-		drawZoneBar(context, textRenderer, cx - 130, top + 34, BodyPart.LEFT_ARM, health, selectedMedStack, outHitboxes, mouseX, mouseY);
-		drawZoneBar(context, textRenderer, cx - 130, top + 76, BodyPart.LEFT_LEG, health, selectedMedStack, outHitboxes, mouseX, mouseY);
+		drawZoneBar(context, textRenderer, cx - 130, top + 34, BodyPart.LEFT_ARM, health, selectedMedStack, outHitboxes, availableMeds, outQuickHeals, false, mouseX, mouseY);
+		drawZoneBar(context, textRenderer, cx - 130, top + 76, BodyPart.LEFT_LEG, health, selectedMedStack, outHitboxes, availableMeds, outQuickHeals, false, mouseX, mouseY);
 	}
 
 	private static void drawInteractivePartRect(
@@ -308,6 +367,9 @@ public final class BodyHealthHudHelper {
 		BodyPartHealth health,
 		@Nullable ItemStack selectedMedStack,
 		@Nullable List<PartHitbox> outHitboxes,
+		@Nullable List<QuickHealMed> availableMeds,
+		@Nullable List<QuickHealHitbox> outQuickHeals,
+		boolean iconsOnRight,
 		int mouseX,
 		int mouseY
 	) {
@@ -381,6 +443,56 @@ public final class BodyHealthHudHelper {
 		if (outHitboxes != null) {
 			outHitboxes.add(new PartHitbox(part, x, y, bw, bh));
 		}
+
+		// Quick-Heal 14x14 mini-icons next to injured parts (no durability text)
+		if (availableMeds != null && outQuickHeals != null) {
+			boolean needsHelp = health.getHp(part) < health.getEffectiveMaxHp(part) - 0.5f
+				|| health.hasLightBleed(part)
+				|| health.hasHeavyBleed(part)
+				|| health.hasFracture(part)
+				|| health.isBlacked(part);
+			if (needsHelp) {
+				List<QuickHealMed> suitable = collectQuickHealsForPart(health, part, availableMeds);
+				int btnSize = 14;
+				int btnY = y + (bh - btnSize) / 2;
+				for (int i = 0; i < suitable.size(); i++) {
+					QuickHealMed qm = suitable.get(i);
+					int btnX = iconsOnRight
+						? (x + bw + 4 + i * (btnSize + 2))
+						: (x - 4 - btnSize - i * (btnSize + 2));
+					boolean qHov = mouseX >= btnX && mouseX < btnX + btnSize && mouseY >= btnY && mouseY < btnY + btnSize;
+					context.fill(btnX, btnY, btnX + btnSize, btnY + btnSize, qHov ? 0xDD272B30 : 0xCC121619);
+					context.drawBorder(btnX, btnY, btnSize, btnSize, qHov ? TarkovUiTheme.ACCENT_SAND : 0xFF3A424A);
+					TarkovUiTheme.drawScaledItem(context, qm.stack(), btnX + 1, btnY + 1, 12, 12);
+					outQuickHeals.add(new QuickHealHitbox(part, qm, btnX, btnY, btnSize, btnSize));
+				}
+			}
+		}
+	}
+
+	private static List<QuickHealMed> collectQuickHealsForPart(
+		BodyPartHealth health, BodyPart part, List<QuickHealMed> allMeds
+	) {
+		Map<Item, QuickHealMed> unique = new LinkedHashMap<>();
+		for (QuickHealMed m : allMeds) {
+			if (!unique.containsKey(m.stack().getItem()) && MedicalHelper.canApplyToPart(health, m.stack(), part)) {
+				unique.put(m.stack().getItem(), m);
+			}
+		}
+		List<QuickHealMed> sorted = new ArrayList<>(unique.values());
+		sorted.sort(Comparator.comparingInt(m -> quickHealPriority(health, part, m.stack())));
+		return sorted.size() > 4 ? sorted.subList(0, 4) : sorted;
+	}
+
+	private static int quickHealPriority(BodyPartHealth health, BodyPart part, ItemStack stack) {
+		if (!(stack.getItem() instanceof TarkovMedicalItem med)) return 99;
+		MedicalType t = med.getMedicalType();
+		if (health.hasHeavyBleed(part) && t.isCuresHeavyBleed()) return 0;
+		if (health.isBlacked(part) && t.isSurgicalKit()) return 1;
+		if (health.hasFracture(part) && t.isCuresFracture()) return 2;
+		if (health.hasLightBleed(part) && t.isCuresLightBleed()) return 3;
+		if (t.getMaxHealPerUse() > 0) return 4;
+		return 5;
 	}
 
 	private static int drawMicroTag(DrawContext context, TextRenderer tr, int x, int y, String text, int color) {

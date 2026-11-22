@@ -1,0 +1,965 @@
+
+// ========== .\src\main\java\com\tarkovcraft\client\hud\BodyHealthHudHelper.java ==========
+package com.tarkovcraft.client.hud;
+
+import com.tarkovcraft.client.ClientLoadoutCache;
+import com.tarkovcraft.health.BodyPart;
+import com.tarkovcraft.health.BodyPartHealth;
+import com.tarkovcraft.health.DamageReport;
+import com.tarkovcraft.health.HitZone;
+import com.tarkovcraft.health.InjuryType;
+import com.tarkovcraft.health.MedicalHelper;
+import com.tarkovcraft.health.ZonalArmorHelper;
+import com.tarkovcraft.loadout.PlayerLoadout;
+import net.minecraft.client.font.TextRenderer;
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.ItemStack;
+import net.minecraft.text.Text;
+import org.jetbrains.annotations.Nullable;
+
+import com.tarkovcraft.client.screen.TarkovDeathScreen;
+import com.tarkovcraft.client.screen.TarkovInventoryScreen;
+import net.minecraft.client.MinecraftClient;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Renders the Tarkov-style body-part health silhouette, injury badges, painkiller timer,
+ * effectiveMaxHp surgery limits, armor coverage, and interactive HEALTH tab hitboxes.
+ */
+public final class BodyHealthHudHelper {
+	private static final HitZone[] COVERAGE_ZONES_LEFT = {
+		HitZone.HEAD_TOP, HitZone.HEAD_EARS, HitZone.HEAD_EYES, HitZone.HEAD_JAWS
+	};
+	private static final HitZone[] COVERAGE_ZONES_RIGHT = {
+		HitZone.NECK, HitZone.THORAX, HitZone.ARMPIT_LEFT, HitZone.STOMACH
+	};
+
+	public record PartHitbox(BodyPart part, int x, int y, int w, int h) {
+		public boolean contains(double mx, double my) {
+			return mx >= x && mx < x + w && my >= y && my < y + h;
+		}
+	}
+
+	private BodyHealthHudHelper() {
+	}
+
+	public static void drawCompactTopRight(DrawContext context, TextRenderer textRenderer, PlayerEntity player, int screenW) {
+		MinecraftClient mc = MinecraftClient.getInstance();
+		if (mc != null && (mc.currentScreen instanceof TarkovInventoryScreen || mc.currentScreen instanceof TarkovDeathScreen)) {
+			return;
+		}
+		BodyPartHealth health = ClientLoadoutCache.getBodyHealth();
+
+		int boxW = 48;
+		int boxH = 66;
+		int x = screenW - boxW - 8;
+		int y = 8;
+
+		context.fill(x, y, x + boxW, y + boxH, 0x88101316);
+		context.drawBorder(x, y, boxW, boxH, 0x99384048);
+
+		int cx = x + boxW / 2;
+		int top = y + 5;
+
+		drawBodyPartRect(context, cx - 4, top, 8, 8, health.getRatio(BodyPart.HEAD));
+		drawBodyPartRect(context, cx - 6, top + 10, 12, 11, health.getRatio(BodyPart.THORAX));
+		drawBodyPartRect(context, cx - 5, top + 22, 10, 7, health.getRatio(BodyPart.STOMACH));
+		drawBodyPartRect(context, cx - 12, top + 10, 5, 17, health.getRatio(BodyPart.LEFT_ARM));
+		drawBodyPartRect(context, cx + 7, top + 10, 5, 17, health.getRatio(BodyPart.RIGHT_ARM));
+		drawBodyPartRect(context, cx - 6, top + 30, 5, 19, health.getRatio(BodyPart.LEFT_LEG));
+		drawBodyPartRect(context, cx + 1, top + 30, 5, 19, health.getRatio(BodyPart.RIGHT_LEG));
+
+		int curTotal = Math.round(health.getTotalHp());
+		int effMaxTotal = Math.round(health.getTotalEffectiveMaxHp());
+		String label = curTotal + "/" + effMaxTotal;
+		context.getMatrices().push();
+		context.getMatrices().scale(0.72f, 0.72f, 1.0f);
+		int tx = (int) (cx / 0.72f);
+		int ty = (int) ((y + boxH - 9) / 0.72f);
+		context.drawCenteredTextWithShadow(textRenderer, label, tx, ty, hpToColor(health.getTotalRatio()));
+		context.getMatrices().pop();
+
+		// Active trauma & painkiller badges directly below the silhouette
+		int py = y + boxH + 3;
+		int heavyCount = health.countInjuries(InjuryType.HEAVY_BLEED);
+		if (heavyCount > 0) {
+			py = drawHudBadge(context, textRenderer, x + boxW, py, "HB x" + heavyCount, 0xDD7A1414, 0xFFFF4444, 0xFFFFCCCC);
+		}
+		int lightCount = health.countInjuries(InjuryType.LIGHT_BLEED);
+		if (lightCount > 0) {
+			py = drawHudBadge(context, textRenderer, x + boxW, py, "LB x" + lightCount, 0xDD6E2A16, 0xFFFF8855, 0xFFFFDDCC);
+		}
+		int fracCount = health.countInjuries(InjuryType.FRACTURE);
+		if (fracCount > 0) {
+			py = drawHudBadge(context, textRenderer, x + boxW, py, "FR x" + fracCount, 0xDD4D3C12, 0xFFE0B23B, 0xFFFFEEAA);
+		}
+		if (health.hasPainkiller()) {
+			int secs = (health.getPainkillerTicks() + 19) / 20;
+			drawHudBadge(context, textRenderer, x + boxW, py, "PK " + secs + "s", 0xDD143B34, 0xFF4FD1C5, 0xFFB2F5EA);
+		}
+	}
+
+	private static int drawHudBadge(
+		DrawContext context, TextRenderer tr, int rightX, int y,
+		String text, int bgCol, int borderCol, int textCol
+	) {
+		int bw = Math.max(30, Math.round(tr.getWidth(text) * 0.72f) + 8);
+		int bx = rightX - bw;
+		context.fill(bx, y, rightX, y + 10, bgCol);
+		context.drawBorder(bx, y, bw, 10, borderCol);
+		context.getMatrices().push();
+		context.getMatrices().scale(0.72f, 0.72f, 1.0f);
+		context.drawCenteredTextWithShadow(tr, text, (int) ((bx + bw / 2.0f) / 0.72f), (int) ((y + 2) / 0.72f), textCol);
+		context.getMatrices().pop();
+		return y + 12;
+	}
+
+	public static void drawDetailedHealthTab(DrawContext context, TextRenderer textRenderer, PlayerEntity player, int x, int y, int w, int h) {
+		drawDetailedHealthTab(context, textRenderer, player, x, y, w, h, null, null, -1, -1);
+	}
+
+	public static void drawDetailedHealthTab(
+		DrawContext context,
+		TextRenderer textRenderer,
+		PlayerEntity player,
+		int x,
+		int y,
+		int w,
+		int h,
+		@Nullable ItemStack selectedMedStack,
+		@Nullable List<PartHitbox> outHitboxes,
+		int mouseX,
+		int mouseY
+	) {
+		BodyPartHealth health = ClientLoadoutCache.getBodyHealth();
+		PlayerLoadout loadout = ClientLoadoutCache.getLoadout();
+
+		int silTop = y + 8;
+		drawSilhouetteWithZoneBars(context, textRenderer, health, x + w / 2, silTop, selectedMedStack, outHitboxes, mouseX, mouseY);
+
+		List<DamageReport> hits = health.getRecentHits();
+		int panelW = Math.min(w - 16, 420);
+		int panelX = x + (w - panelW) / 2;
+
+		// 1. Penalties & Painkiller status strip under silhouette
+		int statusY = silTop + 123;
+		drawStatusPenaltiesBar(context, textRenderer, health, panelX, statusY, panelW);
+
+		// 2. Armor Coverage panel
+		int covY = statusY + 15;
+		int covH = 50;
+		context.fill(panelX, covY, panelX + panelW, covY + covH, 0xCC0E1114);
+		context.drawBorder(panelX, covY, panelW, covH, 0xFF2B3238);
+		drawTiny(context, textRenderer, Text.translatable("armor.tarkovcraft.coverage_header").getString(),
+			panelX + 5, covY + 3, 0xFFD4B46A);
+
+		int col0X = panelX + 6;
+		int col1X = panelX + panelW / 2 + 4;
+		int colW = panelW / 2 - 12;
+		drawCoverageColumn(context, textRenderer, loadout, COVERAGE_ZONES_LEFT, col0X, covY + 13, colW);
+		drawCoverageColumn(context, textRenderer, loadout, COVERAGE_ZONES_RIGHT, col1X, covY + 13, colW);
+
+		// 3. Recent Hit Log
+		if (!hits.isEmpty()) {
+			int logY = covY + covH + 3;
+			int logH = Math.min(42, Math.max(24, y + h - logY - 2));
+			if (logH >= 24) {
+				context.fill(panelX, logY, panelX + panelW, logY + logH, 0xCC0E1114);
+				context.drawBorder(panelX, logY, panelW, logH, 0xFF2B3238);
+				drawTiny(context, textRenderer, Text.translatable("health.tarkovcraft.recent_hits").getString(),
+					panelX + 5, logY + 3, 0xFFD4B46A);
+				int rowY = logY + 12;
+				int maxRows = Math.min(3, Math.max(1, (logH - 12) / 10));
+				int shown = Math.min(maxRows, hits.size());
+				for (int i = 0; i < shown; i++) {
+					DamageReport r = hits.get(i);
+					String zoneTxt = Text.translatable(r.hitZone().getTranslationKey()).getString();
+					String armorTag = r.ricocheted() ? " [RICOCHET]" : (r.armorBlocked() ? " [ARMOR]" : "");
+					String line = String.format("%s  -%.0f HP%s%s",
+						zoneTxt,
+						r.finalDamage(),
+						armorTag,
+						r.overflowedToThorax() ? " -> THORAX" : ""
+					);
+					drawTiny(context, textRenderer, line, panelX + 5, rowY, r.headEyesOneshot() ? 0xFFFF5555 : 0xFFC8D0D8);
+					rowY += 10;
+				}
+			}
+		}
+	}
+
+	private static void drawStatusPenaltiesBar(DrawContext context, TextRenderer tr, BodyPartHealth health, int x, int y, int w) {
+		context.fill(x, y, x + w, y + 12, 0xCC0E1114);
+		context.drawBorder(x, y, w, 12, 0xFF2B3238);
+
+		List<String> tags = new ArrayList<>();
+		List<Integer> cols = new ArrayList<>();
+
+		if (health.hasPainkiller()) {
+			int secs = (health.getPainkillerTicks() + 19) / 20;
+			tags.add(Text.translatable("health.tarkovcraft.status_painkiller", secs).getString());
+			cols.add(0xFF4FD1C5);
+		}
+		if (health.getImpairedLegCount() > 0) {
+			tags.add(Text.translatable("health.tarkovcraft.penalty_limp").getString());
+			cols.add(0xFFE0B23B);
+		}
+		if (health.getImpairedArmCount() > 0) {
+			tags.add(Text.translatable("health.tarkovcraft.penalty_arms").getString());
+			cols.add(0xFFE08A3B);
+		}
+		if (health.isStomachBlacked()) {
+			tags.add(Text.translatable("health.tarkovcraft.penalty_stomach").getString());
+			cols.add(0xFFFF6B6B);
+		}
+
+		if (tags.isEmpty() && !health.hasAnyBleed()) {
+			drawTiny(context, tr, Text.translatable("health.tarkovcraft.status_healthy").getString(), x + 5, y + 3, 0xFF77B85A);
+			return;
+		}
+		if (tags.isEmpty()) {
+			tags.add(Text.translatable("health.tarkovcraft.tag_light_bleed").getString());
+			cols.add(0xFFFF8855);
+		}
+
+		int cx = x + 5;
+		for (int i = 0; i < tags.size(); i++) {
+			String txt = (i > 0 ? " | " : "") + tags.get(i);
+			drawTiny(context, tr, txt, cx, y + 3, cols.get(i));
+			cx += Math.round(tr.getWidth(txt) * 0.72f) + 2;
+			if (cx > x + w - 20) break;
+		}
+	}
+
+	private static void drawCoverageColumn(
+		DrawContext context, TextRenderer textRenderer,
+		PlayerLoadout loadout, HitZone[] zones, int x, int startY, int colW
+	) {
+		String openTxt = Text.translatable("armor.tarkovcraft.zone_open").getString();
+		int rowY = startY;
+		for (HitZone zone : zones) {
+			int armorClass = ZonalArmorHelper.getHighestProtectingClass(loadout, zone);
+			String zoneTxt = Text.translatable(zone.getTranslationKey()).getString();
+			String statusTxt = armorClass > 0 ? ("CL." + armorClass) : openTxt;
+			int statusCol = armorClass > 0 ? 0xFF63D2FF : 0xFFFF5555;
+
+			drawTiny(context, textRenderer, zoneTxt, x, rowY, 0xFFC8D0D8);
+			int sw = Math.round(textRenderer.getWidth(statusTxt) * 0.72f);
+			drawTiny(context, textRenderer, statusTxt, x + colW - sw, rowY, statusCol);
+			rowY += 9;
+		}
+	}
+
+	public static void drawSilhouetteWithZoneBars(DrawContext context, TextRenderer textRenderer, BodyPartHealth health, int cx, int top) {
+		drawSilhouetteWithZoneBars(context, textRenderer, health, cx, top, null, null, -1, -1);
+	}
+
+	public static void drawSilhouetteWithZoneBars(
+		DrawContext context,
+		TextRenderer textRenderer,
+		BodyPartHealth health,
+		int cx,
+		int top,
+		@Nullable ItemStack selectedMedStack,
+		@Nullable List<PartHitbox> outHitboxes,
+		int mouseX,
+		int mouseY
+	) {
+		drawInteractivePartRect(context, BodyPart.HEAD, cx - 10, top, 20, 20, health, selectedMedStack, outHitboxes, mouseX, mouseY);
+		drawInteractivePartRect(context, BodyPart.THORAX, cx - 15, top + 24, 30, 28, health, selectedMedStack, outHitboxes, mouseX, mouseY);
+		drawInteractivePartRect(context, BodyPart.STOMACH, cx - 13, top + 54, 26, 18, health, selectedMedStack, outHitboxes, mouseX, mouseY);
+		drawInteractivePartRect(context, BodyPart.LEFT_ARM, cx - 28, top + 24, 11, 42, health, selectedMedStack, outHitboxes, mouseX, mouseY);
+		drawInteractivePartRect(context, BodyPart.RIGHT_ARM, cx + 17, top + 24, 11, 42, health, selectedMedStack, outHitboxes, mouseX, mouseY);
+		drawInteractivePartRect(context, BodyPart.LEFT_LEG, cx - 14, top + 74, 12, 46, health, selectedMedStack, outHitboxes, mouseX, mouseY);
+		drawInteractivePartRect(context, BodyPart.RIGHT_LEG, cx + 2, top + 74, 12, 46, health, selectedMedStack, outHitboxes, mouseX, mouseY);
+
+		drawZoneBar(context, textRenderer, cx + 38, top, BodyPart.HEAD, health, selectedMedStack, outHitboxes, mouseX, mouseY);
+		drawZoneBar(context, textRenderer, cx + 38, top + 24, BodyPart.THORAX, health, selectedMedStack, outHitboxes, mouseX, mouseY);
+		drawZoneBar(context, textRenderer, cx + 38, top + 48, BodyPart.STOMACH, health, selectedMedStack, outHitboxes, mouseX, mouseY);
+		drawZoneBar(context, textRenderer, cx + 38, top + 72, BodyPart.RIGHT_ARM, health, selectedMedStack, outHitboxes, mouseX, mouseY);
+		drawZoneBar(context, textRenderer, cx + 38, top + 96, BodyPart.RIGHT_LEG, health, selectedMedStack, outHitboxes, mouseX, mouseY);
+
+		drawZoneBar(context, textRenderer, cx - 130, top + 34, BodyPart.LEFT_ARM, health, selectedMedStack, outHitboxes, mouseX, mouseY);
+		drawZoneBar(context, textRenderer, cx - 130, top + 76, BodyPart.LEFT_LEG, health, selectedMedStack, outHitboxes, mouseX, mouseY);
+	}
+
+	private static void drawInteractivePartRect(
+		DrawContext context, BodyPart part, int x, int y, int w, int h,
+		BodyPartHealth health, @Nullable ItemStack selectedMedStack,
+		@Nullable List<PartHitbox> outHitboxes, int mouseX, int mouseY
+	) {
+		drawBodyPartRect(context, x, y, w, h, health.getRatio(part));
+		if (selectedMedStack != null && MedicalHelper.canApplyToPart(health, selectedMedStack, part)) {
+			boolean hov = mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h;
+			context.drawBorder(x, y, w, h, hov ? 0xFFD4B46A : 0xFF4CAF50);
+		}
+		if (outHitboxes != null) {
+			outHitboxes.add(new PartHitbox(part, x, y, w, h));
+		}
+	}
+
+	private static void drawZoneBar(
+		DrawContext context,
+		TextRenderer textRenderer,
+		int x,
+		int y,
+		BodyPart part,
+		BodyPartHealth health,
+		@Nullable ItemStack selectedMedStack,
+		@Nullable List<PartHitbox> outHitboxes,
+		int mouseX,
+		int mouseY
+	) {
+		int bw = 92;
+		int bh = 22;
+		float ratio = health.getRatio(part);
+		int cur = Math.round(health.getHp(part));
+		int effMax = Math.round(health.getEffectiveMaxHp(part));
+		int baseMax = (int) part.getMaxHp();
+		int barColor = hpToColor(ratio);
+
+		boolean canHeal = selectedMedStack != null && MedicalHelper.canApplyToPart(health, selectedMedStack, part);
+		boolean hovered = mouseX >= x && mouseX < x + bw && mouseY >= y && mouseY < y + bh;
+		int border = canHeal
+			? (hovered ? 0xFFD4B46A : 0xFF4CAF50)
+			: (ratio <= 0.001f ? 0xFFC93838 : 0xFF3E464E);
+
+		context.fill(x, y, x + bw, y + bh, (canHeal && hovered) ? 0x334CAF50 : 0xCC161A1E);
+		context.drawBorder(x, y, bw, bh, border);
+
+		context.getMatrices().push();
+		context.getMatrices().scale(0.72f, 0.72f, 1.0f);
+		String name = Text.translatable(part.getTranslationKey()).getString();
+		context.drawTextWithShadow(textRenderer, name, (int) ((x + 3) / 0.72f), (int) ((y + 2) / 0.72f), 0xFFD4D8DC);
+
+		String curStr = String.valueOf(cur);
+		String maxStr = "/" + effMax;
+		int curW = textRenderer.getWidth(curStr);
+		int maxW = textRenderer.getWidth(maxStr);
+		int rightScaledX = (int) ((x + bw - 3) / 0.72f);
+		int textScaledY = (int) ((y + 2) / 0.72f);
+		context.drawTextWithShadow(textRenderer, curStr, rightScaledX - maxW - curW, textScaledY,
+			ratio <= 0.001f ? 0xFFFF5555 : barColor);
+		context.drawTextWithShadow(textRenderer, maxStr, rightScaledX - maxW, textScaledY,
+			effMax < baseMax ? 0xFF9AA0A8 : 0xFFB8C0C8);
+		context.getMatrices().pop();
+
+		int innerW = bw - 6;
+		int barY1 = y + 10;
+		int barY2 = y + 14;
+		context.fill(x + 3, barY1, x + 3 + innerW, barY2, 0xFF0E1114);
+		if (effMax < baseMax) {
+			int effW = Math.round(innerW * health.getEffectiveMaxRatio(part));
+			if (effW < innerW) {
+				context.fill(x + 3 + effW, barY1, x + 3 + innerW, barY2, 0xFF34383E);
+			}
+		}
+		int fillW = Math.round(innerW * health.getBaseRatio(part));
+		if (fillW > 0) {
+			context.fill(x + 3, barY1, x + 3 + fillW, barY2, barColor);
+		}
+
+		// Injury & blacked-out tags on bottom line (y + 15)
+		int tagX = x + 3;
+		if (health.isBlacked(part)) {
+			tagX = drawMicroTag(context, textRenderer, tagX, y + 15,
+				Text.translatable("health.tarkovcraft.tag_blacked").getString(), 0xFFE53935);
+		}
+		if (health.hasHeavyBleed(part)) {
+			tagX = drawMicroTag(context, textRenderer, tagX, y + 15,
+				Text.translatable("health.tarkovcraft.tag_heavy_bleed").getString(), 0xFFFF4444);
+		} else if (health.hasLightBleed(part)) {
+			tagX = drawMicroTag(context, textRenderer, tagX, y + 15,
+				Text.translatable("health.tarkovcraft.tag_light_bleed").getString(), 0xFFFF8855);
+		}
+		if (health.hasFracture(part)) {
+			drawMicroTag(context, textRenderer, tagX, y + 15,
+				Text.translatable("health.tarkovcraft.tag_fracture").getString(), 0xFFE0B23B);
+		}
+
+		if (outHitboxes != null) {
+			outHitboxes.add(new PartHitbox(part, x, y, bw, bh));
+		}
+	}
+
+	private static int drawMicroTag(DrawContext context, TextRenderer tr, int x, int y, String text, int color) {
+		context.getMatrices().push();
+		context.getMatrices().scale(0.62f, 0.62f, 1.0f);
+		context.drawText(tr, text, Math.round(x / 0.62f), Math.round(y / 0.62f), color, false);
+		context.getMatrices().pop();
+		return x + Math.round(tr.getWidth(text) * 0.62f) + 4;
+	}
+
+	public static void drawBodyPartRect(DrawContext context, int x, int y, int w, int h, float ratio) {
+		int fill = hpToColor(ratio);
+		int outline;
+		if (ratio <= 0.001f) {
+			outline = 0xFFE53935;
+		} else if (ratio < 0.25f) {
+			outline = 0xFF8E2A22;
+		} else {
+			outline = 0xCC0D1013;
+		}
+		context.fill(x, y, x + w, y + h, fill);
+		context.drawBorder(x, y, w, h, outline);
+	}
+
+	private static void drawTiny(DrawContext context, TextRenderer tr, String text, int x, int y, int col) {
+		context.getMatrices().push();
+		context.getMatrices().scale(0.72f, 0.72f, 1.0f);
+		context.drawTextWithShadow(tr, text, (int) (x / 0.72f), (int) (y / 0.72f), col);
+		context.getMatrices().pop();
+	}
+
+	private static final float[] GRADIENT_STOPS = {0.0f, 0.25f, 0.50f, 0.75f, 1.0f};
+	private static final int[] GRADIENT_COLORS = {
+		0xC62828,
+		0xE0662F,
+		0xE0B23B,
+		0xA9BE4A,
+		0x77B85A
+	};
+
+	public static int hpToColor(float ratio) {
+		if (ratio <= 0.001f) return 0xFF141414;
+		float r = Math.max(0.0f, Math.min(1.0f, ratio));
+		for (int i = 0; i < GRADIENT_STOPS.length - 1; i++) {
+			float a = GRADIENT_STOPS[i];
+			float b = GRADIENT_STOPS[i + 1];
+			if (r <= b) {
+				float t = (r - a) / (b - a);
+				return 0xFF000000 | lerpRgb(GRADIENT_COLORS[i], GRADIENT_COLORS[i + 1], t);
+			}
+		}
+		return 0xFF000000 | GRADIENT_COLORS[GRADIENT_COLORS.length - 1];
+	}
+
+	private static int lerpRgb(int c1, int c2, float t) {
+		int r = Math.round(((c1 >> 16) & 0xFF) + (((c2 >> 16) & 0xFF) - ((c1 >> 16) & 0xFF)) * t);
+		int g = Math.round(((c1 >> 8) & 0xFF) + (((c2 >> 8) & 0xFF) - ((c1 >> 8) & 0xFF)) * t);
+		int b = Math.round((c1 & 0xFF) + ((c2 & 0xFF) - (c1 & 0xFF)) * t);
+		return (r << 16) | (g << 8) | b;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\client\renderer\AirdropEntityRenderer.java ==========
+package com.tarkovcraft.client.renderer;
+
+import com.tarkovcraft.entity.AirdropEntity;
+import com.tarkovcraft.registry.ModBlocks;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.minecraft.block.BlockState;
+import net.minecraft.block.Blocks;
+import net.minecraft.client.render.OverlayTexture;
+import net.minecraft.client.render.VertexConsumerProvider;
+import net.minecraft.client.render.block.BlockRenderManager;
+import net.minecraft.client.render.entity.EntityRenderer;
+import net.minecraft.client.render.entity.EntityRendererFactory;
+import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.screen.PlayerScreenHandler;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.math.RotationAxis;
+
+@Environment(EnvType.CLIENT)
+public class AirdropEntityRenderer extends EntityRenderer<AirdropEntity> {
+	private final BlockRenderManager blockRenderManager;
+
+	public AirdropEntityRenderer(EntityRendererFactory.Context ctx) {
+		super(ctx);
+		this.blockRenderManager = ctx.getBlockRenderManager();
+		this.shadowRadius = 0.6f;
+	}
+
+	@Override
+	public void render(AirdropEntity entity, float yaw, float tickDelta, MatrixStack matrices,
+			VertexConsumerProvider vertexConsumers, int light) {
+		super.render(entity, yaw, tickDelta, matrices, vertexConsumers, light);
+
+		float sway = (float) Math.sin((entity.age + tickDelta) * 0.08f) * 3.5f;
+
+		matrices.push();
+		matrices.multiply(RotationAxis.POSITIVE_Z.rotationDegrees(sway));
+		matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees(sway * 0.5f));
+
+		// Crate body centered around origin
+		matrices.push();
+		matrices.translate(-0.5, 0.0, -0.5);
+		blockRenderManager.renderBlockAsEntity(
+			ModBlocks.AIRDROP_CRATE.getDefaultState(),
+			matrices,
+			vertexConsumers,
+			light,
+			OverlayTexture.DEFAULT_UV
+		);
+		matrices.pop();
+
+		// 4 shroud cords connecting crate corners to canopy
+		BlockState cordState = Blocks.GRAY_CONCRETE.getDefaultState();
+		float[][] corners = {
+			{-0.42f, -0.42f, 12f, -12f},
+			{0.42f, -0.42f, 12f, 12f},
+			{-0.42f, 0.42f, -12f, -12f},
+			{0.42f, 0.42f, -12f, 12f}
+		};
+		for (float[] c : corners) {
+			matrices.push();
+			matrices.translate(c[0], 0.92f, c[1]);
+			matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees(c[2]));
+			matrices.multiply(RotationAxis.POSITIVE_Z.rotationDegrees(c[3]));
+			matrices.scale(0.05f, 1.55f, 0.05f);
+			matrices.translate(-0.5, 0.0, -0.5);
+			blockRenderManager.renderBlockAsEntity(cordState, matrices, vertexConsumers, light, OverlayTexture.DEFAULT_UV);
+			matrices.pop();
+		}
+
+		// Parachute canopy: 3 striped panels (red / white / red)
+		renderCanopyPanel(matrices, vertexConsumers, light, Blocks.RED_WOOL.getDefaultState(), -0.82f, 2.38f, 0.82f, 0.22f, 2.4f, -10f);
+		renderCanopyPanel(matrices, vertexConsumers, light, Blocks.WHITE_WOOL.getDefaultState(), 0.0f, 2.48f, 0.84f, 0.24f, 2.45f, 0f);
+		renderCanopyPanel(matrices, vertexConsumers, light, Blocks.RED_WOOL.getDefaultState(), 0.82f, 2.38f, 0.82f, 0.22f, 2.4f, 10f);
+
+		matrices.pop();
+	}
+
+	private void renderCanopyPanel(MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light,
+			BlockState state, float xOffset, float yOffset, float width, float height, float depth, float tiltDeg) {
+		matrices.push();
+		matrices.translate(xOffset, yOffset, 0.0f);
+		matrices.multiply(RotationAxis.POSITIVE_Z.rotationDegrees(-tiltDeg));
+		matrices.scale(width, height, depth);
+		matrices.translate(-0.5, 0.0, -0.5);
+		blockRenderManager.renderBlockAsEntity(state, matrices, vertexConsumers, light, OverlayTexture.DEFAULT_UV);
+		matrices.pop();
+	}
+
+	@Override
+	public Identifier getTexture(AirdropEntity entity) {
+		return PlayerScreenHandler.BLOCK_ATLAS_TEXTURE;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\client\renderer\CorpseEntityRenderer.java ==========
+package com.tarkovcraft.client.renderer;
+
+import com.tarkovcraft.entity.CorpseEntity;
+import net.minecraft.client.render.OverlayTexture;
+import net.minecraft.client.render.RenderLayer;
+import net.minecraft.client.render.VertexConsumer;
+import net.minecraft.client.render.VertexConsumerProvider;
+import net.minecraft.client.render.entity.EntityRenderer;
+import net.minecraft.client.render.entity.EntityRendererFactory;
+import net.minecraft.client.render.entity.model.EntityModelLayers;
+import net.minecraft.client.render.entity.model.PlayerEntityModel;
+import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.math.RotationAxis;
+
+/**
+ * Renders CorpseEntity as a proper lying humanoid character model on the ground
+ * (using Minecraft's PlayerEntityModel) with a single clean nameplate (no overlapping text!).
+ */
+public class CorpseEntityRenderer extends EntityRenderer<CorpseEntity> {
+	private static final Identifier SKIN_TEXTURE = new Identifier("minecraft", "textures/entity/player/wide/steve.png");
+	private final PlayerEntityModel<net.minecraft.entity.LivingEntity> model;
+
+	public CorpseEntityRenderer(EntityRendererFactory.Context ctx) {
+		super(ctx);
+		this.shadowRadius = 0.55f;
+		this.model = new PlayerEntityModel<>(ctx.getPart(EntityModelLayers.PLAYER), false);
+		this.model.child = false;
+	}
+
+	@Override
+	public void render(CorpseEntity entity, float yaw, float tickDelta, MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light) {
+		matrices.push();
+
+		// Position & lay the biped flat on the ground facing entity's yaw
+		matrices.translate(0.0, 0.14, 0.0);
+		matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(-entity.getYaw() + 180.0f));
+		matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees(90.0f));
+		matrices.scale(-0.9375f, -0.9375f, 0.9375f);
+		matrices.translate(0.0, -0.75, 0.0);
+
+		// Slight natural fallen pose for arms and legs
+		model.head.setAngles(0.05f, 0.18f, 0.0f);
+		model.hat.copyTransform(model.head);
+		model.body.setAngles(0.0f, 0.0f, 0.0f);
+		model.jacket.copyTransform(model.body);
+		model.leftArm.setAngles(-0.15f, 0.0f, -0.35f);
+		model.leftSleeve.copyTransform(model.leftArm);
+		model.rightArm.setAngles(0.10f, 0.0f, 0.42f);
+		model.rightSleeve.copyTransform(model.rightArm);
+		model.leftLeg.setAngles(0.0f, 0.0f, -0.12f);
+		model.leftPants.copyTransform(model.leftLeg);
+		model.rightLeg.setAngles(0.0f, 0.0f, 0.14f);
+		model.rightPants.copyTransform(model.rightLeg);
+
+		VertexConsumer vc = vertexConsumers.getBuffer(RenderLayer.getEntityTranslucent(SKIN_TEXTURE));
+		model.render(matrices, vc, light, OverlayTexture.DEFAULT_UV, 0.85f, 0.85f, 0.85f, 1.0f);
+
+		matrices.pop();
+
+		// Render ONLY ONE clean nameplate (do NOT call super.render which rendered a duplicate!)
+		if (this.hasLabel(entity)) {
+			this.renderLabelIfPresent(entity, Text.literal(entity.getOwnerName()), matrices, vertexConsumers, light);
+		}
+	}
+
+	@Override
+	protected boolean hasLabel(CorpseEntity entity) {
+		return this.dispatcher.getSquaredDistanceToCamera(entity) < 36.0;
+	}
+
+	@Override
+	public Identifier getTexture(CorpseEntity entity) {
+		return SKIN_TEXTURE;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\client\renderer\HitZoneDebugRenderer.java ==========
+package com.tarkovcraft.client.renderer;
+
+import com.tarkovcraft.health.HitZone;
+import com.tarkovcraft.health.HitZoneBoxes;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.render.RenderLayer;
+import net.minecraft.client.render.VertexConsumer;
+import net.minecraft.client.render.VertexConsumerProvider;
+import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.decoration.ArmorStandEntity;
+import net.minecraft.entity.mob.MobEntity;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.math.Vec3d;
+import org.joml.Matrix3f;
+import org.joml.Matrix4f;
+
+import java.util.List;
+
+/**
+ * Renders live 3D OBB hitboxes from HitZoneBoxes when F3+B OR F8 is active.
+ */
+@Environment(EnvType.CLIENT)
+public final class HitZoneDebugRenderer {
+	private static final double MAX_RENDER_DIST_SQ = 64.0 * 64.0;
+	private static boolean userToggled = false;
+
+	private HitZoneDebugRenderer() {
+	}
+
+	public static boolean toggle() {
+		userToggled = !userToggled;
+		return userToggled;
+	}
+
+	public static boolean isUserToggled() {
+		return userToggled;
+	}
+
+	public static void render(WorldRenderContext ctx) {
+		MinecraftClient client = MinecraftClient.getInstance();
+		if (client == null || ctx.world() == null || client.player == null) {
+			return;
+		}
+		boolean enabled = userToggled || client.getEntityRenderDispatcher().shouldRenderHitboxes();
+		if (!enabled) {
+			return;
+		}
+		VertexConsumerProvider consumers = ctx.consumers();
+		if (consumers == null) {
+			return;
+		}
+
+		MatrixStack matrices = ctx.matrixStack();
+		Vec3d camPos = ctx.camera().getPos();
+		float tickDelta = ctx.tickDelta();
+		boolean firstPerson = client.options.getPerspective().isFirstPerson();
+
+		VertexConsumer lines = consumers.getBuffer(RenderLayer.getLines());
+		matrices.push();
+		matrices.translate(-camPos.x, -camPos.y, -camPos.z);
+		Matrix4f posMat = matrices.peek().getPositionMatrix();
+		Matrix3f normMat = matrices.peek().getNormalMatrix();
+
+		for (Entity e : ctx.world().getEntities()) {
+			if (!(e instanceof LivingEntity living) || !living.isAlive()) {
+				continue;
+			}
+			if (!shouldRenderFor(living, client.player, firstPerson)) {
+				continue;
+			}
+			if (living.squaredDistanceTo(camPos.x, camPos.y, camPos.z) > MAX_RENDER_DIST_SQ) {
+				continue;
+			}
+
+			Vec3d lerpedPos = living.getLerpedPos(tickDelta);
+			float bodyYaw = MathHelper.lerpAngleDegrees(tickDelta, living.prevBodyYaw, living.bodyYaw);
+			float headYaw = MathHelper.lerpAngleDegrees(tickDelta, living.prevHeadYaw, living.headYaw);
+
+			List<HitZoneBoxes.ZoneBox> boxes = HitZoneBoxes.compute(
+				lerpedPos, living.getHeight(), living.getWidth(), bodyYaw, headYaw
+			);
+			for (HitZoneBoxes.ZoneBox box : boxes) {
+				float[] rgba = colorForZone(box.zone());
+				Vec3d[] c = box.getWorldCorners();
+				for (int[] edge : HitZoneBoxes.EDGE_INDICES) {
+					drawEdge(lines, posMat, normMat, c[edge[0]], c[edge[1]], rgba[0], rgba[1], rgba[2], rgba[3]);
+				}
+			}
+		}
+
+		matrices.pop();
+	}
+
+	private static boolean shouldRenderFor(LivingEntity living, PlayerEntity localPlayer, boolean firstPerson) {
+		if (living instanceof PlayerEntity) {
+			return !(living == localPlayer && firstPerson);
+		}
+		if (living instanceof ArmorStandEntity) {
+			return true;
+		}
+		if (living instanceof MobEntity) {
+			return living.getHeight() >= 1.35f && living.getWidth() <= 0.85f;
+		}
+		return false;
+	}
+
+	private static void drawEdge(
+		VertexConsumer vc, Matrix4f posMat, Matrix3f normMat,
+		Vec3d p0, Vec3d p1, float r, float g, float b, float a
+	) {
+		float dx = (float) (p1.x - p0.x);
+		float dy = (float) (p1.y - p0.y);
+		float dz = (float) (p1.z - p0.z);
+		float len = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+		float nx = len > 1e-6f ? dx / len : 0.0f;
+		float ny = len > 1e-6f ? dy / len : 1.0f;
+		float nz = len > 1e-6f ? dz / len : 0.0f;
+
+		vc.vertex(posMat, (float) p0.x, (float) p0.y, (float) p0.z)
+			.color(r, g, b, a)
+			.normal(normMat, nx, ny, nz)
+			.next();
+		vc.vertex(posMat, (float) p1.x, (float) p1.y, (float) p1.z)
+			.color(r, g, b, a)
+			.normal(normMat, nx, ny, nz)
+			.next();
+	}
+
+	private static float[] colorForZone(HitZone zone) {
+		return switch (zone) {
+			case HEAD_EYES -> new float[]{1.00f, 0.12f, 0.12f, 1.0f};
+			case HEAD_EARS -> new float[]{0.95f, 0.15f, 0.90f, 1.0f};
+			case HEAD_JAWS -> new float[]{1.00f, 0.55f, 0.10f, 1.0f};
+			case HEAD_TOP -> new float[]{0.25f, 0.78f, 1.00f, 1.0f};
+			case NECK -> new float[]{1.00f, 0.92f, 0.15f, 1.0f};
+			case THORAX -> new float[]{0.15f, 0.90f, 0.30f, 1.0f};
+			case STOMACH -> new float[]{0.62f, 0.96f, 0.22f, 1.0f};
+			case ARMPIT_LEFT, ARMPIT_RIGHT -> new float[]{0.65f, 0.25f, 1.00f, 1.0f};
+			case LEFT_ARM, RIGHT_ARM -> new float[]{0.20f, 0.48f, 1.00f, 1.0f};
+			case LEFT_LEG, RIGHT_LEG -> new float[]{0.12f, 0.88f, 0.82f, 1.0f};
+		};
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\client\screen\TarkovDeathScreen.java ==========
+package com.tarkovcraft.client.screen;
+
+import com.tarkovcraft.client.ClientLoadoutCache;
+import com.tarkovcraft.client.hud.BodyHealthHudHelper;
+import com.tarkovcraft.health.BodyPart;
+import com.tarkovcraft.health.BodyPartHealth;
+import com.tarkovcraft.health.DamageReport;
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.screen.TitleScreen;
+import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.text.Text;
+
+import java.util.List;
+
+/**
+ * Escape-from-Tarkov-style KIA Death Screen:
+ * Displays killer, weapon/ammo, exact fatal HitZone (e.g. "Голова — глаза (Ваншот!)"),
+ * shot distance, body-part silhouette showing final damage state, and recent hit log.
+ */
+public class TarkovDeathScreen extends Screen {
+	private int ticksSinceDeath = 0;
+	private ButtonWidget respawnButton;
+	private ButtonWidget titleButton;
+
+	public TarkovDeathScreen() {
+		super(Text.translatable("screen.tarkovcraft.kia_title"));
+	}
+
+	@Override
+	public boolean shouldCloseOnEsc() {
+		return false;
+	}
+
+	@Override
+	protected void init() {
+		super.init();
+		int btnY = Math.min(this.height - 32, (this.height + 210) / 2);
+		respawnButton = this.addDrawableChild(ButtonWidget.builder(
+			Text.translatable("screen.tarkovcraft.respawn"),
+			btn -> {
+				if (this.client != null && this.client.player != null) {
+					this.client.player.requestRespawn();
+					this.client.setScreen(null);
+				}
+			}
+		).dimensions(this.width / 2 - 125, btnY, 120, 20).build());
+
+		titleButton = this.addDrawableChild(ButtonWidget.builder(
+			Text.translatable("deathScreen.titleScreen"),
+			btn -> {
+				if (this.client != null && this.client.world != null) {
+					this.client.world.disconnect();
+					this.client.disconnect();
+					this.client.setScreen(new TitleScreen());
+				}
+			}
+		).dimensions(this.width / 2 + 5, btnY, 120, 20).build());
+
+		respawnButton.active = false;
+	}
+
+	@Override
+	public void tick() {
+		super.tick();
+		ticksSinceDeath++;
+		if (ticksSinceDeath >= 15 && respawnButton != null) {
+			respawnButton.active = true;
+		}
+	}
+
+	@Override
+	public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+		// Deep crimson-charcoal Tarkov KIA vignette
+		context.fillGradient(0, 0, this.width, this.height, 0xE6140909, 0xF20A0C0E);
+
+		BodyPartHealth health = ClientLoadoutCache.getBodyHealth();
+		DamageReport fatal = health.getLastFatalReport();
+
+		int panelW = Math.min(this.width - 24, 430);
+		int panelH = 216;
+		int px = (this.width - panelW) / 2;
+		int py = (this.height - panelH) / 2 - 12;
+
+		context.fill(px, py, px + panelW, py + panelH, 0xE6111417);
+		context.drawBorder(px, py, panelW, panelH, 0xFF7A2424);
+
+		// Crimson KIA Header Bar
+		context.fill(px + 1, py + 1, px + panelW - 1, py + 24, 0xFF3A1212);
+		context.fill(px + 1, py + 24, px + panelW - 1, py + 25, 0xFF9E2B2B);
+		context.drawCenteredTextWithShadow(textRenderer,
+			Text.translatable("screen.tarkovcraft.kia_header"),
+			px + panelW / 2, py + 8, 0xFFFF5E5E);
+
+		// Left Panel: Final Body Silhouette
+		int leftW = 148;
+		int leftX = px + 8;
+		int contentY = py + 32;
+		int contentH = panelH - 40;
+		context.fill(leftX, contentY, leftX + leftW, contentY + contentH, 0xCC161A1E);
+		context.drawBorder(leftX, contentY, leftW, contentH, 0xFF2D333A);
+
+		int silCx = leftX + leftW / 2;
+		int silTop = contentY + 12;
+		BodyHealthHudHelper.drawBodyPartRect(context, silCx - 10, silTop, 20, 20, health.getRatio(BodyPart.HEAD));
+		BodyHealthHudHelper.drawBodyPartRect(context, silCx - 15, silTop + 24, 30, 28, health.getRatio(BodyPart.THORAX));
+		BodyHealthHudHelper.drawBodyPartRect(context, silCx - 13, silTop + 54, 26, 18, health.getRatio(BodyPart.STOMACH));
+		BodyHealthHudHelper.drawBodyPartRect(context, silCx - 28, silTop + 24, 11, 42, health.getRatio(BodyPart.LEFT_ARM));
+		BodyHealthHudHelper.drawBodyPartRect(context, silCx + 17, silTop + 24, 11, 42, health.getRatio(BodyPart.RIGHT_ARM));
+		BodyHealthHudHelper.drawBodyPartRect(context, silCx - 14, silTop + 74, 12, 46, health.getRatio(BodyPart.LEFT_LEG));
+		BodyHealthHudHelper.drawBodyPartRect(context, silCx + 2, silTop + 74, 12, 46, health.getRatio(BodyPart.RIGHT_LEG));
+
+		String totalStr = Math.round(health.getTotalHp()) + " / " + (int) BodyPart.TOTAL_MAX_HP + " HP";
+		context.drawCenteredTextWithShadow(textRenderer, totalStr, silCx, contentY + contentH - 16, 0xFFCF5555);
+
+		// Right Panel: Cause of Death + Hit Log
+		int rightX = leftX + leftW + 8;
+		int rightW = panelW - leftW - 24;
+		context.fill(rightX, contentY, rightX + rightW, contentY + contentH, 0xCC161A1E);
+		context.drawBorder(rightX, contentY, rightW, contentH, 0xFF2D333A);
+
+		int ry = contentY + 8;
+		if (fatal != null) {
+			String zoneName = Text.translatable(fatal.hitZone().getTranslationKey()).getString();
+			if (fatal.headEyesOneshot()) {
+				zoneName += " (" + Text.translatable("screen.tarkovcraft.oneshot").getString() + ")";
+			} else if (fatal.overflowedToThorax()) {
+				zoneName += " -> " + Text.translatable(BodyPart.THORAX.getTranslationKey()).getString();
+			}
+
+			drawInfoRow(context, rightX + 8, ry, Text.translatable("screen.tarkovcraft.kia_killer").getString(),
+				fatal.killerName().isEmpty() ? "Unknown" : fatal.killerName(), 0xFFEFEFEF);
+			ry += 18;
+
+			drawInfoRow(context, rightX + 8, ry, Text.translatable("screen.tarkovcraft.kia_zone").getString(),
+				zoneName, 0xFFFF5E5E);
+			ry += 18;
+
+			String weaponLine = fatal.weaponName().isEmpty() ? "-" : fatal.weaponName();
+			if (!fatal.ammoName().isEmpty()) {
+				weaponLine += " // " + fatal.ammoName();
+			}
+			drawInfoRow(context, rightX + 8, ry, Text.translatable("screen.tarkovcraft.kia_weapon").getString(),
+				weaponLine, 0xFFD4B46A);
+			ry += 18;
+
+			String distLine = fatal.distanceMeters() > 0.1f ? String.format("%.1f m", fatal.distanceMeters()) : "-";
+			drawInfoRow(context, rightX + 8, ry, Text.translatable("screen.tarkovcraft.kia_distance").getString(),
+				distLine, 0xFFB8C0C8);
+			ry += 22;
+		} else {
+			context.drawTextWithShadow(textRenderer, Text.translatable("screen.tarkovcraft.kia_unknown"), rightX + 8, ry, 0xFFB8C0C8);
+			ry += 20;
+		}
+
+		// Recent Hits Log
+		context.fill(rightX + 6, ry, rightX + rightW - 6, ry + 1, 0xFF2D333A);
+		ry += 6;
+		drawTiny(context, Text.translatable("health.tarkovcraft.recent_hits").getString(), rightX + 8, ry, 0xFFD4B46A);
+		ry += 10;
+
+		List<DamageReport> hits = health.getRecentHits();
+		int shown = Math.min(5, hits.size());
+		for (int i = 0; i < shown; i++) {
+			DamageReport r = hits.get(i);
+			String zt = Text.translatable(r.hitZone().getTranslationKey()).getString();
+			String armorTag = r.ricocheted() ? " [RICOCHET]" : (r.armorBlocked() ? " [ARMOR]" : "");
+			String line = String.format("#%d  %s  -%.0f HP%s%s",
+				i + 1, zt, r.finalDamage(),
+				armorTag,
+				r.overflowedToThorax() ? " -> THORAX" : ""
+			);
+			drawTiny(context, line, rightX + 8, ry, i == 0 ? 0xFFFF7A7A : 0xFFB8C0C8);
+			ry += 10;
+		}
+
+		super.render(context, mouseX, mouseY, delta);
+	}
+
+	private void drawInfoRow(DrawContext context, int x, int y, String label, String value, int valueColor) {
+		drawTiny(context, label, x, y, 0xFF88929C);
+		context.drawTextWithShadow(textRenderer, value, x, y + 7, valueColor);
+	}
+
+	private void drawTiny(DrawContext context, String text, int x, int y, int col) {
+		context.getMatrices().push();
+		context.getMatrices().scale(0.72f, 0.72f, 1.0f);
+		context.drawTextWithShadow(textRenderer, text, (int) (x / 0.72f), (int) (y / 0.72f), col);
+		context.getMatrices().pop();
+	}
+}

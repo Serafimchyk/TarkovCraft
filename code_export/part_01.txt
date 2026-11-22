@@ -1,0 +1,1123 @@
+
+// ========== .\src\main\java\com\tarkovcraft\airdrop\AirdropManager.java ==========
+package com.tarkovcraft.airdrop;
+
+import com.tarkovcraft.config.TarkovConfig;
+import com.tarkovcraft.entity.AirdropEntity;
+import com.tarkovcraft.registry.ModEntities;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.sound.SoundEvents;
+import net.minecraft.text.Text;
+import net.minecraft.world.Heightmap;
+
+import java.util.List;
+
+public final class AirdropManager {
+	private static int tickCounter = 0;
+
+	private AirdropManager() {
+	}
+
+	public static void resetTimer() {
+		tickCounter = 0;
+	}
+
+	public static int getTickCounter() {
+		return tickCounter;
+	}
+
+	public static void onConfigReloaded() {
+		int maxTicks = TarkovConfig.get().getAirdropIntervalTicks();
+		if (tickCounter >= maxTicks) {
+			tickCounter = 0;
+		}
+	}
+
+	public static void tickServer(MinecraftServer server) {
+		TarkovConfig cfg = TarkovConfig.get();
+		if (!cfg.airdropEnabled) {
+			return;
+		}
+		ServerWorld overworld = server.getOverworld();
+		if (overworld == null) {
+			return;
+		}
+		List<ServerPlayerEntity> activePlayers = overworld.getPlayers(p -> p.isAlive() && !p.isSpectator());
+		if (activePlayers.isEmpty()) {
+			return;
+		}
+		tickCounter++;
+		if (tickCounter >= cfg.getAirdropIntervalTicks()) {
+			tickCounter = 0;
+			ServerPlayerEntity target = activePlayers.get(overworld.random.nextInt(activePlayers.size()));
+			spawnAirdropNear(target);
+		}
+	}
+
+	public static AirdropEntity spawnAirdropNear(ServerPlayerEntity player) {
+		ServerWorld world = player.getServerWorld();
+		TarkovConfig cfg = TarkovConfig.get();
+		int minR = cfg.airdropMinRadius;
+		int maxR = Math.max(minR, cfg.airdropMaxRadius);
+
+		int chosenX = player.getBlockX();
+		int chosenZ = player.getBlockZ();
+		boolean found = false;
+		for (int attempt = 0; attempt < 16; attempt++) {
+			double angle = world.random.nextDouble() * Math.PI * 2.0;
+			double radius = minR + world.random.nextDouble() * (maxR - minR);
+			int cx = (int) Math.round(player.getX() + Math.cos(angle) * radius);
+			int cz = (int) Math.round(player.getZ() + Math.sin(angle) * radius);
+			if (!world.isChunkLoaded(cx >> 4, cz >> 4)) {
+				continue;
+			}
+			int surfaceY = world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, cx, cz);
+			net.minecraft.util.math.BlockPos surfacePos = new net.minecraft.util.math.BlockPos(cx, surfaceY - 1, cz);
+			if (world.getFluidState(surfacePos).isEmpty() && world.getFluidState(surfacePos.up()).isEmpty()) {
+				chosenX = cx;
+				chosenZ = cz;
+				found = true;
+				break;
+			}
+		}
+		if (!found) {
+			chosenX = player.getBlockX();
+			chosenZ = player.getBlockZ();
+		}
+		return spawnAirdropAt(world, chosenX, chosenZ, true);
+	}
+
+	@org.jetbrains.annotations.Nullable
+	public static AirdropEntity spawnAirdropAt(ServerWorld world, int x, int z, boolean announce) {
+		if (!world.isChunkLoaded(x >> 4, z >> 4)) {
+			return null;
+		}
+		int surfaceY = world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z);
+		int spawnY = Math.min(world.getTopY() - 8, Math.max(surfaceY + 48, world.getSeaLevel() + 48));
+
+		AirdropEntity airdrop = new AirdropEntity(ModEntities.AIRDROP, world);
+		airdrop.refreshPositionAndAngles(x + 0.5, spawnY, z + 0.5, 0.0f, 0.0f);
+		world.spawnEntity(airdrop);
+
+		for (ServerPlayerEntity p : world.getPlayers()) {
+			world.playSound(null, p.getX(), p.getY(), p.getZ(),
+				SoundEvents.BLOCK_BEACON_ACTIVATE, SoundCategory.AMBIENT, 0.9f, 0.85f);
+		}
+
+		if (announce) {
+			Text msg = TarkovConfig.get().airdropAnnounceCoords
+				? Text.translatable("message.tarkovcraft.airdrop_incoming_coords", x, z)
+				: Text.translatable("message.tarkovcraft.airdrop_incoming");
+			MinecraftServer server = world.getServer();
+			if (server != null) {
+				server.getPlayerManager().broadcast(msg, false);
+			}
+		}
+		return airdrop;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\ammo\AmmoReloadTracker.java ==========
+package com.tarkovcraft.ammo;
+
+import com.tarkovcraft.grid.ContainerItemHelper;
+import com.tarkovcraft.grid.GridContainer;
+import com.tarkovcraft.grid.GridEntry;
+import com.tarkovcraft.item.TacticalRigItem;
+import com.tarkovcraft.loadout.EquipmentSlotType;
+import com.tarkovcraft.loadout.PlayerLoadout;
+import com.tarkovcraft.loadout.PlayerLoadoutHolder;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.server.network.ServerPlayerEntity;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * Server-side fallback tracker for TaCZ firearm reloads:
+ * - In Creative mode (where TaCZ does not call PlayerInventory.removeStack), detects GunCurrentAmmoCount
+ *   increases and stamps the matching AmmoTier from the player's inventory/loadout onto the held gun.
+ * - In Survival mode, ensures guns without TarkovLoadedTier receive FMJ when ammo count increases.
+ */
+public final class AmmoReloadTracker {
+	private static final Map<UUID, Integer> LAST_AMMO_COUNTS = new HashMap<>();
+
+	private AmmoReloadTracker() {
+	}
+
+	public static void removePlayer(UUID playerId) {
+		LAST_AMMO_COUNTS.remove(playerId);
+	}
+
+	public static void tickPlayer(ServerPlayerEntity player) {
+		if (player == null || player.isSpectator()) {
+			return;
+		}
+		ItemStack held = player.getMainHandStack();
+		if (!AmmoTier.isTaczGunStack(held) || !held.hasNbt()) {
+			LAST_AMMO_COUNTS.remove(player.getUuid());
+			return;
+		}
+
+		NbtCompound nbt = held.getNbt();
+		if (nbt == null || !nbt.contains("GunCurrentAmmoCount")) {
+			return;
+		}
+
+		int curCount = nbt.getInt("GunCurrentAmmoCount");
+		Integer prevCount = LAST_AMMO_COUNTS.put(player.getUuid(), curCount);
+		if (prevCount == null || curCount <= prevCount) {
+			return;
+		}
+
+		if (player.isCreative()) {
+			AmmoTier found = findAmmoTierForCreativeReload(player);
+			if (found != null) {
+				AmmoTier.stampLoadedTierOnGun(held, found);
+			} else if (!nbt.contains(AmmoTier.NBT_LOADED_TIER)) {
+				AmmoTier.stampLoadedTierOnGun(held, AmmoTier.FMJ);
+			}
+		} else if (!nbt.contains(AmmoTier.NBT_LOADED_TIER)) {
+			AmmoTier.stampLoadedTierOnGun(held, AmmoTier.FMJ);
+		}
+	}
+
+	@Nullable
+	private static AmmoTier findAmmoTierForCreativeReload(ServerPlayerEntity player) {
+		AmmoTier fallbackFmj = null;
+		for (int i = 0; i < player.getInventory().main.size(); i++) {
+			ItemStack st = player.getInventory().main.get(i);
+			if (AmmoTier.isTaczAmmoStack(st)) {
+				AmmoTier t = AmmoTier.getFromAmmoStack(st);
+				if (t != AmmoTier.FMJ) return t;
+				fallbackFmj = t;
+			}
+		}
+		for (int i = 0; i < player.getInventory().offHand.size(); i++) {
+			ItemStack st = player.getInventory().offHand.get(i);
+			if (AmmoTier.isTaczAmmoStack(st)) {
+				AmmoTier t = AmmoTier.getFromAmmoStack(st);
+				if (t != AmmoTier.FMJ) return t;
+				fallbackFmj = t;
+			}
+		}
+		if (player instanceof PlayerLoadoutHolder holder) {
+			PlayerLoadout loadout = holder.tarkovcraft$getLoadout();
+			for (int i = 0; i < PlayerLoadout.POCKET_COUNT; i++) {
+				ItemStack st = loadout.getPocket(i);
+				if (AmmoTier.isTaczAmmoStack(st)) {
+					AmmoTier t = AmmoTier.getFromAmmoStack(st);
+					if (t != AmmoTier.FMJ) return t;
+					fallbackFmj = t;
+				}
+			}
+			ItemStack rig = loadout.getEquipment(EquipmentSlotType.RIG);
+			if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
+				for (GridContainer g : ContainerItemHelper.readRigGrids(rig)) {
+					for (GridEntry entry : g.getEntries()) {
+						ItemStack st = entry.getStack();
+						if (AmmoTier.isTaczAmmoStack(st)) {
+							AmmoTier t = AmmoTier.getFromAmmoStack(st);
+							if (t != AmmoTier.FMJ) return t;
+							fallbackFmj = t;
+						}
+					}
+				}
+			}
+		}
+		return fallbackFmj;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\ammo\AmmoTier.java ==========
+package com.tarkovcraft.ammo;
+
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.registry.Registries;
+import net.minecraft.util.Formatting;
+import net.minecraft.util.Identifier;
+
+/**
+ * Tarkov ballistic ammo tiers for TaCZ ammunition:
+ * - HP  (Hollow Point / Экспансивные): +30% flesh damage, -12 penetration (stops on Class 2-3, shreds limbs/face)
+ * - FMJ (Standard / Стандартные PS/FMJ): baseline damage & penetration (Class 2-3)
+ * - AP  (Armor-Piercing / Бронебойные BP/M855A1/M80): -8% flesh damage, +16 penetration (Class 4-5)
+ * - IGN (Ultra-AP / Сверхбронебойные BS/Igolnik/M995/M61): -15% flesh damage, +28 penetration (Class 5-6)
+ */
+public enum AmmoTier {
+	HP("hp", "HP", 1.30f, -12, 0.70f, Formatting.GREEN, 0xFF55FF55),
+	FMJ("fmj", "PS/FMJ", 1.00f, 0, 1.00f, Formatting.GRAY, 0xFFB0B8C0),
+	AP("ap", "BP/AP", 0.92f, 16, 1.25f, Formatting.GOLD, 0xFFFFAA00),
+	IGN("ign", "BS/M995", 0.85f, 28, 1.50f, Formatting.RED, 0xFFFF5555);
+
+	public static final String NBT_AMMO_TIER = "TarkovAmmoTier";
+	public static final String NBT_AMMO_TIER_ALIAS = "tarkovcraft_ammo_tier";
+	public static final String NBT_LOADED_TIER = "TarkovLoadedTier";
+
+	private final String id;
+	private final String badge;
+	private final float damageMultiplier;
+	private final int penetrationDelta;
+	private final float armorWearMultiplier;
+	private final Formatting color;
+	private final int argbColor;
+
+	AmmoTier(String id, String badge, float damageMultiplier, int penetrationDelta, float armorWearMultiplier, Formatting color, int argbColor) {
+		this.id = id;
+		this.badge = badge;
+		this.damageMultiplier = damageMultiplier;
+		this.penetrationDelta = penetrationDelta;
+		this.armorWearMultiplier = armorWearMultiplier;
+		this.color = color;
+		this.argbColor = argbColor;
+	}
+
+	public String getId() {
+		return id;
+	}
+
+	public String getBadge() {
+		return badge;
+	}
+
+	public float getDamageMultiplier() {
+		return damageMultiplier;
+	}
+
+	public int getPenetrationDelta() {
+		return penetrationDelta;
+	}
+
+	public float getArmorWearMultiplier() {
+		return armorWearMultiplier;
+	}
+
+	public Formatting getColor() {
+		return color;
+	}
+
+	public int getArgbColor() {
+		return argbColor;
+	}
+
+	public String getTranslationKey() {
+		return "ammotier.tarkovcraft." + id;
+	}
+
+	public static String formatArmorClassTarget(int pen) {
+		if (pen >= 55) return "Class 6";
+		if (pen >= 45) return "Class 5";
+		if (pen >= 35) return "Class 4";
+		if (pen >= 25) return "Class 3";
+		if (pen >= 15) return "Class 2";
+		return "Class 1 / Flesh";
+	}
+
+	public static AmmoTier byId(String id) {
+		if (id == null || id.isBlank()) return FMJ;
+		for (AmmoTier tier : values()) {
+			if (tier.id.equalsIgnoreCase(id) || tier.badge.equalsIgnoreCase(id)) {
+				return tier;
+			}
+		}
+		return FMJ;
+	}
+
+	public static boolean isTaczAmmoStack(ItemStack stack) {
+		if (stack == null || stack.isEmpty()) return false;
+		Identifier id = Registries.ITEM.getId(stack.getItem());
+		if ("tacz".equals(id.getNamespace()) && "ammo".equals(id.getPath())) {
+			return true;
+		}
+		return stack.hasNbt() && stack.getNbt() != null && stack.getNbt().contains("AmmoId");
+	}
+
+	public static boolean isTaczGunStack(ItemStack stack) {
+		if (stack == null || stack.isEmpty()) return false;
+		Identifier id = Registries.ITEM.getId(stack.getItem());
+		if ("tacz".equals(id.getNamespace()) && "modern_kinetic_gun".equals(id.getPath())) {
+			return true;
+		}
+		return stack.hasNbt() && stack.getNbt() != null && stack.getNbt().contains("GunId");
+	}
+
+	public static String getAmmoId(ItemStack stack) {
+		if (stack == null || stack.isEmpty() || !stack.hasNbt() || stack.getNbt() == null) {
+			return "";
+		}
+		return stack.getNbt().getString("AmmoId");
+	}
+
+	public static AmmoTier getFromAmmoStack(ItemStack stack) {
+		if (stack == null || stack.isEmpty() || !stack.hasNbt() || stack.getNbt() == null) {
+			return FMJ;
+		}
+		NbtCompound nbt = stack.getNbt();
+		if (nbt.contains(NBT_AMMO_TIER)) {
+			return byId(nbt.getString(NBT_AMMO_TIER));
+		}
+		if (nbt.contains(NBT_AMMO_TIER_ALIAS)) {
+			return byId(nbt.getString(NBT_AMMO_TIER_ALIAS));
+		}
+		return FMJ;
+	}
+
+	public static void setOnAmmoStack(ItemStack stack, AmmoTier tier) {
+		if (stack == null || stack.isEmpty()) return;
+		if (tier == FMJ) {
+			if (stack.hasNbt() && stack.getNbt() != null) {
+				stack.getNbt().remove(NBT_AMMO_TIER);
+			}
+		} else {
+			stack.getOrCreateNbt().putString(NBT_AMMO_TIER, tier.id);
+		}
+	}
+
+	public static AmmoTier getLoadedTierFromGun(ItemStack gunStack) {
+		if (gunStack == null || gunStack.isEmpty() || !gunStack.hasNbt() || gunStack.getNbt() == null) {
+			return FMJ;
+		}
+		NbtCompound nbt = gunStack.getNbt();
+		if (nbt.contains(NBT_LOADED_TIER)) {
+			return byId(nbt.getString(NBT_LOADED_TIER));
+		}
+		return FMJ;
+	}
+
+	public static void stampLoadedTierOnGun(ItemStack gunStack, AmmoTier tier) {
+		if (gunStack == null || gunStack.isEmpty()) return;
+		gunStack.getOrCreateNbt().putString(NBT_LOADED_TIER, tier.id);
+	}
+
+	public static ItemStack createTaczAmmoStack(String ammoId, AmmoTier tier, int count) {
+		Identifier taczAmmoItemId = new Identifier("tacz", "ammo");
+		Item item = Registries.ITEM.containsId(taczAmmoItemId)
+			? Registries.ITEM.get(taczAmmoItemId)
+			: Items.IRON_NUGGET;
+		ItemStack stack = new ItemStack(item, Math.max(1, count));
+		String fullAmmoId = ammoId.contains(":") ? ammoId : ("tacz:" + ammoId);
+		stack.getOrCreateNbt().putString("AmmoId", fullAmmoId);
+		if (tier != FMJ) {
+			stack.getOrCreateNbt().putString(NBT_AMMO_TIER, tier.id);
+		}
+		return stack;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\ammo\TaCZCaliberCatalog.java ==========
+package com.tarkovcraft.ammo;
+
+import com.tarkovcraft.health.TaCZBulletHelper;
+
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
+
+/**
+ * Catalog of all 23 TaCZ default ballistic calibers plus zero-hard-dependency runtime
+ * discovery of custom gunpack calibers via TimelessAPI.getAllCommonAmmoIndex().
+ */
+public final class TaCZCaliberCatalog {
+	private static final Pattern VALID_AMMO_ID = Pattern.compile("^[a-z0-9_]+:[a-z0-9_]+$");
+
+	public enum CaliberGroup {
+		PISTOL_SMG(30, 1),
+		MAGNUM_PISTOL(20, 1),
+		SHOTGUN(16, 1),
+		ASSAULT_RIFLE(24, 2),
+		BATTLE_SNIPER(16, 2),
+		HEAVY_SNIPER(10, 3);
+
+		private final int batchSize;
+		private final int materialMultiplier;
+
+		CaliberGroup(int batchSize, int materialMultiplier) {
+			this.batchSize = batchSize;
+			this.materialMultiplier = materialMultiplier;
+		}
+
+		public int getBatchSize() {
+			return batchSize;
+		}
+
+		public int getMaterialMultiplier() {
+			return materialMultiplier;
+		}
+	}
+
+	public record CaliberSpec(
+		String ammoId,
+		String displayName,
+		CaliberGroup group,
+		int basePenetration
+	) {
+		public int getBatchSize() {
+			return group.getBatchSize();
+		}
+	}
+
+	private static final Map<String, CaliberSpec> DEFAULT_SPECS = new LinkedHashMap<>();
+	private static final Map<String, CaliberSpec> RUNTIME_SPECS = new LinkedHashMap<>();
+	private static boolean runtimeDiscovered = false;
+
+	static {
+		// Pistol / SMG (batch = 30)
+		registerDefault("tacz:9mm", "9x19mm Parabellum", CaliberGroup.PISTOL_SMG, 18);
+		registerDefault("tacz:45acp", ".45 ACP", CaliberGroup.PISTOL_SMG, 18);
+		registerDefault("tacz:762x25", "7.62x25mm Tokarev", CaliberGroup.PISTOL_SMG, 19);
+		registerDefault("tacz:57x28", "5.7x28mm", CaliberGroup.PISTOL_SMG, 26);
+		registerDefault("tacz:46x30", "4.6x30mm", CaliberGroup.PISTOL_SMG, 26);
+		registerDefault("tacz:22wmr", ".22 WMR", CaliberGroup.PISTOL_SMG, 14);
+
+		// Magnum Pistol (batch = 20)
+		registerDefault("tacz:357mag", ".357 Magnum", CaliberGroup.MAGNUM_PISTOL, 25);
+		registerDefault("tacz:50ae", ".50 AE", CaliberGroup.MAGNUM_PISTOL, 26);
+		registerDefault("tacz:500mag", ".500 S&W Magnum", CaliberGroup.MAGNUM_PISTOL, 28);
+
+		// Shotgun (batch = 16)
+		registerDefault("tacz:12g", "12 Gauge", CaliberGroup.SHOTGUN, 15);
+
+		// Assault Rifle (batch = 24)
+		registerDefault("tacz:545x39", "5.45x39mm", CaliberGroup.ASSAULT_RIFLE, 28);
+		registerDefault("tacz:556x45", "5.56x45mm NATO", CaliberGroup.ASSAULT_RIFLE, 28);
+		registerDefault("tacz:58x42", "5.8x42mm", CaliberGroup.ASSAULT_RIFLE, 30);
+		registerDefault("tacz:300blk", ".300 Blackout", CaliberGroup.ASSAULT_RIFLE, 30);
+		registerDefault("tacz:762x39", "7.62x39mm", CaliberGroup.ASSAULT_RIFLE, 31);
+
+		// Battle / Sniper (batch = 16)
+		registerDefault("tacz:68x51fury", "6.8x51mm Fury", CaliberGroup.BATTLE_SNIPER, 38);
+		registerDefault("tacz:308", "7.62x51mm (.308 Win)", CaliberGroup.BATTLE_SNIPER, 38);
+		registerDefault("tacz:762x54", "7.62x54mmR", CaliberGroup.BATTLE_SNIPER, 39);
+		registerDefault("tacz:30_06", ".30-06 Springfield", CaliberGroup.BATTLE_SNIPER, 38);
+		registerDefault("tacz:45_70", ".45-70 Government", CaliberGroup.BATTLE_SNIPER, 34);
+		registerDefault("tacz:792x57", "7.92x57mm Mauser", CaliberGroup.BATTLE_SNIPER, 38);
+
+		// Heavy Sniper (batch = 10)
+		registerDefault("tacz:338", ".338 Lapua Magnum", CaliberGroup.HEAVY_SNIPER, 48);
+		registerDefault("tacz:50bmg", ".50 BMG", CaliberGroup.HEAVY_SNIPER, 54);
+	}
+
+	private TaCZCaliberCatalog() {
+	}
+
+	private static void registerDefault(String ammoId, String displayName, CaliberGroup group, int basePen) {
+		DEFAULT_SPECS.put(ammoId, new CaliberSpec(ammoId, displayName, group, basePen));
+	}
+
+	public static boolean isBallisticAmmoId(String ammoId) {
+		if (ammoId == null || !VALID_AMMO_ID.matcher(ammoId).matches()) {
+			return false;
+		}
+		String lower = ammoId.toLowerCase(Locale.ROOT);
+		return !lower.contains("40mm") && !lower.contains("rpg_rocket");
+	}
+
+	public static List<CaliberSpec> getDefaultCalibers() {
+		return List.copyOf(DEFAULT_SPECS.values());
+	}
+
+	public static synchronized void discoverRuntimeCalibers() {
+		if (runtimeDiscovered) {
+			return;
+		}
+		runtimeDiscovered = true;
+		try {
+			Class<?> apiClass = Class.forName("com.tacz.guns.api.TimelessAPI");
+			Method m = apiClass.getMethod("getAllCommonAmmoIndex");
+			Object raw = m.invoke(null);
+			if (raw instanceof Set<?> entries) {
+				for (Object entryObj : entries) {
+					if (entryObj instanceof Map.Entry<?, ?> entry && entry.getKey() != null) {
+						String id = entry.getKey().toString();
+						registerRuntimeCaliber(id);
+					}
+				}
+			}
+		} catch (Throwable ignored) {
+			// Zero-hard-dependency: TaCZ is optional at compile/test time
+		}
+	}
+
+	public static synchronized void registerRuntimeCaliber(String ammoId) {
+		if (!isBallisticAmmoId(ammoId) || DEFAULT_SPECS.containsKey(ammoId) || RUNTIME_SPECS.containsKey(ammoId)) {
+			return;
+		}
+		RUNTIME_SPECS.put(ammoId, buildDynamicSpec(ammoId));
+	}
+
+	public static synchronized List<CaliberSpec> getAllKnownCalibers() {
+		discoverRuntimeCalibers();
+		List<CaliberSpec> out = new ArrayList<>(DEFAULT_SPECS.values());
+		out.addAll(RUNTIME_SPECS.values());
+		return Collections.unmodifiableList(out);
+	}
+
+	public static synchronized List<CaliberSpec> getAllCalibersWithExtras(Collection<String> extraAmmoIds) {
+		discoverRuntimeCalibers();
+		Map<String, CaliberSpec> merged = new LinkedHashMap<>(DEFAULT_SPECS);
+		merged.putAll(RUNTIME_SPECS);
+		if (extraAmmoIds != null) {
+			for (String id : extraAmmoIds) {
+				if (isBallisticAmmoId(id) && !merged.containsKey(id)) {
+					merged.put(id, buildDynamicSpec(id));
+				}
+			}
+		}
+		return List.copyOf(merged.values());
+	}
+
+	public static CaliberSpec getSpecOrDynamic(String ammoId) {
+		CaliberSpec known = DEFAULT_SPECS.get(ammoId);
+		if (known != null) {
+			return known;
+		}
+		synchronized (TaCZCaliberCatalog.class) {
+			CaliberSpec rt = RUNTIME_SPECS.get(ammoId);
+			if (rt != null) {
+				return rt;
+			}
+		}
+		return buildDynamicSpec(ammoId);
+	}
+
+	public static CaliberSpec buildDynamicSpec(String ammoId) {
+		String clean = ammoId == null ? "unknown" : ammoId;
+		int colon = clean.indexOf(':');
+		String path = colon >= 0 ? clean.substring(colon + 1) : clean;
+		String label = path.replace('_', ' ').toUpperCase(Locale.ROOT);
+		int basePen = TaCZBulletHelper.estimateBaseCaliberPenetration(clean);
+		return new CaliberSpec(clean, label, CaliberGroup.ASSAULT_RIFLE, basePen);
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\block\SearchableLootBlock.java ==========
+package com.tarkovcraft.block;
+
+import com.tarkovcraft.loot.TarkovLootPool;
+import com.tarkovcraft.registry.ModBlocks;
+import net.minecraft.block.BlockRenderType;
+import net.minecraft.block.BlockState;
+import net.minecraft.block.BlockWithEntity;
+import net.minecraft.block.entity.BlockEntity;
+import net.minecraft.block.entity.BlockEntityTicker;
+import net.minecraft.block.entity.BlockEntityType;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.util.ActionResult;
+import net.minecraft.util.Hand;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.World;
+import org.jetbrains.annotations.Nullable;
+
+public class SearchableLootBlock extends BlockWithEntity {
+	private final int gridWidth;
+	private final int gridHeight;
+	private final String containerTitleKey;
+	private final TarkovLootPool defaultLootPool;
+
+	public SearchableLootBlock(Settings settings, int gridWidth, int gridHeight, String containerTitleKey) {
+		this(settings, gridWidth, gridHeight, containerTitleKey, TarkovLootPool.MILITARY);
+	}
+
+	public SearchableLootBlock(
+		Settings settings,
+		int gridWidth,
+		int gridHeight,
+		String containerTitleKey,
+		TarkovLootPool defaultLootPool
+	) {
+		super(settings);
+		this.gridWidth = gridWidth;
+		this.gridHeight = gridHeight;
+		this.containerTitleKey = containerTitleKey;
+		this.defaultLootPool = defaultLootPool != null ? defaultLootPool : TarkovLootPool.MILITARY;
+	}
+
+	public int getGridWidth() {
+		return gridWidth;
+	}
+
+	public int getGridHeight() {
+		return gridHeight;
+	}
+
+	public String getContainerTitleKey() {
+		return containerTitleKey;
+	}
+
+	public TarkovLootPool getDefaultLootPool() {
+		return defaultLootPool;
+	}
+
+	@Override
+	public BlockRenderType getRenderType(BlockState state) {
+		return BlockRenderType.MODEL;
+	}
+
+	@Nullable
+	@Override
+	public BlockEntity createBlockEntity(BlockPos pos, BlockState state) {
+		return new SearchableLootBlockEntity(ModBlocks.LOOT_CONTAINER_ENTITY, pos, state, gridWidth, gridHeight);
+	}
+
+	@Nullable
+	@Override
+	public <T extends BlockEntity> BlockEntityTicker<T> getTicker(World world, BlockState state, BlockEntityType<T> type) {
+		return world.isClient ? null : checkType(type, ModBlocks.LOOT_CONTAINER_ENTITY, SearchableLootBlockEntity::serverTick);
+	}
+
+	@Override
+	public ActionResult onUse(BlockState state, World world, BlockPos pos, PlayerEntity player, Hand hand, BlockHitResult hit) {
+		// Opening loot containers is strictly via [F] interact, NOT right-click
+		return ActionResult.PASS;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\block\SearchableLootBlockEntity.java ==========
+package com.tarkovcraft.block;
+
+import com.tarkovcraft.grid.GridContainer;
+import com.tarkovcraft.loot.TarkovLootGenerator;
+import com.tarkovcraft.loot.TarkovLootPool;
+import com.tarkovcraft.registry.ModBlocks;
+import com.tarkovcraft.screen.TarkovScreenHandler;
+import com.tarkovcraft.search.ContainerSearchMemory;
+import com.tarkovcraft.search.SearchTarget;
+import net.fabricmc.fabric.api.screenhandler.v1.ExtendedScreenHandlerFactory;
+import net.minecraft.block.BlockState;
+import net.minecraft.block.entity.BlockEntity;
+import net.minecraft.block.entity.BlockEntityType;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtElement;
+import net.minecraft.network.PacketByteBuf;
+import net.minecraft.particle.DustParticleEffect;
+import net.minecraft.particle.ParticleTypes;
+import net.minecraft.screen.ScreenHandler;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.text.Text;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.random.Random;
+import net.minecraft.world.World;
+import org.jetbrains.annotations.Nullable;
+import org.joml.Vector3f;
+
+import java.util.List;
+
+public class SearchableLootBlockEntity extends BlockEntity {
+	private static final DustParticleEffect RED_FLARE_DUST =
+		new DustParticleEffect(new Vector3f(0.92f, 0.14f, 0.14f), 2.5f);
+
+	private int defaultWidth;
+	private int defaultHeight;
+	private GridContainer grid;
+	private ContainerSearchMemory searchMemory = new ContainerSearchMemory();
+	private int smokeTicksRemaining = 0;
+
+	public SearchableLootBlockEntity(BlockPos pos, BlockState state) {
+		this(ModBlocks.LOOT_CONTAINER_ENTITY, pos, state,
+			state.getBlock() instanceof SearchableLootBlock b ? b.getGridWidth() : 4,
+			state.getBlock() instanceof SearchableLootBlock b ? b.getGridHeight() : 4);
+	}
+
+	public SearchableLootBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state, int width, int height) {
+		super(type, pos, state);
+		this.defaultWidth = width;
+		this.defaultHeight = height;
+		this.grid = new GridContainer(width, height);
+	}
+
+	public GridContainer getGrid() {
+		return grid;
+	}
+
+	public ContainerSearchMemory getSearchMemory() {
+		return searchMemory;
+	}
+
+	public SearchTarget asSearchTarget() {
+		return new SearchTarget(grid.getContainerId(), List.of(grid), searchMemory, this::markDirty);
+	}
+
+	public int getSmokeTicksRemaining() {
+		return smokeTicksRemaining;
+	}
+
+	public void setSmokeTicksRemaining(int smokeTicksRemaining) {
+		this.smokeTicksRemaining = Math.max(0, smokeTicksRemaining);
+		markDirty();
+	}
+
+	public void populateFromPool(TarkovLootPool pool, Random random) {
+		this.grid.clear();
+		this.searchMemory = new ContainerSearchMemory();
+		TarkovLootGenerator.populateLootGrid(this.grid, pool, random);
+		markDirty();
+	}
+
+	public static void serverTick(World world, BlockPos pos, BlockState state, SearchableLootBlockEntity be) {
+		if (!(world instanceof ServerWorld sw) || be.smokeTicksRemaining <= 0) {
+			return;
+		}
+		be.smokeTicksRemaining--;
+		if (be.smokeTicksRemaining % 3 == 0) {
+			double cx = pos.getX() + 0.5;
+			double cy = pos.getY() + 1.05;
+			double cz = pos.getZ() + 0.5;
+			double pillarHeight = (be.smokeTicksRemaining % 12) * 0.9;
+			sw.spawnParticles(ParticleTypes.CAMPFIRE_SIGNAL_SMOKE, cx, cy, cz, 2, 0.15, 0.2, 0.15, 0.06);
+			sw.spawnParticles(RED_FLARE_DUST, cx, cy + 0.15 + pillarHeight, cz, 4, 0.25, 0.35, 0.25, 0.01);
+		}
+		if (be.smokeTicksRemaining == 0) {
+			be.markDirty();
+		}
+	}
+
+	public Text getDisplayTitle() {
+		if (getCachedState().getBlock() instanceof SearchableLootBlock lootBlock) {
+			return Text.translatable(lootBlock.getContainerTitleKey());
+		}
+		return Text.translatable("container.tarkovcraft.loot_crate");
+	}
+
+	public void openForPlayer(ServerPlayerEntity player) {
+		if (smokeTicksRemaining > 0) {
+			smokeTicksRemaining = 0;
+			markDirty();
+		}
+		player.openHandledScreen(new ExtendedScreenHandlerFactory() {
+			@Override
+			public void writeScreenOpeningData(ServerPlayerEntity player, PacketByteBuf buf) {
+				buf.writeByte(TarkovScreenHandler.MODE_LOOT_BLOCK);
+				buf.writeBlockPos(pos);
+			}
+
+			@Override
+			public Text getDisplayName() {
+				return getDisplayTitle();
+			}
+
+			@Nullable
+			@Override
+			public ScreenHandler createMenu(int syncId, PlayerInventory inv, PlayerEntity p) {
+				return TarkovScreenHandler.forLootBlock(syncId, inv, SearchableLootBlockEntity.this);
+			}
+		});
+	}
+
+	@Override
+	protected void writeNbt(NbtCompound nbt) {
+		super.writeNbt(nbt);
+		nbt.putInt("DefaultW", defaultWidth);
+		nbt.putInt("DefaultH", defaultHeight);
+		nbt.put("Grid", grid.toNbt());
+		nbt.put("SearchMemory", searchMemory.toNbt());
+		nbt.putInt("SmokeTicks", smokeTicksRemaining);
+	}
+
+	@Override
+	public void readNbt(NbtCompound nbt) {
+		super.readNbt(nbt);
+		if (nbt.contains("DefaultW")) {
+			this.defaultWidth = Math.max(1, nbt.getInt("DefaultW"));
+		}
+		if (nbt.contains("DefaultH")) {
+			this.defaultHeight = Math.max(1, nbt.getInt("DefaultH"));
+		}
+		if (nbt.contains("Grid", NbtElement.COMPOUND_TYPE)) {
+			this.grid = GridContainer.fromNbt(nbt.getCompound("Grid"), defaultWidth, defaultHeight);
+		} else {
+			this.grid = new GridContainer(defaultWidth, defaultHeight);
+		}
+		if (nbt.contains("SearchMemory", NbtElement.COMPOUND_TYPE)) {
+			this.searchMemory = ContainerSearchMemory.fromNbt(nbt.getCompound("SearchMemory"));
+		} else {
+			this.searchMemory = new ContainerSearchMemory();
+		}
+		this.smokeTicksRemaining = Math.max(0, nbt.getInt("SmokeTicks"));
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\block\TarkovWorkbenchBlock.java ==========
+package com.tarkovcraft.block;
+
+import com.tarkovcraft.screen.TarkovWorkbenchScreenHandler;
+import net.minecraft.block.Block;
+import net.minecraft.block.BlockState;
+import net.minecraft.block.HorizontalFacingBlock;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.ItemPlacementContext;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.state.StateManager;
+import net.minecraft.util.ActionResult;
+import net.minecraft.util.Hand;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Direction;
+import net.minecraft.world.World;
+
+/**
+ * Stateless Tarkov Armor & Ammo Workbench block. Opens on right-click or [F] interact.
+ */
+public class TarkovWorkbenchBlock extends HorizontalFacingBlock {
+	public TarkovWorkbenchBlock(Settings settings) {
+		super(settings);
+		setDefaultState(this.stateManager.getDefaultState().with(FACING, Direction.NORTH));
+	}
+
+	@Override
+	protected void appendProperties(StateManager.Builder<Block, BlockState> builder) {
+		builder.add(FACING);
+	}
+
+	@Override
+	public BlockState getPlacementState(ItemPlacementContext ctx) {
+		return this.getDefaultState().with(FACING, ctx.getHorizontalPlayerFacing().getOpposite());
+	}
+
+	@Override
+	public ActionResult onUse(BlockState state, World world, BlockPos pos, PlayerEntity player, Hand hand, BlockHitResult hit) {
+		if (world.isClient) {
+			return ActionResult.SUCCESS;
+		}
+		if (player instanceof ServerPlayerEntity sp) {
+			TarkovWorkbenchScreenHandler.openForPlayer(sp, pos);
+		}
+		return ActionResult.CONSUME;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\client\ClientLoadoutCache.java ==========
+package com.tarkovcraft.client;
+
+import com.tarkovcraft.health.BodyPartHealth;
+import com.tarkovcraft.loadout.PlayerLoadout;
+import com.tarkovcraft.network.TarkovNetworking;
+import net.minecraft.nbt.NbtCompound;
+import org.jetbrains.annotations.Nullable;
+
+public final class ClientLoadoutCache {
+	private static final PlayerLoadout LOADOUT = new PlayerLoadout();
+	private static final BodyPartHealth BODY_HEALTH = new BodyPartHealth();
+	private static float cachedWeightKg = 0.0f;
+	@Nullable
+	private static TarkovNetworking.ScreenStateSnapshot screenState;
+
+	private ClientLoadoutCache() {
+	}
+
+	public static PlayerLoadout getLoadout() {
+		return LOADOUT;
+	}
+
+	public static float getCachedWeightKg() {
+		return cachedWeightKg;
+	}
+
+	public static void updateLoadoutFromNbt(NbtCompound nbt) {
+		LOADOUT.readNbt(nbt);
+		cachedWeightKg = LOADOUT.calculateWeightKg();
+	}
+
+	public static BodyPartHealth getBodyHealth() {
+		return BODY_HEALTH;
+	}
+
+	public static void updateBodyHealthFromNbt(NbtCompound nbt) {
+		BODY_HEALTH.readNbt(nbt);
+	}
+
+	@Nullable
+	public static TarkovNetworking.ScreenStateSnapshot getScreenState() {
+		return screenState;
+	}
+
+	public static void setScreenState(@Nullable TarkovNetworking.ScreenStateSnapshot snapshot) {
+		screenState = snapshot;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\client\ClientNetworkSender.java ==========
+package com.tarkovcraft.client;
+
+import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.health.BodyPart;
+import com.tarkovcraft.network.TarkovNetworking;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
+import net.minecraft.network.PacketByteBuf;
+import net.minecraft.util.Identifier;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * Client-only sender helpers for TarkovCraft C2S packets introduced in the EFT UI refactor.
+ * Keeps client networking imports strictly inside com.tarkovcraft.client.*.
+ */
+@Environment(EnvType.CLIENT)
+public final class ClientNetworkSender {
+	private ClientNetworkSender() {
+	}
+
+	public static void sendQuickEquip(byte srcLoc, int srcIdx, @Nullable UUID srcEntryId) {
+		ClientPlayNetworking.send(TarkovNetworking.C2S_QUICK_EQUIP, buildSourceBuf(srcLoc, srcIdx, srcEntryId));
+	}
+
+	public static void sendUseItem(byte srcLoc, int srcIdx, @Nullable UUID srcEntryId) {
+		ClientPlayNetworking.send(TarkovNetworking.C2S_USE_ITEM, buildSourceBuf(srcLoc, srcIdx, srcEntryId));
+	}
+
+	public static void sendSplitStack(byte srcLoc, int srcIdx, @Nullable UUID srcEntryId, int splitAmount) {
+		PacketByteBuf buf = buildSourceBuf(srcLoc, srcIdx, srcEntryId);
+		buf.writeVarInt(splitAmount);
+		ClientPlayNetworking.send(TarkovNetworking.C2S_SPLIT_STACK, buf);
+	}
+
+	public static void sendRequestSearch(UUID targetId) {
+		PacketByteBuf buf = PacketByteBufs.create();
+		buf.writeUuid(targetId);
+		ClientPlayNetworking.send(TarkovNetworking.C2S_REQUEST_SEARCH, buf);
+	}
+
+	public static void sendHealPart(byte srcLoc, int srcIdx, @Nullable UUID srcEntryId, @Nullable BodyPart part) {
+		PacketByteBuf buf = buildSourceBuf(srcLoc, srcIdx, srcEntryId);
+		buf.writeByte(part == null ? -1 : part.ordinal());
+		ClientPlayNetworking.send(TarkovNetworking.C2S_HEAL_PART, buf);
+	}
+
+	public static void sendOpenCase(byte srcLoc, int srcIdx, @Nullable UUID srcEntryId) {
+		ClientPlayNetworking.send(TarkovNetworking.C2S_OPEN_CASE, buildSourceBuf(srcLoc, srcIdx, srcEntryId));
+	}
+
+	public static void sendCloseCase() {
+		ClientPlayNetworking.send(TarkovNetworking.C2S_CLOSE_CASE, PacketByteBufs.empty());
+	}
+
+	public static void sendWorkbenchCraftAmmo(String ammoId, AmmoTier tier, boolean upgradeFromFmj) {
+		PacketByteBuf buf = PacketByteBufs.create();
+		buf.writeString(ammoId, 64);
+		buf.writeByte(tier.ordinal());
+		buf.writeBoolean(upgradeFromFmj);
+		ClientPlayNetworking.send(TarkovNetworking.C2S_WORKBENCH_CRAFT_AMMO, buf);
+	}
+
+	public static void sendWorkbenchCraftGear(Identifier targetItemId) {
+		PacketByteBuf buf = PacketByteBufs.create();
+		buf.writeIdentifier(targetItemId);
+		ClientPlayNetworking.send(TarkovNetworking.C2S_WORKBENCH_CRAFT_GEAR, buf);
+	}
+
+	public static void registerWorkbenchClientReceiver() {
+		ClientPlayNetworking.registerGlobalReceiver(TarkovNetworking.S2C_WORKBENCH_SYNC, (client, handler, buf, responseSender) -> {
+			int itemCount = buf.readVarInt();
+			Map<Identifier, Integer> items = new HashMap<>(itemCount);
+			for (int i = 0; i < itemCount; i++) {
+				items.put(buf.readIdentifier(), buf.readVarInt());
+			}
+			int fmjCount = buf.readVarInt();
+			Map<String, Integer> fmj = new HashMap<>(fmjCount);
+			for (int i = 0; i < fmjCount; i++) {
+				fmj.put(buf.readString(64), buf.readVarInt());
+			}
+			int extraCount = buf.readVarInt();
+			List<String> extras = new ArrayList<>(extraCount);
+			for (int i = 0; i < extraCount; i++) {
+				extras.add(buf.readString(64));
+			}
+			client.execute(() -> ClientWorkbenchCache.update(items, fmj, extras));
+		});
+	}
+
+	private static PacketByteBuf buildSourceBuf(byte srcLoc, int srcIdx, @Nullable UUID srcEntryId) {
+		PacketByteBuf buf = PacketByteBufs.create();
+		buf.writeByte(srcLoc);
+		buf.writeVarInt(srcIdx);
+		buf.writeBoolean(srcEntryId != null);
+		if (srcEntryId != null) {
+			buf.writeUuid(srcEntryId);
+		}
+		return buf;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\client\ClientWorkbenchCache.java ==========
+package com.tarkovcraft.client;
+
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.minecraft.item.Item;
+import net.minecraft.registry.Registries;
+import net.minecraft.util.Identifier;
+
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Client-side cache of workbench crafting material counts, FMJ ammo stocks, and extra gunpack calibers.
+ */
+@Environment(EnvType.CLIENT)
+public final class ClientWorkbenchCache {
+	private static Map<Identifier, Integer> itemCounts = new HashMap<>();
+	private static Map<String, Integer> fmjAmmoCounts = new HashMap<>();
+	private static List<String> extraCalibers = List.of();
+	private static int revision = 0;
+
+	private ClientWorkbenchCache() {
+	}
+
+	public static int getRevision() {
+		return revision;
+	}
+
+	public static void update(
+		Map<Identifier, Integer> items,
+		Map<String, Integer> fmjCounts,
+		List<String> extras
+	) {
+		itemCounts = new HashMap<>(items);
+		fmjAmmoCounts = new HashMap<>(fmjCounts);
+		extraCalibers = List.copyOf(extras);
+		revision++;
+	}
+
+	public static int getItemCount(Item item) {
+		if (item == null) return 0;
+		return itemCounts.getOrDefault(Registries.ITEM.getId(item), 0);
+	}
+
+	public static int getFmjCount(String ammoId) {
+		if (ammoId == null) return 0;
+		return fmjAmmoCounts.getOrDefault(ammoId, 0);
+	}
+
+	public static List<String> getExtraCalibers() {
+		return Collections.unmodifiableList(extraCalibers);
+	}
+}

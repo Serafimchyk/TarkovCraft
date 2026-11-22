@@ -121,33 +121,13 @@ public class TarkovMedicalItem extends Item implements TarkovSizedItem {
 		if (world.isClient) {
 			return TypedActionResult.pass(stack);
 		}
-		if (!(user instanceof ServerPlayerEntity sp) || !(sp instanceof PlayerLoadoutHolder holder)
-			|| sp.isSpectator() || !sp.isAlive()) {
+		if (!(user instanceof ServerPlayerEntity sp) || sp.isSpectator() || !sp.isAlive()) {
 			return TypedActionResult.fail(stack);
 		}
-		if (sp.getItemCooldownManager().isCoolingDown(this)) {
-			return TypedActionResult.fail(stack);
+		if (com.tarkovcraft.health.MedicalUseManager.startFromHand(sp, hand, stack)) {
+			return TypedActionResult.success(stack, false);
 		}
-
-		BodyPartHealth health = holder.tarkovcraft$getBodyHealth();
-		MedicalHelper.ApplyResult res = MedicalHelper.applyMedical(health, stack, null, sp.isCreative());
-		if (!res.applied()) {
-			sp.sendMessage(Text.translatable("message.tarkovcraft.med_not_needed"), true);
-			return TypedActionResult.fail(stack);
-		}
-
-		if (res.exhaustionToAdd() > 0.0f) {
-			sp.addExhaustion(res.exhaustionToAdd());
-		}
-		sp.getItemCooldownManager().set(this, medicalType.getCooldownTicks());
-		if (stack.isEmpty() && !sp.isCreative()) {
-			sp.setStackInHand(hand, ItemStack.EMPTY);
-		}
-		sp.setHealth(Math.max(1.0f, health.getTotalRatio() * sp.getMaxHealth()));
-		holder.tarkovcraft$syncBodyHealth();
-		holder.tarkovcraft$syncLoadout();
-		MedicalHelper.playMedicalSound(sp, medicalType);
-		return TypedActionResult.success(sp.getStackInHand(hand), false);
+		return TypedActionResult.fail(stack);
 	}
 
 	@Override
@@ -193,6 +173,11 @@ public class TarkovMedicalItem extends Item implements TarkovSizedItem {
 				Math.round(medicalType.getSurgeryRetention() * 100.0f)).formatted(Formatting.LIGHT_PURPLE));
 		}
 
+		float secs = medicalType.getUseDurationTicks() / 20.0f;
+		String secStr = Math.abs(secs - Math.round(secs)) < 0.05f
+			? String.valueOf(Math.round(secs))
+			: String.format(Locale.ROOT, "%.2f", secs).replaceAll("0+$", "").replaceAll("\\.$", "");
+		tooltip.add(Text.translatable("tooltip.tarkovcraft.med_use_time", secStr).formatted(Formatting.DARK_AQUA));
 		tooltip.add(Text.translatable("tooltip.tarkovcraft.med_weight",
 			String.format(Locale.ROOT, "%.2f", weightKg)).formatted(Formatting.DARK_GRAY));
 	}

@@ -266,7 +266,7 @@ public final class WorkbenchInventoryHelper {
 	}
 
 	public static boolean craftAmmo(ServerPlayerEntity player, String ammoId, AmmoTier tier, boolean upgradeFromFmj) {
-		if (!TaCZCaliberCatalog.isBallisticAmmoId(ammoId) || tier == null) {
+		if (!TaCZCaliberCatalog.isBallisticAmmoId(ammoId) || tier == null || !TaCZCaliberCatalog.isTierAllowed(ammoId, tier)) {
 			return false;
 		}
 		TarkovWorkbenchRecipes.AmmoRecipe recipe = TarkovWorkbenchRecipes.getAmmoRecipe(ammoId, tier, upgradeFromFmj);

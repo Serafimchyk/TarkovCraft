@@ -92,6 +92,9 @@ public class TarkovWorkbenchScreenHandler extends ScreenHandler {
 			return;
 		}
 		AmmoTier tier = tiers[tierOrdinal];
+		if (!TaCZCaliberCatalog.isTierAllowed(ammoId, tier)) {
+			return;
+		}
 		WorkbenchInventoryHelper.craftAmmo(player, ammoId, tier, upgradeFromFmj);
 		syncResources(player);
 	}

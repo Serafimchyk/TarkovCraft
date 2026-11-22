@@ -57,7 +57,18 @@ public final class ClientNetworkSender {
 	}
 
 	public static void sendCloseCase() {
-		ClientPlayNetworking.send(TarkovNetworking.C2S_CLOSE_CASE, PacketByteBufs.empty());
+		PacketByteBuf buf = PacketByteBufs.create();
+		buf.writeBoolean(false);
+		ClientPlayNetworking.send(TarkovNetworking.C2S_CLOSE_CASE, buf);
+	}
+
+	public static void sendCloseCase(UUID containerUuid) {
+		PacketByteBuf buf = PacketByteBufs.create();
+		buf.writeBoolean(containerUuid != null);
+		if (containerUuid != null) {
+			buf.writeUuid(containerUuid);
+		}
+		ClientPlayNetworking.send(TarkovNetworking.C2S_CLOSE_CASE, buf);
 	}
 
 	public static void sendWorkbenchCraftAmmo(String ammoId, AmmoTier tier, boolean upgradeFromFmj) {

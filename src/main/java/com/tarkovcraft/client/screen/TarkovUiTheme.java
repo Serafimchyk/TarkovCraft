@@ -1,6 +1,9 @@
 package com.tarkovcraft.client.screen;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.tarkovcraft.ammo.AmmoTier;
+import net.minecraft.client.MinecraftClient;
+import org.lwjgl.opengl.GL11;
 import com.tarkovcraft.grid.ItemSize;
 import com.tarkovcraft.grid.ItemSizeRegistry;
 import com.tarkovcraft.item.BackpackItem;
@@ -87,6 +90,11 @@ public final class TarkovUiTheme {
 	public static final int Z_POPUP = 500;
 
 	private TarkovUiTheme() {
+	}
+
+	public static void clearDepthBuffer(DrawContext ctx) {
+		ctx.draw();
+		RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, MinecraftClient.IS_SYSTEM_MAC);
 	}
 
 	public static void drawFlatText(DrawContext ctx, TextRenderer tr, String text, int x, int y, int color, float scale) {
@@ -222,6 +230,7 @@ public final class TarkovUiTheme {
 		if (lines == null || lines.isEmpty()) {
 			return;
 		}
+		clearDepthBuffer(ctx);
 		int pad = 5;
 		int lineH = 10;
 		int maxW = 0;

@@ -1,0 +1,1163 @@
+
+// ========== .\src\main\java\com\tarkovcraft\health\HitZoneResolver.java ==========
+package com.tarkovcraft.health;
+
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.damage.DamageSource;
+import net.minecraft.registry.tag.DamageTypeTags;
+import net.minecraft.util.math.Vec3d;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * Pure 3D geometric hit-zone classifier relative to victim's position, height, and body yaw.
+ * Separates Head into HEAD_EYES, HEAD_JAWS, HEAD_EARS, HEAD_TOP; includes abstract NECK strip
+ * and ARMPIT_LEFT / ARMPIT_RIGHT flank gaps under the arms.
+ */
+public final class HitZoneResolver {
+	private HitZoneResolver() {
+	}
+
+	/**
+	 * Resolves exact HitZone from a live Minecraft DamageSource hitting a LivingEntity.
+	 */
+	public static HitZone resolveFromDamage(LivingEntity victim, DamageSource source) {
+		String msgId = source.getName();
+		if (source.isIn(DamageTypeTags.IS_FALL) || "fall".equals(msgId) || "stalagmite".equals(msgId)) {
+			return victim.getRandom().nextBoolean() ? HitZone.LEFT_LEG : HitZone.RIGHT_LEG;
+		}
+		if (source.isIn(DamageTypeTags.IS_DROWNING)
+			|| source.isIn(DamageTypeTags.IS_FIRE)
+			|| source.isIn(DamageTypeTags.IS_FREEZING)
+			|| "drown".equals(msgId)
+			|| "inWall".equals(msgId)
+			|| "starve".equals(msgId)
+			|| "magic".equals(msgId)
+			|| "wither".equals(msgId)) {
+			return HitZone.THORAX;
+		}
+
+		List<HitZoneBoxes.ZoneBox> boxes = HitZoneBoxes.computeForEntity(victim);
+		Entity direct = source.getSource();
+		Entity attacker = source.getAttacker();
+
+		// 1. Projectile / Bullet trajectory raycast against 3D OBB HitZoneBoxes
+		if (direct != null && direct != attacker) {
+			Vec3d directPos = direct.getPos();
+			Vec3d vel = direct.getVelocity();
+			Vec3d dir = null;
+
+			if (vel.lengthSquared() > 1e-6) {
+				dir = vel.normalize();
+				Vec3d origin = directPos.subtract(dir.multiply(0.5));
+				double maxDist = Math.max(16.0, vel.length() * 2.0 + 6.0);
+				HitZoneBoxes.RayHit hit = HitZoneBoxes.raycastZones(boxes, origin, dir, maxDist);
+				if (hit != null) {
+					return hit.zone();
+				}
+			}
+
+			Vec3d prevPos = new Vec3d(direct.prevX, direct.prevY, direct.prevZ);
+			Vec3d delta = directPos.subtract(prevPos);
+			if (delta.lengthSquared() > 1e-8) {
+				Vec3d prevDir = delta.normalize();
+				HitZoneBoxes.RayHit hit = HitZoneBoxes.raycastZones(boxes, prevPos, prevDir, delta.length() + 6.0);
+				if (hit != null) {
+					return hit.zone();
+				}
+				if (dir == null) {
+					dir = prevDir;
+				}
+			}
+
+			if (attacker != null) {
+				Vec3d aEye = attacker.getEyePos();
+				Vec3d aLook = attacker.getRotationVec(1.0f);
+				HitZoneBoxes.RayHit hit = HitZoneBoxes.raycastZones(boxes, aEye, aLook, attacker.distanceTo(victim) + 6.0);
+				if (hit != null) {
+					return hit.zone();
+				}
+			}
+
+			// Geometric fallback along projectile line (never raw source.getPosition() feet-height trap)
+			Vec3d fallbackPos;
+			if (dir != null) {
+				Vec3d center = victim.getPos().add(0, victim.getHeight() * 0.5, 0);
+				double projT = center.subtract(directPos).dotProduct(dir);
+				fallbackPos = directPos.add(dir.multiply(projT));
+			} else {
+				Vec3d srcPos = source.getPosition();
+				fallbackPos = srcPos != null ? srcPos : directPos;
+			}
+			return resolveGeometric(
+				victim.getPos(), victim.getHeight(),
+				victim.getBodyYaw(), victim.getHeadYaw(),
+				fallbackPos, dir
+			);
+		}
+
+		// 2. Melee / direct attacker raycast against 3D OBB HitZoneBoxes
+		if (attacker != null) {
+			Vec3d aEye = attacker.getEyePos();
+			Vec3d aLook = attacker.getRotationVec(1.0f);
+			HitZoneBoxes.RayHit hit = HitZoneBoxes.raycastZones(boxes, aEye, aLook, 8.0);
+			if (hit != null) {
+				return hit.zone();
+			}
+			Vec3d hitPos = raycastMeleeHitPos(victim, attacker);
+			return resolveGeometric(
+				victim.getPos(), victim.getHeight(),
+				victim.getBodyYaw(), victim.getHeadYaw(),
+				hitPos, aLook
+			);
+		}
+
+		Vec3d hitPos = source.getPosition();
+		if (hitPos == null) {
+			return HitZone.THORAX;
+		}
+		return resolveGeometric(
+			victim.getPos(), victim.getHeight(),
+			victim.getBodyYaw(), victim.getHeadYaw(),
+			hitPos, null
+		);
+	}
+
+	private static Vec3d raycastMeleeHitPos(LivingEntity victim, Entity attacker) {
+		Vec3d aEye = attacker.getEyePos();
+		Vec3d aLook = attacker.getRotationVec(1.0f);
+		Optional<Vec3d> boxHit = victim.getBoundingBox().expand(0.15).raycast(aEye, aEye.add(aLook.multiply(6.0)));
+		if (boxHit.isPresent()) {
+			return boxHit.get();
+		}
+		double dist = aEye.distanceTo(victim.getPos().add(0, victim.getHeight() * 0.6, 0));
+		return aEye.add(aLook.multiply(Math.max(0.5, dist)));
+	}
+
+	/**
+	 * Pure deterministic geometric classifier — fully unit-testable without Minecraft world state.
+	 */
+	public static HitZone resolveGeometric(
+		Vec3d victimFeetPos,
+		float victimHeight,
+		float bodyYawDeg,
+		Vec3d hitPos,
+		@Nullable Vec3d incomingDir
+	) {
+		return resolveGeometric(victimFeetPos, victimHeight, bodyYawDeg, bodyYawDeg, hitPos, incomingDir);
+	}
+
+	/**
+	 * Pure deterministic geometric classifier with independent body and head yaw.
+	 *
+	 * @param victimFeetPos feet world position
+	 * @param victimHeight  entity bounding box height (1.80m standing)
+	 * @param bodyYawDeg    Minecraft body yaw in degrees (0 = +Z South, 90 = -X West, 180 = -Z North, -90 = +X East)
+	 * @param headYawDeg    Minecraft head yaw in degrees (used for head zones relY >= 0.78)
+	 * @param hitPos        world impact point
+	 * @param incomingDir   normalized projectile travel vector (attacker -> victim), nullable
+	 */
+	public static HitZone resolveGeometric(
+		Vec3d victimFeetPos,
+		float victimHeight,
+		float bodyYawDeg,
+		float headYawDeg,
+		Vec3d hitPos,
+		@Nullable Vec3d incomingDir
+	) {
+		double h = Math.max(0.4, victimHeight);
+		double relY = (hitPos.y - victimFeetPos.y) / h;
+
+		float activeYawDeg = relY >= 0.78 ? headYawDeg : bodyYawDeg;
+
+		// Victim forward & right horizontal unit vectors (Minecraft yaw convention)
+		double yawRad = Math.toRadians(activeYawDeg);
+		double fwdX = -Math.sin(yawRad);
+		double fwdZ = Math.cos(yawRad);
+		// Right vector = cross(up, forward) -> (-fwdZ, fwdX)
+		// Check: yaw=0 -> fwd=(0, 1) South -> player's RIGHT is West (-1, 0) -> (-fwdZ, fwdX) = (-1, 0)!
+		double rightX = -fwdZ;
+		double rightZ = fwdX;
+
+		double dx = hitPos.x - victimFeetPos.x;
+		double dz = hitPos.z - victimFeetPos.z;
+
+		// Local signed coordinates: forward > 0 means front of player, right > 0 means player's right side
+		double localFwd = dx * fwdX + dz * fwdZ;
+		double localRight = dx * rightX + dz * rightZ;
+
+		// Incoming shot direction relative to victim facing (direction FROM victim TO shooter = -incomingDir)
+		double shotFromFrontDot;
+		double shotFromSideAbs;
+		if (incomingDir != null && (incomingDir.x * incomingDir.x + incomingDir.z * incomingDir.z) > 1e-6) {
+			Vec3d horiz = new Vec3d(incomingDir.x, 0, incomingDir.z).normalize();
+			// If bullet travels in -forward direction, it hit the FRONT face
+			shotFromFrontDot = -(horiz.x * fwdX + horiz.z * fwdZ);
+			shotFromSideAbs = Math.abs(horiz.x * rightX + horiz.z * rightZ);
+		} else {
+			double len = Math.hypot(localFwd, localRight);
+			shotFromFrontDot = len > 1e-5 ? (localFwd / len) : 1.0;
+			shotFromSideAbs = len > 1e-5 ? Math.abs(localRight / len) : 0.0;
+		}
+
+		// 1. HEAD ZONE (relY >= 0.78)
+		if (relY >= 0.78) {
+			// Crown / top of helmet
+			if (relY >= 0.93) {
+				return HitZone.HEAD_TOP;
+			}
+			// Side hit in ear height band -> HEAD_EARS (exposed unless helmet covers ears!)
+			if ((shotFromSideAbs >= 0.62 || Math.abs(localRight) > Math.abs(localFwd) * 1.15)
+				&& relY >= 0.81 && relY <= 0.92) {
+				return HitZone.HEAD_EARS;
+			}
+			// Front face -> EYES vs JAWS
+			if (shotFromFrontDot > 0.25) {
+				if (relY >= 0.85) {
+					return HitZone.HEAD_EYES; // "Голова — глаза"
+				}
+				return HitZone.HEAD_JAWS;
+			}
+			// Back of head -> HEAD_TOP / nape
+			return HitZone.HEAD_TOP;
+		}
+
+		// 2. ABSTRACT NECK STRIP (thin gap between head & thorax: relY in [0.74, 0.78))
+		if (relY >= 0.74) {
+			return HitZone.NECK;
+		}
+
+		// 3. UPPER TORSO + ARMPITS + ARMS (relY in [0.54, 0.74))
+		if (relY >= 0.54) {
+			// Side-angle shot into upper flank gap -> ARMPIT (bypasses front/back chest plates!)
+			if (relY >= 0.59 && relY <= 0.72 && shotFromSideAbs >= 0.72 && Math.abs(localRight) >= 0.12 && Math.abs(localRight) <= 0.24) {
+				return localRight >= 0 ? HitZone.ARMPIT_RIGHT : HitZone.ARMPIT_LEFT;
+			}
+			if (Math.abs(localRight) > 0.19) {
+				return localRight >= 0 ? HitZone.RIGHT_ARM : HitZone.LEFT_ARM;
+			}
+			return HitZone.THORAX;
+		}
+
+		// 4. LOWER TORSO / STOMACH + LOWER ARMS (relY in [0.40, 0.54))
+		if (relY >= 0.40) {
+			if (Math.abs(localRight) > 0.21) {
+				return localRight >= 0 ? HitZone.RIGHT_ARM : HitZone.LEFT_ARM;
+			}
+			return HitZone.STOMACH;
+		}
+
+		// 5. LEGS (relY < 0.40)
+		return localRight >= 0 ? HitZone.RIGHT_LEG : HitZone.LEFT_LEG;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\health\InjuryType.java ==========
+package com.tarkovcraft.health;
+
+/**
+ * Anatomical trauma statuses tracked per BodyPart.
+ */
+public enum InjuryType {
+	LIGHT_BLEED("light_bleed", 1 << 0),
+	HEAVY_BLEED("heavy_bleed", 1 << 1),
+	FRACTURE("fracture", 1 << 2);
+
+	private final String id;
+	private final int bitMask;
+
+	InjuryType(String id, int bitMask) {
+		this.id = id;
+		this.bitMask = bitMask;
+	}
+
+	public String getId() {
+		return id;
+	}
+
+	public int getBitMask() {
+		return bitMask;
+	}
+
+	public String getTranslationKey() {
+		return "injury.tarkovcraft." + id;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\health\MedicalHelper.java ==========
+package com.tarkovcraft.health;
+
+import com.tarkovcraft.item.MedicalType;
+import com.tarkovcraft.item.TarkovMedicalItem;
+import net.minecraft.item.ItemStack;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.sound.SoundEvents;
+import org.jetbrains.annotations.Nullable;
+
+/**
+ * Pure common-side medical application & target priority logic.
+ */
+public final class MedicalHelper {
+	private static final BodyPart[] BLEED_PRIORITY_ORDER = {
+		BodyPart.THORAX, BodyPart.HEAD, BodyPart.STOMACH,
+		BodyPart.LEFT_LEG, BodyPart.RIGHT_LEG, BodyPart.LEFT_ARM, BodyPart.RIGHT_ARM
+	};
+	private static final BodyPart[] LIMB_PRIORITY_ORDER = {
+		BodyPart.LEFT_LEG, BodyPart.RIGHT_LEG, BodyPart.LEFT_ARM, BodyPart.RIGHT_ARM
+	};
+	private static final BodyPart[] SURGERY_PRIORITY_ORDER = {
+		BodyPart.STOMACH, BodyPart.LEFT_LEG, BodyPart.RIGHT_LEG, BodyPart.LEFT_ARM, BodyPart.RIGHT_ARM
+	};
+
+	private MedicalHelper() {
+	}
+
+	public record ApplyResult(
+		boolean applied,
+		@Nullable BodyPart targetPart,
+		float exhaustionToAdd,
+		boolean depleted
+	) {
+	}
+
+	public static boolean canApplyToPart(BodyPartHealth health, ItemStack stack, BodyPart part) {
+		if (health == null || stack == null || stack.isEmpty() || part == null) {
+			return false;
+		}
+		if (!(stack.getItem() instanceof TarkovMedicalItem med)) {
+			return false;
+		}
+		int remaining = TarkovMedicalItem.getRemaining(stack);
+		if (remaining <= 0) {
+			return false;
+		}
+		MedicalType type = med.getMedicalType();
+		if (type.isPainkillerOnly()) {
+			return health.getPainkillerTicks() < type.getPainkillerTicks() - 20;
+		}
+		if (type.isCuresHeavyBleed() && health.hasHeavyBleed(part) && remaining >= type.getHeavyBleedCost()) {
+			return true;
+		}
+		if (type.isCuresLightBleed() && health.hasLightBleed(part) && remaining >= type.getLightBleedCost()) {
+			return true;
+		}
+		if (type.isCuresFracture() && health.hasFracture(part) && remaining >= type.getFractureCost()) {
+			return true;
+		}
+		if (type.isSurgicalKit() && !part.isVital() && health.isBlacked(part)) {
+			return true;
+		}
+		return type.getMaxHealPerUse() > 0
+			&& !health.isBlacked(part)
+			&& health.getHp(part) + 0.01f < health.getEffectiveMaxHp(part);
+	}
+
+	@Nullable
+	public static BodyPart selectAutoTarget(BodyPartHealth health, ItemStack stack) {
+		if (health == null || stack == null || stack.isEmpty() || !(stack.getItem() instanceof TarkovMedicalItem med)) {
+			return null;
+		}
+		int remaining = TarkovMedicalItem.getRemaining(stack);
+		if (remaining <= 0) {
+			return null;
+		}
+		MedicalType type = med.getMedicalType();
+
+		if (type.isPainkillerOnly()) {
+			return health.getPainkillerTicks() < type.getPainkillerTicks() - 20 ? BodyPart.HEAD : null;
+		}
+
+		if (type.isCuresHeavyBleed() && remaining >= type.getHeavyBleedCost()) {
+			for (BodyPart part : BLEED_PRIORITY_ORDER) {
+				if (health.hasHeavyBleed(part)) {
+					return part;
+				}
+			}
+		}
+
+		if (type.isCuresLightBleed() && remaining >= type.getLightBleedCost()) {
+			for (BodyPart part : BLEED_PRIORITY_ORDER) {
+				if (health.hasLightBleed(part)) {
+					return part;
+				}
+			}
+		}
+
+		if (type.isSurgicalKit()) {
+			for (BodyPart part : SURGERY_PRIORITY_ORDER) {
+				if (health.isBlacked(part)) {
+					return part;
+				}
+			}
+		}
+
+		if (type.isCuresFracture() && remaining >= type.getFractureCost()) {
+			for (BodyPart part : LIMB_PRIORITY_ORDER) {
+				if (health.hasFracture(part)) {
+					return part;
+				}
+			}
+		}
+
+		if (type.getMaxHealPerUse() <= 0) {
+			return null;
+		}
+
+		// HP healing: prioritize vital parts (HEAD, THORAX) by lowest ratio, then non-vital
+		BodyPart bestVital = null;
+		float bestVitalRatio = 2.0f;
+		BodyPart bestOther = null;
+		float bestOtherRatio = 2.0f;
+
+		for (BodyPart part : BodyPart.values()) {
+			if (!health.isBlacked(part) && health.getHp(part) + 0.01f < health.getEffectiveMaxHp(part)) {
+				float ratio = health.getRatio(part);
+				if (part.isVital()) {
+					if (ratio < bestVitalRatio) {
+						bestVitalRatio = ratio;
+						bestVital = part;
+					}
+				} else {
+					if (ratio < bestOtherRatio) {
+						bestOtherRatio = ratio;
+						bestOther = part;
+					}
+				}
+			}
+		}
+		return bestVital != null ? bestVital : bestOther;
+	}
+
+	public static ApplyResult applyMedical(
+		BodyPartHealth health,
+		ItemStack stack,
+		@Nullable BodyPart requestedPart,
+		boolean infiniteCreative
+	) {
+		if (health == null || stack == null || stack.isEmpty() || !(stack.getItem() instanceof TarkovMedicalItem med)) {
+			return new ApplyResult(false, null, 0.0f, false);
+		}
+		BodyPart target = requestedPart != null ? requestedPart : selectAutoTarget(health, stack);
+		if (target == null || !canApplyToPart(health, stack, target)) {
+			return new ApplyResult(false, null, 0.0f, false);
+		}
+
+		MedicalType type = med.getMedicalType();
+		int remaining = TarkovMedicalItem.getRemaining(stack);
+		int cost = 1;
+
+		if (type.isPainkillerOnly()) {
+			health.setPainkillerTicks(Math.max(health.getPainkillerTicks(), type.getPainkillerTicks()));
+		} else if (type.isCuresHeavyBleed() && health.hasHeavyBleed(target) && remaining >= type.getHeavyBleedCost()) {
+			health.removeInjury(target, InjuryType.HEAVY_BLEED);
+			cost = type.getHeavyBleedCost();
+		} else if (type.isCuresLightBleed() && health.hasLightBleed(target) && remaining >= type.getLightBleedCost()) {
+			health.removeInjury(target, InjuryType.LIGHT_BLEED);
+			cost = type.getLightBleedCost();
+		} else if (type.isSurgicalKit() && !target.isVital() && health.isBlacked(target)) {
+			float newEff = Math.min(
+				health.getEffectiveMaxHp(target),
+				Math.max(1.0f, Math.round(target.getMaxHp() * type.getSurgeryRetention()))
+			);
+			health.setEffectiveMaxHp(target, newEff);
+			health.setHp(target, 1.0f);
+			if (type.isCuresFracture()) {
+				health.removeInjury(target, InjuryType.FRACTURE);
+			}
+		} else if (type.isCuresFracture() && health.hasFracture(target) && remaining >= type.getFractureCost()) {
+			health.removeInjury(target, InjuryType.FRACTURE);
+			cost = type.getFractureCost();
+		} else if (type.getMaxHealPerUse() > 0 && !health.isBlacked(target)
+			&& health.getHp(target) + 0.01f < health.getEffectiveMaxHp(target)) {
+			float missing = health.getEffectiveMaxHp(target) - health.getHp(target);
+			float heal = Math.min(missing, Math.min(type.getMaxHealPerUse(), remaining));
+			health.setHp(target, health.getHp(target) + heal);
+			cost = Math.min(remaining, Math.max(1, Math.round(heal)));
+		} else {
+			return new ApplyResult(false, null, 0.0f, false);
+		}
+
+		if (type.getPainkillerTicks() > 0 && !type.isPainkillerOnly()) {
+			health.setPainkillerTicks(Math.max(health.getPainkillerTicks(), type.getPainkillerTicks()));
+		}
+
+		if (!infiniteCreative) {
+			TarkovMedicalItem.setRemaining(stack, remaining - cost);
+		}
+		return new ApplyResult(true, target, type.getExhaustionCost(), stack.isEmpty());
+	}
+
+	public static void playMedicalSound(ServerPlayerEntity player, MedicalType type) {
+		if (type.isSurgicalKit()) {
+			player.getWorld().playSound(null, player.getX(), player.getY(), player.getZ(),
+				SoundEvents.ENTITY_SHEEP_SHEAR, SoundCategory.PLAYERS, 0.7f, 0.95f);
+		} else if (type.getPainkillerTicks() > 0) {
+			player.getWorld().playSound(null, player.getX(), player.getY(), player.getZ(),
+				SoundEvents.ENTITY_GENERIC_DRINK, SoundCategory.PLAYERS, 0.7f, 1.3f);
+		} else if (type.getCapacityMode() == MedicalType.CapacityMode.HP_POOL) {
+			player.getWorld().playSound(null, player.getX(), player.getY(), player.getZ(),
+				SoundEvents.ITEM_HONEYCOMB_WAX_ON, SoundCategory.PLAYERS, 0.75f, 1.15f);
+		} else if (type.isCuresFracture()) {
+			player.getWorld().playSound(null, player.getX(), player.getY(), player.getZ(),
+				SoundEvents.ITEM_ARMOR_EQUIP_LEATHER, SoundCategory.PLAYERS, 0.8f, 1.2f);
+		} else {
+			player.getWorld().playSound(null, player.getX(), player.getY(), player.getZ(),
+				SoundEvents.BLOCK_WOOL_PLACE, SoundCategory.PLAYERS, 0.8f, 1.1f);
+		}
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\health\TaCZBulletHelper.java ==========
+package com.tarkovcraft.health;
+
+import com.tarkovcraft.ammo.AmmoTier;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.damage.DamageSource;
+import net.minecraft.item.ItemStack;
+import net.minecraft.util.Identifier;
+
+import java.lang.reflect.Method;
+import java.util.concurrent.ConcurrentHashMap;
+import org.jetbrains.annotations.Nullable;
+
+/**
+ * Zero-hard-dependency bridge to TaCZ Refabricated's EntityKineticBullet.
+ * Extracts gun ID, ammo ID, and loaded AmmoTier (HP / FMJ / AP / IGN) from the shooter's firearm,
+ * computing effective penetration power and flesh damage multiplier.
+ */
+public final class TaCZBulletHelper {
+	private record BulletGetters(@Nullable Method getGunId, @Nullable Method getAmmoId) {
+	}
+
+	private static final ConcurrentHashMap<Class<?>, BulletGetters> GETTER_CACHE = new ConcurrentHashMap<>();
+
+	private TaCZBulletHelper() {
+	}
+
+	public record BulletInfo(
+		boolean isTaczBullet,
+		String weaponName,
+		String ammoName,
+		AmmoTier tier,
+		int penetrationPower,
+		float damageMultiplier,
+		float armorWearMultiplier
+	) {
+	}
+
+	public static BulletInfo inspectDamageSource(DamageSource source) {
+		Entity direct = source.getSource();
+		Entity attacker = source.getAttacker();
+
+		AmmoTier loadedTier = AmmoTier.FMJ;
+		if (attacker instanceof LivingEntity living) {
+			ItemStack held = living.getMainHandStack();
+			loadedTier = AmmoTier.getLoadedTierFromGun(held);
+		}
+
+		boolean isTacz = (direct != null && direct.getClass().getName().contains("EntityKineticBullet"))
+			|| (source.getName() != null && source.getName().toLowerCase().contains("tacz.bullet"));
+		if (isTacz) {
+			String gunStr = direct != null ? invokeCachedGetter(direct, true) : "";
+			String ammoStr = direct != null ? invokeCachedGetter(direct, false) : "";
+			String cleanGun = prettifyId(gunStr, "Firearm");
+			String cleanAmmo = prettifyId(ammoStr, "Ballistic") + " [" + loadedTier.getBadge() + "]";
+			int pen = computePenetration(ammoStr, loadedTier);
+			return new BulletInfo(true, cleanGun, cleanAmmo, loadedTier, pen,
+				loadedTier.getDamageMultiplier(), loadedTier.getArmorWearMultiplier());
+		}
+
+		if (attacker instanceof LivingEntity living) {
+			ItemStack main = living.getMainHandStack();
+			String wep = !main.isEmpty() ? main.getName().getString() : source.getName();
+			String ammo = (direct != null && direct != attacker) ? direct.getName().getString() : "Melee";
+			return new BulletInfo(false, wep, ammo, AmmoTier.FMJ, 15, 1.0f, 1.0f);
+		}
+
+		return new BulletInfo(false, source.getName(), "", AmmoTier.FMJ, 0, 1.0f, 0.0f);
+	}
+
+	private static BulletGetters resolveGetters(Class<?> bulletClass) {
+		return GETTER_CACHE.computeIfAbsent(bulletClass, cls -> {
+			Method gun = null;
+			Method ammo = null;
+			try {
+				gun = cls.getMethod("getGunId");
+			} catch (NoSuchMethodException ignored) {
+			}
+			try {
+				ammo = cls.getMethod("getAmmoId");
+			} catch (NoSuchMethodException ignored) {
+			}
+			return new BulletGetters(gun, ammo);
+		});
+	}
+
+	private static String invokeCachedGetter(Entity bullet, boolean isGun) {
+		try {
+			BulletGetters getters = resolveGetters(bullet.getClass());
+			Method m = isGun ? getters.getGunId() : getters.getAmmoId();
+			if (m == null) {
+				return "";
+			}
+			Object res = m.invoke(bullet);
+			if (res instanceof Identifier id) {
+				return id.toString();
+			}
+			return res != null ? res.toString() : "";
+		} catch (Exception ignored) {
+			return "";
+		}
+	}
+
+	private static String prettifyId(String id, String fallback) {
+		if (id == null || id.isBlank()) return fallback;
+		int colon = id.indexOf(':');
+		String path = colon >= 0 ? id.substring(colon + 1) : id;
+		return path.replace('_', ' ').toUpperCase();
+	}
+
+	/**
+	 * Computes final penetration power (0..75 scale against Armor Class 1..6 thresholds 10..60)
+	 * by combining base caliber penetration with the AmmoTier delta.
+	 */
+	public static int computePenetration(String ammoId, AmmoTier tier) {
+		int base = estimateBaseCaliberPenetration(ammoId);
+		return Math.max(2, base + tier.getPenetrationDelta());
+	}
+
+	public static int estimateBaseCaliberPenetration(String ammoId) {
+		if (ammoId == null) return 22;
+		String lower = ammoId.toLowerCase();
+		if (lower.contains("50bmg")) return 54;
+		if (lower.contains("338")) return 48;
+		if (lower.contains("762x54")) return 39;
+		if (lower.contains("308") || lower.contains("30_06") || lower.contains("68x51") || lower.contains("792x57")) return 38;
+		if (lower.contains("45_70")) return 34;
+		if (lower.contains("762x39")) return 31;
+		if (lower.contains("58x42") || lower.contains("300blk")) return 30;
+		if (lower.contains("556") || lower.contains("545")) return 28;
+		if (lower.contains("500mag")) return 28;
+		if (lower.contains("57x28") || lower.contains("46x30") || lower.contains("50ae")) return 26;
+		if (lower.contains("357")) return 25;
+		if (lower.contains("762x25")) return 19;
+		if (lower.contains("9mm") || lower.contains("45acp")) return 18;
+		if (lower.contains("12g")) return 15;
+		if (lower.contains("22wmr") || lower.contains("22lr") || lower.contains("22")) return 14;
+		return 22;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\health\ZonalArmorHelper.java ==========
+package com.tarkovcraft.health;
+
+import com.tarkovcraft.item.TarkovArmorItem;
+import com.tarkovcraft.loadout.EquipmentSlotType;
+import com.tarkovcraft.loadout.PlayerLoadout;
+import net.minecraft.item.ItemStack;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Evaluates strictly zonal, layered armor protection (outside-in: HELMET -> FACE_MASK -> BODY_ARMOR).
+ * Only intact armor pieces whose coveredZones include the exact HitZone can ricochet, mitigate, or stop a hit.
+ * Open zones and broken (0 durability) armor receive ZERO protection.
+ */
+public final class ZonalArmorHelper {
+	private static final EquipmentSlotType[] ARMOR_LAYER_ORDER = {
+		EquipmentSlotType.HELMET,
+		EquipmentSlotType.FACE_MASK,
+		EquipmentSlotType.BODY_ARMOR
+	};
+
+	private ZonalArmorHelper() {
+	}
+
+	public record ArmorResult(
+		float remainingDamage,
+		boolean protectedZone,
+		boolean stoppedByArmor,
+		boolean ricocheted,
+		int absorbedArmorClass,
+		int durabilityDamageApplied
+	) {
+	}
+
+	private record ArmorLayer(ItemStack stack, TarkovArmorItem armor, int remainingDurability) {
+	}
+
+	public static ArmorResult evaluateHit(PlayerLoadout loadout, HitZone zone, float rawDamage, int penetrationPower) {
+		return evaluateHit(loadout, zone, rawDamage, penetrationPower, 1.0f, false, false, 1.0f);
+	}
+
+	public static ArmorResult evaluateHit(
+		PlayerLoadout loadout,
+		HitZone zone,
+		float rawDamage,
+		int penetrationPower,
+		float armorWearMultiplier,
+		boolean bypassesArmor,
+		boolean canRicochet,
+		float ricochetRoll
+	) {
+		if (bypassesArmor || loadout == null || zone == null) {
+			return new ArmorResult(rawDamage, false, false, false, 0, 0);
+		}
+
+		List<ArmorLayer> layers = new ArrayList<>(3);
+		for (EquipmentSlotType slot : ARMOR_LAYER_ORDER) {
+			ItemStack stack = loadout.getEquipment(slot);
+			if (stack.isEmpty() || !(stack.getItem() instanceof TarkovArmorItem armor)) {
+				continue;
+			}
+			int remainingDur = TarkovArmorItem.getRemainingDurability(stack);
+			if (remainingDur > 0 && armor.coversZone(zone)) {
+				layers.add(new ArmorLayer(stack, armor, remainingDur));
+			}
+		}
+
+		if (layers.isEmpty()) {
+			return new ArmorResult(rawDamage, false, false, false, 0, 0);
+		}
+
+		float currentDmg = rawDamage;
+		int currentPen = Math.max(0, penetrationPower);
+		float safeWearMult = Math.max(0.0f, armorWearMultiplier);
+		int totalWear = 0;
+		int highestClass = 0;
+
+		for (ArmorLayer layer : layers) {
+			ItemStack stack = layer.stack();
+			TarkovArmorItem armor = layer.armor();
+			int maxDur = Math.max(1, stack.getMaxDamage());
+			float durRatio = layer.remainingDurability() / (float) maxDur;
+			highestClass = Math.max(highestClass, armor.getArmorClass());
+
+			if (canRicochet && zone.isHelmetRicochetZone() && armor.getRicochetChance() > 0.0f) {
+				float effRicochet = Math.min(0.65f, armor.getRicochetChance() * (0.5f + 0.5f * durRatio));
+				if (ricochetRoll < effRicochet) {
+					int wear = Math.max(1, Math.round(currentDmg * 0.08f * armor.getMaterial().getDestructibility() * safeWearMult));
+					applyWear(stack, maxDur, wear);
+					totalWear += wear;
+					return new ArmorResult(Math.max(1.0f, currentDmg * 0.05f), true, true, true, armor.getArmorClass(), totalWear);
+				}
+			}
+
+			float effectiveThreshold = armor.getArmorClass() * 10.0f * (0.45f + 0.55f * durRatio);
+			float baseWear = currentDmg * 0.25f * armor.getMaterial().getDestructibility() * safeWearMult;
+
+			if (currentPen < effectiveThreshold) {
+				int wear = Math.max(1, Math.round(baseWear));
+				applyWear(stack, maxDur, wear);
+				totalWear += wear;
+				float blunt = Math.max(1.0f, currentDmg * armor.getMaterial().getBluntThroughput());
+				return new ArmorResult(blunt, true, true, false, armor.getArmorClass(), totalWear);
+			}
+
+			int wear = Math.max(1, Math.round(baseWear * 1.20f));
+			applyWear(stack, maxDur, wear);
+			totalWear += wear;
+
+			float overPen = currentPen - effectiveThreshold;
+			float reduction = Math.max(0.10f, 0.30f - overPen * 0.01f);
+			currentDmg = Math.max(1.0f, currentDmg * (1.0f - reduction));
+			currentPen = Math.max(0, Math.round(currentPen - effectiveThreshold * 0.35f));
+		}
+
+		return new ArmorResult(currentDmg, true, false, false, highestClass, totalWear);
+	}
+
+	private static void applyWear(ItemStack stack, int maxDur, int wear) {
+		stack.setDamage(Math.min(maxDur, stack.getDamage() + wear));
+	}
+
+	/**
+	 * Returns the highest intact armor class covering the given zone, or 0 if exposed / broken.
+	 */
+	public static int getHighestProtectingClass(PlayerLoadout loadout, HitZone zone) {
+		if (loadout == null || zone == null) {
+			return 0;
+		}
+		int best = 0;
+		for (EquipmentSlotType slot : ARMOR_LAYER_ORDER) {
+			ItemStack stack = loadout.getEquipment(slot);
+			if (stack.isEmpty() || !(stack.getItem() instanceof TarkovArmorItem armor)) {
+				continue;
+			}
+			if (TarkovArmorItem.getRemainingDurability(stack) > 0 && armor.coversZone(zone)) {
+				best = Math.max(best, armor.getArmorClass());
+			}
+		}
+		return best;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\item\ArmorMaterialType.java ==========
+package com.tarkovcraft.item;
+
+/**
+ * Ballistic material classification for TarkovCraft armor.
+ * Controls durability wear rate (destructibility) and blunt trauma percentage when a round is stopped.
+ */
+public enum ArmorMaterialType {
+	COSMETIC("cosmetic", 1.0f, 1.0f),
+	ARAMID("aramid", 0.55f, 0.12f),
+	UHMWPE("uhmwpe", 0.45f, 0.11f),
+	COMBINED("combined", 0.65f, 0.13f),
+	TITANIUM("titanium", 0.70f, 0.14f),
+	STEEL("steel", 0.85f, 0.15f);
+
+	private final String id;
+	private final float destructibility;
+	private final float bluntThroughput;
+
+	ArmorMaterialType(String id, float destructibility, float bluntThroughput) {
+		this.id = id;
+		this.destructibility = destructibility;
+		this.bluntThroughput = bluntThroughput;
+	}
+
+	public String getId() {
+		return id;
+	}
+
+	public float getDestructibility() {
+		return destructibility;
+	}
+
+	public float getBluntThroughput() {
+		return bluntThroughput;
+	}
+
+	public String getTranslationKey() {
+		return "armormaterial.tarkovcraft." + id;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\item\BackpackItem.java ==========
+package com.tarkovcraft.item;
+
+import com.tarkovcraft.grid.ItemSize;
+import com.tarkovcraft.search.ItemRarityTier;
+import net.minecraft.client.item.TooltipContext;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
+import net.minecraft.world.World;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
+
+public class BackpackItem extends Item implements TarkovSizedItem {
+	private final int gridWidth;
+	private final int gridHeight;
+	private final ItemSize storedItemSize;
+	private final ItemRarityTier rarityTier;
+	private final float weightKg;
+
+	public BackpackItem(Settings settings, int gridWidth, int gridHeight, ItemSize storedItemSize) {
+		this(settings, gridWidth, gridHeight, storedItemSize, ItemRarityTier.UNCOMMON, -1.0f);
+	}
+
+	public BackpackItem(
+		Settings settings,
+		int gridWidth,
+		int gridHeight,
+		ItemSize storedItemSize,
+		ItemRarityTier rarityTier,
+		float weightKg
+	) {
+		super(settings.maxCount(1));
+		this.gridWidth = gridWidth;
+		this.gridHeight = gridHeight;
+		this.storedItemSize = storedItemSize;
+		this.rarityTier = rarityTier != null ? rarityTier : ItemRarityTier.UNCOMMON;
+		this.weightKg = weightKg;
+	}
+
+	public int getGridWidth() {
+		return gridWidth;
+	}
+
+	public int getGridHeight() {
+		return gridHeight;
+	}
+
+	@Override
+	public ItemSize getStoredItemSize() {
+		return storedItemSize;
+	}
+
+	@Override
+	public ItemRarityTier getRarityTier() {
+		return rarityTier;
+	}
+
+	@Override
+	public float getWeightKg() {
+		return weightKg;
+	}
+
+	@Override
+	public void appendTooltip(ItemStack stack, @Nullable World world, List<Text> tooltip, TooltipContext context) {
+		tooltip.add(Text.translatable("tooltip.tarkovcraft.backpack_grid", gridWidth, gridHeight).formatted(Formatting.GRAY));
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\item\MedicalType.java ==========
+package com.tarkovcraft.item;
+
+import com.tarkovcraft.grid.ItemSize;
+import com.tarkovcraft.search.ItemRarityTier;
+
+/**
+ * Specifications for all TarkovCraft EFT medical items.
+ */
+public enum MedicalType {
+	BANDAGE("bandage", 1, 1, CapacityMode.USES, 2, 0, true, false, false, 0.0f, 0, 0.0f, 0.05f, ItemRarityTier.COMMON, 15),
+	CAT_TOURNIQUET("cat_tourniquet", 1, 1, CapacityMode.USES, 1, 0, false, true, false, 0.0f, 0, 0.0f, 0.12f, ItemRarityTier.COMMON, 20),
+	SPLINT("splint", 1, 1, CapacityMode.USES, 1, 0, false, false, true, 0.0f, 0, 0.0f, 0.20f, ItemRarityTier.COMMON, 20),
+	ALU_SPLINT("alu_splint", 1, 1, CapacityMode.USES, 5, 0, false, false, true, 0.0f, 0, 0.0f, 0.35f, ItemRarityTier.UNCOMMON, 20),
+	ANALGIN("analgin", 1, 1, CapacityMode.USES, 4, 0, false, false, false, 0.0f, 1800, 1.5f, 0.06f, ItemRarityTier.COMMON, 15),
+	AI2_MEDKIT("ai2_medkit", 1, 1, CapacityMode.HP_POOL, 100, 50, false, false, false, 0.0f, 0, 0.0f, 0.15f, ItemRarityTier.COMMON, 20),
+	SALEWA_MEDKIT("salewa_medkit", 1, 2, CapacityMode.HP_POOL, 400, 85, true, true, false, 0.0f, 0, 0.0f, 0.60f, ItemRarityTier.UNCOMMON, 25),
+	CMS_KIT("cms_kit", 2, 1, CapacityMode.USES, 5, 0, false, false, false, 0.55f, 0, 0.8f, 0.65f, ItemRarityTier.RARE, 40),
+	SURV12_KIT("surv12_kit", 3, 1, CapacityMode.USES, 15, 0, false, false, true, 0.80f, 0, 1.0f, 1.00f, ItemRarityTier.EPIC, 45),
+	// 12 additional EFT medical presets
+	ARMY_BANDAGE("army_bandage", 1, 1, CapacityMode.USES, 2, 0, true, false, false, 0.0f, 0, 0.0f, 0.05f, ItemRarityTier.COMMON, 15),
+	ESMARCH("esmarch", 1, 1, CapacityMode.USES, 1, 0, false, true, false, 0.0f, 0, 0.0f, 0.16f, ItemRarityTier.COMMON, 25),
+	CALOK_B("calok_b", 1, 1, CapacityMode.USES, 3, 0, false, true, false, 0.0f, 0, 0.0f, 0.14f, ItemRarityTier.UNCOMMON, 20),
+	TIGZRESQ_SPLINT("tigzresq_splint", 1, 1, CapacityMode.USES, 3, 0, false, false, true, 0.0f, 0, 0.0f, 0.25f, ItemRarityTier.UNCOMMON, 20),
+	VASELINE("vaseline", 1, 1, CapacityMode.USES, 6, 0, false, false, false, 0.0f, 3600, 1.0f, 0.08f, ItemRarityTier.RARE, 25),
+	GOLDEN_STAR("golden_star", 1, 1, CapacityMode.USES, 10, 0, false, false, false, 0.0f, 4200, 1.2f, 0.05f, ItemRarityTier.EPIC, 30),
+	IBUPROFEN("ibuprofen", 1, 1, CapacityMode.USES, 15, 0, false, false, false, 0.0f, 3400, 1.0f, 0.07f, ItemRarityTier.RARE, 20),
+	AUGMENTIN("augmentin", 1, 1, CapacityMode.USES, 1, 0, false, false, false, 0.0f, 2200, 0.5f, 0.08f, ItemRarityTier.UNCOMMON, 20),
+	CAR_MEDKIT("car_medkit", 2, 1, CapacityMode.HP_POOL, 220, 70, true, false, false, 0.0f, 0, 0.0f, 0.35f, ItemRarityTier.COMMON, 20),
+	IFAK("ifak", 1, 1, CapacityMode.HP_POOL, 300, 60, true, true, false, 0.0f, 0, 0.0f, 0.25f, ItemRarityTier.UNCOMMON, 25),
+	AFAK("afak", 1, 1, CapacityMode.HP_POOL, 400, 75, true, true, false, 0.0f, 0, 0.0f, 0.30f, ItemRarityTier.RARE, 25),
+	GRIZZLY("grizzly", 2, 2, CapacityMode.HP_POOL, 1800, 175, true, true, true, 0.0f, 0, 0.0f, 1.60f, ItemRarityTier.EPIC, 30);
+
+	public static final int SALEWA_LIGHT_BLEED_COST = 45;
+	public static final int SALEWA_HEAVY_BLEED_COST = 135;
+	public static final int MEDKIT_FRACTURE_COST = 50;
+
+	public enum CapacityMode {
+		USES,
+		HP_POOL
+	}
+
+	private final String id;
+	private final int gridWidth;
+	private final int gridHeight;
+	private final CapacityMode capacityMode;
+	private final int maxCapacity;
+	private final int maxHealPerUse;
+	private final boolean curesLightBleed;
+	private final boolean curesHeavyBleed;
+	private final boolean curesFracture;
+	private final float surgeryRetention;
+	private final int painkillerTicks;
+	private final float exhaustionCost;
+	private final float weightKg;
+	private final ItemRarityTier rarityTier;
+	private final int cooldownTicks;
+
+	MedicalType(
+		String id,
+		int gridWidth,
+		int gridHeight,
+		CapacityMode capacityMode,
+		int maxCapacity,
+		int maxHealPerUse,
+		boolean curesLightBleed,
+		boolean curesHeavyBleed,
+		boolean curesFracture,
+		float surgeryRetention,
+		int painkillerTicks,
+		float exhaustionCost,
+		float weightKg,
+		ItemRarityTier rarityTier,
+		int cooldownTicks
+	) {
+		this.id = id;
+		this.gridWidth = gridWidth;
+		this.gridHeight = gridHeight;
+		this.capacityMode = capacityMode;
+		this.maxCapacity = maxCapacity;
+		this.maxHealPerUse = maxHealPerUse;
+		this.curesLightBleed = curesLightBleed;
+		this.curesHeavyBleed = curesHeavyBleed;
+		this.curesFracture = curesFracture;
+		this.surgeryRetention = surgeryRetention;
+		this.painkillerTicks = painkillerTicks;
+		this.exhaustionCost = exhaustionCost;
+		this.weightKg = weightKg;
+		this.rarityTier = rarityTier;
+		this.cooldownTicks = cooldownTicks;
+	}
+
+	public String getId() {
+		return id;
+	}
+
+	public ItemSize getGridSize() {
+		return new ItemSize(gridWidth, gridHeight);
+	}
+
+	public CapacityMode getCapacityMode() {
+		return capacityMode;
+	}
+
+	public int getMaxCapacity() {
+		return maxCapacity;
+	}
+
+	public int getMaxHealPerUse() {
+		return maxHealPerUse;
+	}
+
+	public boolean isCuresLightBleed() {
+		return curesLightBleed;
+	}
+
+	public boolean isCuresHeavyBleed() {
+		return curesHeavyBleed;
+	}
+
+	public boolean isCuresFracture() {
+		return curesFracture;
+	}
+
+	public float getSurgeryRetention() {
+		return surgeryRetention;
+	}
+
+	public boolean isSurgicalKit() {
+		return surgeryRetention > 0.0f;
+	}
+
+	public int getPainkillerTicks() {
+		return painkillerTicks;
+	}
+
+	public float getExhaustionCost() {
+		return exhaustionCost;
+	}
+
+	public float getWeightKg() {
+		return weightKg;
+	}
+
+	public ItemRarityTier getRarityTier() {
+		return rarityTier;
+	}
+
+	public int getCooldownTicks() {
+		return cooldownTicks;
+	}
+
+	public int getLightBleedCost() {
+		return capacityMode == CapacityMode.HP_POOL ? SALEWA_LIGHT_BLEED_COST : 1;
+	}
+
+	public int getHeavyBleedCost() {
+		return capacityMode == CapacityMode.HP_POOL ? SALEWA_HEAVY_BLEED_COST : 1;
+	}
+
+	public int getFractureCost() {
+		return capacityMode == CapacityMode.HP_POOL ? MEDKIT_FRACTURE_COST : 1;
+	}
+
+	public boolean isPainkillerOnly() {
+		return painkillerTicks > 0
+			&& !curesLightBleed
+			&& !curesHeavyBleed
+			&& !curesFracture
+			&& !isSurgicalKit()
+			&& maxHealPerUse <= 0;
+	}
+
+	public static MedicalType fromPreset(String preset) {
+		if (preset == null || preset.isBlank()) {
+			return null;
+		}
+		for (MedicalType type : values()) {
+			if (type.name().equalsIgnoreCase(preset) || type.id.equalsIgnoreCase(preset)) {
+				return type;
+			}
+		}
+		return null;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\item\TacticalRigItem.java ==========
+package com.tarkovcraft.item;
+
+import com.tarkovcraft.grid.ItemSize;
+import com.tarkovcraft.search.ItemRarityTier;
+import net.minecraft.client.item.TooltipContext;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
+import net.minecraft.world.World;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
+
+public class TacticalRigItem extends Item implements TarkovSizedItem {
+	private final List<ItemSize> compartmentLayouts;
+	private final ItemSize storedItemSize;
+	private final ItemRarityTier rarityTier;
+	private final float weightKg;
+
+	public TacticalRigItem(Settings settings, List<ItemSize> compartmentLayouts, ItemSize storedItemSize) {
+		this(settings, compartmentLayouts, storedItemSize, ItemRarityTier.UNCOMMON, -1.0f);
+	}
+
+	public TacticalRigItem(
+		Settings settings,
+		List<ItemSize> compartmentLayouts,
+		ItemSize storedItemSize,
+		ItemRarityTier rarityTier,
+		float weightKg
+	) {
+		super(settings.maxCount(1));
+		this.compartmentLayouts = List.copyOf(compartmentLayouts);
+		this.storedItemSize = storedItemSize;
+		this.rarityTier = rarityTier != null ? rarityTier : ItemRarityTier.UNCOMMON;
+		this.weightKg = weightKg;
+	}
+
+	public List<ItemSize> getCompartmentLayouts() {
+		return compartmentLayouts;
+	}
+
+	@Override
+	public ItemSize getStoredItemSize() {
+		return storedItemSize;
+	}
+
+	@Override
+	public ItemRarityTier getRarityTier() {
+		return rarityTier;
+	}
+
+	@Override
+	public float getWeightKg() {
+		return weightKg;
+	}
+
+	@Override
+	public void appendTooltip(ItemStack stack, @Nullable World world, List<Text> tooltip, TooltipContext context) {
+		int totalCells = compartmentLayouts.stream().mapToInt(s -> s.width() * s.height()).sum();
+		tooltip.add(Text.translatable("tooltip.tarkovcraft.rig_capacity", totalCells, compartmentLayouts.size()).formatted(Formatting.GRAY));
+	}
+}

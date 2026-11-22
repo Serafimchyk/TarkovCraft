@@ -35,6 +35,9 @@ public final class TarkovConfig {
 	public float containerRevealSeconds = 1.0f;
 	public float searchTimeMultiplier = 1.0f;
 	public float grenadeDamageMultiplier = 1.0f;
+	public int lootRespawnMinutes = 60;
+	public boolean cityAutoLootVanillaContainers = true;
+	public float vanillaContainerLootChance = 0.72f;
 
 	public TarkovConfig() {
 	}
@@ -117,6 +120,12 @@ public final class TarkovConfig {
 		containerRevealSeconds = clampFloat(containerRevealSeconds, 0.1f, 10.0f, 1.0f);
 		searchTimeMultiplier = clampFloat(searchTimeMultiplier, 0.1f, 5.0f, 1.0f);
 		grenadeDamageMultiplier = clampFloat(grenadeDamageMultiplier, 0.1f, 5.0f, 1.0f);
+		lootRespawnMinutes = clampInt(lootRespawnMinutes, 0, 10080);
+		vanillaContainerLootChance = clampFloat(vanillaContainerLootChance, 0.05f, 1.0f, 0.72f);
+	}
+
+	public long getLootRespawnMillis() {
+		return lootRespawnMinutes <= 0 ? 0L : (long) lootRespawnMinutes * 60_000L;
 	}
 
 	public int getAirdropIntervalTicks() {
