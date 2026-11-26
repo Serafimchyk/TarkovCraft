@@ -554,6 +554,7 @@ public final class TarkovNetworking {
 		PacketByteBuf buf = PacketByteBufs.create();
 		buf.writeNbt(loadout.writeNbt());
 		ServerPlayNetworking.send(player, S2C_LOADOUT_SYNC, buf);
+		EquipmentAppearanceSync.update(player, loadout);
 	}
 
 	public static void sendHealthSync(ServerPlayerEntity player, com.tarkovcraft.health.BodyPartHealth health) {

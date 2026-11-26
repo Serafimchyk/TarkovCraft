@@ -155,6 +155,21 @@ class AmmoAndWorkbenchTest {
 	}
 
 	@Test
+	void consumingSomeOfAStackRefreshesExposedInventoryWithinTheSameTick() {
+		PlayerLoadout loadout = new PlayerLoadout();
+		ItemStack backpack = new ItemStack(ModItems.BERKUT_BACKPACK);
+		GridContainer grid = ContainerItemHelper.readBackpackGrid(backpack);
+		assertTrue(grid.tryAutoPlace(new ItemStack(Items.IRON_INGOT, 2)));
+		ContainerItemHelper.writeBackpackGrid(backpack, grid);
+		loadout.setEquipment(EquipmentSlotType.BACKPACK, backpack);
+
+		assertEquals(2, loadout.getExposedStorageStackCached(0, null, true, 10).getCount());
+		assertTrue(WorkbenchInventoryHelper.consumeMaterials(loadout, null,
+			List.of(new TarkovWorkbenchRecipes.Ingredient(Items.IRON_INGOT, 1)), null, 0));
+		assertEquals(1, loadout.getExposedStorageStackCached(0, null, true, 10).getCount());
+	}
+
+	@Test
 	void workbenchBlockAndAssetsAreRegistered() {
 		Identifier wbId = new Identifier(TarkovCraftMod.MOD_ID, "tarkov_workbench");
 		assertEquals(ModBlocks.TARKOV_WORKBENCH, Registries.BLOCK.get(wbId));

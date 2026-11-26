@@ -8,7 +8,8 @@
     "LivingEntityDeathMixin",
     "ItemEntityPickupMixin",
     "ServerPlayNetworkHandlerMixin",
-    "ArmorItemMixin"
+    "ArmorItemMixin",
+    "BlockStateMixin"
   ],
   "client": [
     "MinecraftClientMixin",

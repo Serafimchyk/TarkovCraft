@@ -10,6 +10,7 @@ import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.registry.tag.BlockTags;
+import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.random.Random;
 import net.minecraft.world.Heightmap;
@@ -64,13 +65,9 @@ public class TarkovStructureFeature extends Feature<DefaultFeatureConfig> {
 			case MILITARY_CAMP -> buildMilitaryCamp(world, origin, random);
 			case FOREST_STASH -> buildForestStash(world, origin, random);
 		}
-		try {
-			net.minecraft.server.world.ServerWorld sw = world.toServerWorld();
-			if (sw != null) {
-				TarkovStructureRegistry.get(sw).record(kind, origin);
-			}
-		} catch (Exception ignored) {
-		}
+		ServerWorld serverWorld = world.toServerWorld();
+		BlockPos recordedOrigin = origin.toImmutable();
+		serverWorld.getServer().execute(() -> TarkovStructureRegistry.get(serverWorld).record(kind, recordedOrigin));
 		return true;
 	}
 

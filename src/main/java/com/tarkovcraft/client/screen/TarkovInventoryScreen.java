@@ -82,6 +82,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 
 	private record FloatingWindowLayout(
 		UUID uuid,
+		int windowIndex,
 		Rect bounds,
 		Rect headerRect,
 		Rect closeRect,
@@ -443,7 +444,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		int rightColX = area.x + area.w - pad - sideW;
 
 		drawEquipSlot(context, area.x + pad, topY, sideW, sqH, EquipmentSlotType.HELMET, "HEADWEAR", null, loadout, false, null, mouseX, mouseY);
-		drawEquipSlot(context, rightColX, topY, sideW, sqH, EquipmentSlotType.FACE_MASK, "FACE COVER", null, loadout, false, null, mouseX, mouseY);
+		drawEquipSlot(context, rightColX, topY, sideW, sqH, EquipmentSlotType.FACE_MASK, "FACE / EARS", null, loadout, false, null, mouseX, mouseY);
 		drawEquipSlot(context, area.x + pad, row2Y, sideW, sqH, EquipmentSlotType.BODY_ARMOR, "BODY ARMOR", null, loadout, false, null, mouseX, mouseY);
 		drawEquipSlot(context, rightColX, row2Y, sideW, sqH, EquipmentSlotType.RIG, "TACTICAL RIG", null, loadout, false, null, mouseX, mouseY);
 
@@ -661,7 +662,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			int halfW = (area.w - pad * 2 - 8) / 2;
 
 			drawEquipSlot(context, area.x + pad, curY, halfW, 26, EquipmentSlotType.HELMET, "HELM", null, corpseLo, true, scrollClip, mouseX, mouseY);
-			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 26, EquipmentSlotType.FACE_MASK, "MASK", null, corpseLo, true, scrollClip, mouseX, mouseY);
+			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 26, EquipmentSlotType.FACE_MASK, "FACE / EARS", null, corpseLo, true, scrollClip, mouseX, mouseY);
 			curY += 29;
 			drawEquipSlot(context, area.x + pad, curY, halfW, 26, EquipmentSlotType.BODY_ARMOR, "ARMOR", null, corpseLo, true, scrollClip, mouseX, mouseY);
 			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 26, EquipmentSlotType.RIG, "RIG", null, corpseLo, true, scrollClip, mouseX, mouseY);
@@ -1242,27 +1243,20 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			}
 		}
 
-		// 3b. Floating container windows (close / search / header drag; body click blocks click-through)
-		if (activeTab == TAB_GEAR) {
-			for (int i = floatingLayouts.size() - 1; i >= 0; i--) {
-				FloatingWindowLayout fw = floatingLayouts.get(i);
-				if (!fw.bounds().contains(mouseX, mouseY)) {
-					continue;
+		FloatingWindowLayout floatingWindow = findFloatingWindowAt(mouseX, mouseY);
+		if (floatingWindow != null && button != 1) {
+			if (button == 0) {
+				if (floatingWindow.closeRect().contains(mouseX, mouseY)) {
+					ClientNetworkSender.sendCloseCase(floatingWindow.uuid());
+				} else if (floatingWindow.searchRect() != null && floatingWindow.searchRect().contains(mouseX, mouseY)) {
+					ClientNetworkSender.sendRequestSearch(floatingWindow.uuid());
+				} else if (floatingWindow.headerRect().contains(mouseX, mouseY)) {
+					draggingFloatingUuid = floatingWindow.uuid();
+				} else {
+					clickGearItem(mouseX, mouseY);
 				}
-				if (button == 0 && fw.closeRect().contains(mouseX, mouseY)) {
-					ClientNetworkSender.sendCloseCase(fw.uuid());
-					return true;
-				}
-				if (button == 0 && fw.searchRect() != null && fw.searchRect().contains(mouseX, mouseY)) {
-					ClientNetworkSender.sendRequestSearch(fw.uuid());
-					return true;
-				}
-				if (button == 0 && fw.headerRect().contains(mouseX, mouseY)) {
-					draggingFloatingUuid = fw.uuid();
-					return true;
-				}
-				break;
 			}
+			return true;
 		}
 
 		// 4. Right-click: cancel drag OR clear selected med OR open dynamic EFT Context Menu
@@ -1320,44 +1314,37 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			}
 		}
 
-		// 7. Items: Shift+LMB quick transfer OR start Hold-and-Drag (Ctrl=half, Alt=1, normal=full)
-		HoveredTarget target = resolveHoveredTarget(mouseX, mouseY);
-		if (target != null && !target.stack().isEmpty()) {
-			if (Screen.hasShiftDown()) {
-				TarkovNetworking.sendQuickTransfer(target.loc(), target.idx(), target.entryId());
-				return true;
-			}
-			int moveCount = 0;
-			if (target.stack().getCount() > 1) {
-				if (Screen.hasControlDown()) {
-					moveCount = Math.max(1, target.stack().getCount() / 2);
-				} else if (Screen.hasAltDown()) {
-					moveCount = 1;
-				}
-			}
-			drag = new DragState(
-				target.loc(), target.idx(), target.entryId(),
-				target.stack().copy(), target.rotated(), moveCount,
-				mouseX, mouseY
-			);
+		if (clickGearItem(mouseX, mouseY)) {
 			return true;
 		}
 
-		// 8. Block click-through when inside a floating container window
-		for (int i = floatingLayouts.size() - 1; i >= 0; i--) {
-			if (floatingLayouts.get(i).bounds().contains(mouseX, mouseY)) {
-				return true;
-			}
-		}
-
-		// 9. Empty space in Left Column starts 3D player rotation
+		// Empty space in the left column starts 3D player rotation.
 		if (leftColumnArea != null && leftColumnArea.contains(mouseX, mouseY) && findRegionAt(mouseX, mouseY) == null) {
 			rotatingPlayerModel = true;
-			selectedTarget = null;
+		}
+		selectedTarget = null;
+		return true;
+	}
+
+	private boolean clickGearItem(double mouseX, double mouseY) {
+		HoveredTarget target = resolveHoveredTarget(mouseX, mouseY);
+		if (target == null || target.stack().isEmpty()) {
+			return false;
+		}
+		if (Screen.hasShiftDown()) {
+			TarkovNetworking.sendQuickTransfer(target.loc(), target.idx(), target.entryId());
 			return true;
 		}
-
-		selectedTarget = null;
+		int moveCount = 0;
+		if (target.stack().getCount() > 1) {
+			if (Screen.hasControlDown()) {
+				moveCount = Math.max(1, target.stack().getCount() / 2);
+			} else if (Screen.hasAltDown()) {
+				moveCount = 1;
+			}
+		}
+		drag = new DragState(target.loc(), target.idx(), target.entryId(),
+			target.stack().copy(), target.rotated(), moveCount, mouseX, mouseY);
 		return true;
 	}
 
@@ -1603,9 +1590,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		if (region.locType == TarkovNetworking.LOC_EQUIPMENT) {
 			EquipmentSlotType slot = EquipmentSlotType.values()[region.containerIndex];
 			boolean sameEquipSlot = drag.srcLoc == TarkovNetworking.LOC_EQUIPMENT && drag.srcIdx == region.containerIndex;
-			boolean allowHotswap = slot == EquipmentSlotType.BACKPACK || slot == EquipmentSlotType.RIG;
-			boolean ok = !sameEquipSlot && drag.moveCount <= 0 && slot.accepts(moving)
-				&& (loadout.getEquipment(slot).isEmpty() || allowHotswap);
+			boolean ok = !sameEquipSlot && drag.moveCount <= 0 && slot.accepts(moving);
 			return new DropEvaluation(ok, 0, 0, 1, 1);
 		}
 
@@ -1657,6 +1642,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			boolean supportedLoc = region.locType == TarkovNetworking.LOC_RIG_GRID
 				|| region.locType == TarkovNetworking.LOC_BACKPACK_GRID
 				|| region.locType == TarkovNetworking.LOC_EXTERNAL_GRID
+				|| region.locType == TarkovNetworking.LOC_FLOATING_CONTAINER
 				|| (region.locType == TarkovNetworking.LOC_CORPSE_RIG_GRID
 				&& handler.getMode() == TarkovScreenHandler.MODE_GROUND_ITEM);
 			return new DropEvaluation(supportedLoc, gx, gy, sz.width(), sz.height());
@@ -1859,9 +1845,26 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 
 	@Nullable
 	private InteractiveRegion findRegionAt(double mx, double my) {
+		FloatingWindowLayout window = findFloatingWindowAt(mx, my);
 		for (int i = regions.size() - 1; i >= 0; i--) {
-			if (regions.get(i).hits(mx, my)) {
-				return regions.get(i);
+			InteractiveRegion region = regions.get(i);
+			if (window != null && (region.locType != TarkovNetworking.LOC_FLOATING_CONTAINER
+				|| (region.containerIndex >> 8) != window.windowIndex())) {
+				continue;
+			}
+			if (region.hits(mx, my)) {
+				return region;
+			}
+		}
+		return null;
+	}
+
+	@Nullable
+	private FloatingWindowLayout findFloatingWindowAt(double mouseX, double mouseY) {
+		if (activeTab == TAB_GEAR) {
+			for (int index = floatingLayouts.size() - 1; index >= 0; index--) {
+				FloatingWindowLayout window = floatingLayouts.get(index);
+				if (window.bounds().contains(mouseX, mouseY)) return window;
 			}
 		}
 		return null;
@@ -1989,7 +1992,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 
 			Rect bounds = new Rect(wx, wy, winW, winH);
 			Rect headerRect = new Rect(wx, wy, winW, headerH);
-			floatingLayouts.add(new FloatingWindowLayout(view.containerUuid(), bounds, headerRect, closeRect, searchRect));
+			floatingLayouts.add(new FloatingWindowLayout(view.containerUuid(), winIdx, bounds, headerRect, closeRect, searchRect));
 
 			int gx = wx + pad;
 			int gy = wy + headerH + pad;

@@ -4,16 +4,20 @@ import com.tarkovcraft.ammo.AmmoTier;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.damage.DamageSource;
+import net.minecraft.entity.projectile.ProjectileEntity;
 import net.minecraft.item.ItemStack;
+import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.util.Identifier;
 
 import java.lang.reflect.Method;
+import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jetbrains.annotations.Nullable;
 
 /**
  * Zero-hard-dependency bridge to TaCZ Refabricated's EntityKineticBullet.
- * Extracts gun ID, ammo ID, and loaded AmmoTier (HP / FMJ / AP / IGN) from the shooter's firearm,
+ * Extracts gun ID, ammo ID, and the AmmoTier (HP / FMJ / AP / IGN) captured when the projectile spawns,
  * computing effective penetration power and flesh damage multiplier.
  */
 public final class TaCZBulletHelper {
@@ -21,6 +25,7 @@ public final class TaCZBulletHelper {
 	}
 
 	private static final ConcurrentHashMap<Class<?>, BulletGetters> GETTER_CACHE = new ConcurrentHashMap<>();
+	private static final Map<Integer, AmmoTier> PROJECTILE_TIERS = new ConcurrentHashMap<>();
 
 	private TaCZBulletHelper() {
 	}
@@ -36,19 +41,41 @@ public final class TaCZBulletHelper {
 	) {
 	}
 
+	public static void onEntityLoad(Entity entity) {
+		if (!(entity instanceof ProjectileEntity projectile) || !isTaczProjectile(entity)
+				|| !(projectile.getOwner() instanceof LivingEntity shooter)) {
+			return;
+		}
+		ItemStack gun = shooter.getMainHandStack();
+		if (AmmoTier.isTaczGunStack(gun) && gun.getNbt() != null
+				&& gun.getNbt().contains("GunId") && gun.getNbt().getString("GunId").equals(invokeCachedGetter(entity, true))) {
+			PROJECTILE_TIERS.put(entity.getId(), AmmoTier.getLoadedTierFromGun(gun));
+		}
+		if (shooter instanceof ServerPlayerEntity player) {
+			MedicalUseManager.interruptForCombat(player);
+		}
+	}
+
+	public static void onEntityUnload(Entity entity) {
+		PROJECTILE_TIERS.remove(entity.getId());
+	}
+
+	public static void clearProjectiles() {
+		PROJECTILE_TIERS.clear();
+	}
+
+	private static boolean isTaczProjectile(@Nullable Entity entity) {
+		return entity != null && entity.getClass().getName().contains("EntityKineticBullet");
+	}
+
 	public static BulletInfo inspectDamageSource(DamageSource source) {
 		Entity direct = source.getSource();
 		Entity attacker = source.getAttacker();
 
-		AmmoTier loadedTier = AmmoTier.FMJ;
-		if (attacker instanceof LivingEntity living) {
-			ItemStack held = living.getMainHandStack();
-			loadedTier = AmmoTier.getLoadedTierFromGun(held);
-		}
-
-		boolean isTacz = (direct != null && direct.getClass().getName().contains("EntityKineticBullet"))
-			|| (source.getName() != null && source.getName().toLowerCase().contains("tacz.bullet"));
+		boolean isTacz = isTaczProjectile(direct)
+			|| (source.getName() != null && source.getName().toLowerCase(Locale.ROOT).contains("tacz.bullet"));
 		if (isTacz) {
+			AmmoTier loadedTier = direct != null ? PROJECTILE_TIERS.getOrDefault(direct.getId(), AmmoTier.FMJ) : AmmoTier.FMJ;
 			String gunStr = direct != null ? invokeCachedGetter(direct, true) : "";
 			String ammoStr = direct != null ? invokeCachedGetter(direct, false) : "";
 			String cleanGun = prettifyId(gunStr, "Firearm");

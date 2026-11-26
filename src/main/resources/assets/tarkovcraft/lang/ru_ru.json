@@ -1,5 +1,9 @@
 {
   "screen.tarkovcraft.inventory": "Инвентарь TarkovCraft",
+  "key.tarkovcraft.ammo_radial": "Выбор типа патронов",
+  "screen.tarkovcraft.ammo_radial": "ПАТРОНЫ",
+  "screen.tarkovcraft.ammo_radial_hint": "Нажми, чтобы задать приоритет перезарядки",
+  "message.tarkovcraft.ammo_priority": "Приоритет перезарядки: %s",
   "screen.tarkovcraft.kia_title": "KIA",
   "screen.tarkovcraft.kia_header": "KIA // ВЫ ПОГИБЛИ В РЕЙДЕ",
   "screen.tarkovcraft.kia_killer": "КТО УБИЛ",

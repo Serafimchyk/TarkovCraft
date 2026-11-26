@@ -1,11 +1,17 @@
 package com.tarkovcraft.client;
 
+import com.tarkovcraft.ammo.AmmoReloadTracker;
 import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.ammo.TaCZCaliberCatalog;
+import com.tarkovcraft.client.model.GearPalette;
 import com.tarkovcraft.client.renderer.CorpseEntityRenderer;
 import com.tarkovcraft.client.renderer.HitZoneDebugRenderer;
+import com.tarkovcraft.client.renderer.PlayerGearFeature;
+import com.tarkovcraft.client.screen.AmmoRadialScreen;
 import com.tarkovcraft.client.screen.TarkovInventoryScreen;
 import com.tarkovcraft.client.screen.TarkovWorkbenchScreen;
 import com.tarkovcraft.health.TaCZBulletHelper;
+import com.tarkovcraft.network.AmmoSelectionNetworking;
 import com.tarkovcraft.network.TarkovNetworking;
 import com.tarkovcraft.registry.ModEntities;
 import com.tarkovcraft.registry.ModScreenHandlers;
@@ -13,6 +19,7 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.client.gui.screen.ingame.HandledScreens;
@@ -20,6 +27,7 @@ import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.render.entity.FlyingItemEntityRenderer;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.item.FoodComponent;
+import net.minecraft.item.ItemStack;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import org.lwjgl.glfw.GLFW;
@@ -30,11 +38,14 @@ public class TarkovCraftClient implements ClientModInitializer {
 	public static KeyBinding toggleMeleeKey;
 	public static KeyBinding interactKey;
 	public static KeyBinding toggleHitboxesKey;
+	private static KeyBinding ammoRadialKey;
 
 	@Override
 	public void onInitializeClient() {
 		TarkovNetworking.registerClientReceivers();
 		ClientNetworkSender.registerWorkbenchClientReceiver();
+		PlayerGearFeature.register();
+		GearPalette.register();
 		HandledScreens.register(ModScreenHandlers.TARKOV_SCREEN_HANDLER, TarkovInventoryScreen::new);
 		HandledScreens.register(ModScreenHandlers.TARKOV_WORKBENCH_SCREEN_HANDLER, TarkovWorkbenchScreen::new);
 		EntityRendererRegistry.register(ModEntities.CORPSE, CorpseEntityRenderer::new);
@@ -139,7 +150,27 @@ public class TarkovCraftClient implements ClientModInitializer {
 			"category.tarkovcraft"
 		));
 
+		ammoRadialKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+			"key.tarkovcraft.ammo_radial",
+			InputUtil.Type.KEYSYM,
+			GLFW.GLFW_KEY_Y,
+			"category.tarkovcraft"
+		));
+
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
+			while (ammoRadialKey.wasPressed()) {
+				if (client.player != null && client.currentScreen == null && client.player.isAlive()
+						&& !client.player.isSpectator() && ClientPlayNetworking.canSend(AmmoSelectionNetworking.SELECT)) {
+					ItemStack gun = client.player.getMainHandStack();
+					String ammoId = AmmoReloadTracker.getGunAmmoId(gun);
+					if (gun.getNbt() != null && TaCZCaliberCatalog.isBallisticAmmoId(ammoId)) {
+						String gunId = gun.getNbt().getString("GunId");
+						if (!gunId.isEmpty() && gunId.length() <= AmmoSelectionNetworking.MAX_GUN_ID_LENGTH) {
+							client.setScreen(new AmmoRadialScreen(gunId, ammoId, AmmoReloadTracker.countAvailableAmmo(client.player, ammoId)));
+						}
+					}
+				}
+			}
 			while (toggleMeleeKey.wasPressed()) {
 				if (client.player != null && !client.player.isCreative()) {
 					TarkovNetworking.sendToggleMelee();

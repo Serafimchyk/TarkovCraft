@@ -1,5 +1,9 @@
 {
   "screen.tarkovcraft.inventory": "TarkovCraft Inventory",
+  "key.tarkovcraft.ammo_radial": "Ammo tier selector",
+  "screen.tarkovcraft.ammo_radial": "AMMUNITION",
+  "screen.tarkovcraft.ammo_radial_hint": "Click to set reload priority",
+  "message.tarkovcraft.ammo_priority": "Reload priority: %s",
   "screen.tarkovcraft.kia_title": "KIA",
   "screen.tarkovcraft.kia_header": "KIA // KILLED IN ACTION",
   "screen.tarkovcraft.kia_killer": "KILLED BY",

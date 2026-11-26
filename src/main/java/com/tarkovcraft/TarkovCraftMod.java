@@ -1,12 +1,15 @@
 package com.tarkovcraft;
 
 import com.tarkovcraft.ammo.AmmoReloadTracker;
-import com.tarkovcraft.ammo.AmmoTier;
 import com.tarkovcraft.command.TarkovCommand;
 import com.tarkovcraft.container.VanillaContainerBridge;
 import com.tarkovcraft.grid.ItemSizeRegistry;
 import com.tarkovcraft.health.BodyHealthTicker;
+import com.tarkovcraft.health.TaCZBulletHelper;
+import com.tarkovcraft.item.HeldItemInteraction;
 import com.tarkovcraft.loadout.PlayerLoadoutHolder;
+import com.tarkovcraft.network.AmmoSelectionNetworking;
+import com.tarkovcraft.network.EquipmentAppearanceSync;
 import com.tarkovcraft.network.TarkovNetworking;
 import com.tarkovcraft.registry.ModBlocks;
 import com.tarkovcraft.registry.ModEntities;
@@ -16,6 +19,7 @@ import com.tarkovcraft.screen.TarkovScreenHandler;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
@@ -50,6 +54,11 @@ public class TarkovCraftMod implements ModInitializer {
 		com.tarkovcraft.worldgen.ModWorldGen.init();
 		com.tarkovcraft.entity.MobGearSpawner.register();
 		TarkovNetworking.registerServerReceivers();
+		AmmoSelectionNetworking.register();
+		EquipmentAppearanceSync.register();
+		ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> TaCZBulletHelper.onEntityLoad(entity));
+		ServerEntityEvents.ENTITY_UNLOAD.register((entity, world) -> TaCZBulletHelper.onEntityUnload(entity));
+		ServerLifecycleEvents.SERVER_STOPPED.register(server -> TaCZBulletHelper.clearProjectiles());
 
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
 			TarkovCommand.register(dispatcher)
@@ -151,8 +160,8 @@ public class TarkovCraftMod implements ModInitializer {
 			if (player.shouldCancelInteraction() || player.isCreative()) {
 				return ActionResult.PASS;
 			}
-			if (AmmoTier.isTaczGunStack(player.getMainHandStack()) || AmmoTier.isTaczGunStack(player.getStackInHand(hand))) {
-				return ActionResult.FAIL;
+			if (HeldItemInteraction.takesPriority(player, hand)) {
+				return ActionResult.PASS;
 			}
 			if (!world.isClient && hand == Hand.MAIN_HAND && player instanceof ServerPlayerEntity sp) {
 				VanillaContainerBridge.tryOpenForPlayer(sp, pos);

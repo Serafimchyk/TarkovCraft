@@ -40,6 +40,10 @@ public class TarkovFunctionalItem extends Item implements TarkovSizedItem {
 		return category;
 	}
 
+	public boolean isHeadset() {
+		return "headset".equals(category);
+	}
+
 	@Override
 	public ItemSize getStoredItemSize() {
 		return storedItemSize;

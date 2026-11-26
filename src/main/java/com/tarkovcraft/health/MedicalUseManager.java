@@ -81,6 +81,12 @@ public final class MedicalUseManager {
 		return playerId != null && ACTIVE.containsKey(playerId);
 	}
 
+	public static void interruptForCombat(ServerPlayerEntity player) {
+		if (isUsing(player.getUuid()) && player instanceof PlayerLoadoutHolder holder) {
+			cancelInternal(player, holder.tarkovcraft$getBodyHealth(), holder, true);
+		}
+	}
+
 	public static void removePlayer(UUID playerId) {
 		if (playerId != null) {
 			ACTIVE.remove(playerId);
@@ -142,7 +148,7 @@ public final class MedicalUseManager {
 			MedicalType type = med.getMedicalType();
 			boolean validTarget = targetPart != null
 				? MedicalHelper.canApplyToPart(health, stack, targetPart)
-				: (MedicalHelper.selectAutoTarget(health, stack) != null || type.isPainkillerOnly());
+				: MedicalHelper.selectAutoTarget(health, stack) != null;
 			if (!validTarget) {
 				player.sendMessage(Text.translatable(
 					targetPart != null ? "message.tarkovcraft.med_invalid_target" : "message.tarkovcraft.med_not_needed"
@@ -185,6 +191,10 @@ public final class MedicalUseManager {
 		BodyPartHealth health = holder.tarkovcraft$getBodyHealth();
 		if (!player.isAlive() || player.isSpectator()) {
 			cancelInternal(player, health, holder, false);
+			return;
+		}
+		if (player.isSprinting()) {
+			cancelInternal(player, health, holder, true);
 			return;
 		}
 

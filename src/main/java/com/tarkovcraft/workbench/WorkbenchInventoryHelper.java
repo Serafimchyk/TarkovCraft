@@ -242,6 +242,9 @@ public final class WorkbenchInventoryHelper {
 				}
 			}
 		}
+		if (remaining != amount) {
+			loadout.invalidateExposedCache();
+		}
 	}
 
 	private static boolean matchesConsumptionTarget(

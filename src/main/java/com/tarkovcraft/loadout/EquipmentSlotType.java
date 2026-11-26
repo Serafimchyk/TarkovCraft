@@ -4,6 +4,7 @@ import com.tarkovcraft.grid.ItemSizeRegistry;
 import com.tarkovcraft.item.BackpackItem;
 import com.tarkovcraft.item.TacticalRigItem;
 import com.tarkovcraft.item.TarkovArmorItem;
+import com.tarkovcraft.item.TarkovFunctionalItem;
 import net.minecraft.item.AxeItem;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
@@ -50,7 +51,8 @@ public enum EquipmentSlotType {
 			case BACKPACK -> item instanceof BackpackItem;
 			case RIG -> item instanceof TacticalRigItem;
 			case HELMET -> item instanceof TarkovArmorItem a && a.getTargetSlot() == HELMET;
-			case FACE_MASK -> item instanceof TarkovArmorItem a && a.getTargetSlot() == FACE_MASK;
+			case FACE_MASK -> (item instanceof TarkovArmorItem a && a.getTargetSlot() == FACE_MASK)
+				|| (item instanceof TarkovFunctionalItem functional && functional.isHeadset());
 			case BODY_ARMOR -> item instanceof TarkovArmorItem a && a.getTargetSlot() == BODY_ARMOR;
 			case PISTOL -> isTaczGun && ItemSizeRegistry.isPistolLike(stack)
 				|| (!isTaczGun && !(item instanceof BackpackItem) && !(item instanceof TacticalRigItem) && !(item instanceof TarkovArmorItem) && ItemSizeRegistry.isPistolLike(stack));

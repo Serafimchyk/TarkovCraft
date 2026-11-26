@@ -2,6 +2,7 @@ package com.tarkovcraft.loadout;
 
 import com.tarkovcraft.grid.ContainerItemHelper;
 import com.tarkovcraft.grid.GridContainer;
+import com.tarkovcraft.grid.GridEntry;
 import com.tarkovcraft.grid.ItemSize;
 import com.tarkovcraft.grid.ItemSizeRegistry;
 import com.tarkovcraft.item.BackpackItem;
@@ -9,6 +10,7 @@ import com.tarkovcraft.item.TacticalRigItem;
 import com.tarkovcraft.item.TarkovArmorItem;
 import com.tarkovcraft.item.TarkovMedicalItem;
 import com.tarkovcraft.item.TarkovSizedItem;
+import com.tarkovcraft.search.ContainerSearchMemory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
@@ -278,18 +280,41 @@ public final class PlayerLoadout {
 		return getExposedStorageStack(rigSlotIndex, playerId, false);
 	}
 
+	@Nullable
+	private static ContainerSearchMemory requiredSearch(ItemStack container) {
+		return ContainerItemHelper.requiresSearch(container) ? ContainerItemHelper.getSearchMemory(container) : null;
+	}
+
+	private static boolean isGridExposed(@Nullable ContainerSearchMemory search, @Nullable UUID playerId) {
+		return search == null || (playerId != null && search.isGridRevealed(playerId));
+	}
+
+	private static boolean isEntryExposed(@Nullable ContainerSearchMemory search, @Nullable UUID playerId, GridEntry entry) {
+		return search == null || search.isEntryDiscovered(playerId, entry.getEntryId());
+	}
+
+	private static boolean tryAutoPlaceInExposedGrid(GridContainer grid, ItemStack stack,
+			@Nullable ContainerSearchMemory search, @Nullable UUID playerId) {
+		if (search == null) return grid.tryAutoPlace(stack);
+		List<GridEntry> previous = grid.getEntries();
+		if (!grid.tryAutoPlace(stack, id -> search.isEntryDiscovered(playerId, id))) return false;
+		for (GridEntry entry : grid.getEntries()) {
+			if (!previous.contains(entry)) search.markEntryDiscovered(playerId, entry.getEntryId());
+		}
+		return true;
+	}
+
 	public ItemStack getExposedStorageStackCached(int slotIndex, @Nullable UUID playerId, boolean includeBackpack, long worldTick) {
 		if (slotIndex < 0) return ItemStack.EMPTY;
 		if (exposedCache == null || exposedCacheTick != worldTick || exposedCacheIncludeBp != includeBackpack) {
 			java.util.ArrayList<ItemStack> rebuilt = new java.util.ArrayList<>();
 			ItemStack rig = getEquipment(EquipmentSlotType.RIG);
 			if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
-				boolean ok = !ContainerItemHelper.requiresSearch(rig)
-					|| (playerId != null && ContainerItemHelper.getSearchMemory(rig).isGridRevealed(playerId));
-				if (ok) {
+				ContainerSearchMemory search = requiredSearch(rig);
+				if (isGridExposed(search, playerId)) {
 					for (GridContainer g : ContainerItemHelper.readRigGrids(rig)) {
 						for (var entry : g.getEntries()) {
-							rebuilt.add(entry.getStack());
+							if (isEntryExposed(search, playerId, entry)) rebuilt.add(entry.getStack());
 						}
 					}
 				}
@@ -297,12 +322,11 @@ public final class PlayerLoadout {
 			if (includeBackpack) {
 				ItemStack bp = getEquipment(EquipmentSlotType.BACKPACK);
 				if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem) {
-					boolean ok = !ContainerItemHelper.requiresSearch(bp)
-						|| (playerId != null && ContainerItemHelper.getSearchMemory(bp).isGridRevealed(playerId));
-					if (ok) {
+					ContainerSearchMemory search = requiredSearch(bp);
+					if (isGridExposed(search, playerId)) {
 						GridContainer g = ContainerItemHelper.readBackpackGrid(bp);
 						for (var entry : g.getEntries()) {
-							rebuilt.add(entry.getStack());
+							if (isEntryExposed(search, playerId, entry)) rebuilt.add(entry.getStack());
 						}
 					}
 				}
@@ -320,11 +344,11 @@ public final class PlayerLoadout {
 
 		ItemStack rig = getEquipment(EquipmentSlotType.RIG);
 		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
-			boolean ok = !ContainerItemHelper.requiresSearch(rig)
-				|| (playerId != null && ContainerItemHelper.getSearchMemory(rig).isGridRevealed(playerId));
-			if (ok) {
+			ContainerSearchMemory search = requiredSearch(rig);
+			if (isGridExposed(search, playerId)) {
 				for (GridContainer g : ContainerItemHelper.readRigGrids(rig)) {
 					for (var entry : g.getEntries()) {
+						if (!isEntryExposed(search, playerId, entry)) continue;
 						if (cursor == slotIndex) {
 							return entry.getStack();
 						}
@@ -337,11 +361,11 @@ public final class PlayerLoadout {
 		if (includeBackpack) {
 			ItemStack bp = getEquipment(EquipmentSlotType.BACKPACK);
 			if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem) {
-				boolean ok = !ContainerItemHelper.requiresSearch(bp)
-					|| (playerId != null && ContainerItemHelper.getSearchMemory(bp).isGridRevealed(playerId));
-				if (ok) {
+				ContainerSearchMemory search = requiredSearch(bp);
+				if (isGridExposed(search, playerId)) {
 					GridContainer g = ContainerItemHelper.readBackpackGrid(bp);
 					for (var entry : g.getEntries()) {
+						if (!isEntryExposed(search, playerId, entry)) continue;
 						if (cursor == slotIndex) {
 							return entry.getStack();
 						}
@@ -362,10 +386,12 @@ public final class PlayerLoadout {
 		int cursor = 0;
 
 		ItemStack rig = getEquipment(EquipmentSlotType.RIG);
-		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
+		ContainerSearchMemory rigSearch = requiredSearch(rig);
+		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem && isGridExposed(rigSearch, playerId)) {
 			List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
 			for (GridContainer g : grids) {
 				for (var entry : g.getEntries()) {
+					if (!isEntryExposed(rigSearch, playerId, entry)) continue;
 					if (cursor == slotIndex) {
 						ItemStack st = entry.getStack();
 						ItemStack extracted = st.split(amount);
@@ -383,9 +409,11 @@ public final class PlayerLoadout {
 
 		if (includeBackpack) {
 			ItemStack bp = getEquipment(EquipmentSlotType.BACKPACK);
-			if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem) {
+			ContainerSearchMemory backpackSearch = requiredSearch(bp);
+			if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem && isGridExposed(backpackSearch, playerId)) {
 				GridContainer g = ContainerItemHelper.readBackpackGrid(bp);
 				for (var entry : g.getEntries()) {
+					if (!isEntryExposed(backpackSearch, playerId, entry)) continue;
 					if (cursor == slotIndex) {
 						ItemStack st = entry.getStack();
 						ItemStack extracted = st.split(amount);
@@ -413,12 +441,12 @@ public final class PlayerLoadout {
 
 		ItemStack rig = getEquipment(EquipmentSlotType.RIG);
 		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
-			boolean ok = !ContainerItemHelper.requiresSearch(rig)
-				|| (playerId != null && ContainerItemHelper.getSearchMemory(rig).isGridRevealed(playerId));
-			if (ok) {
+			ContainerSearchMemory search = requiredSearch(rig);
+			if (isGridExposed(search, playerId)) {
 				List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
 				for (GridContainer g : grids) {
 					for (var entry : g.getEntries()) {
+						if (!isEntryExposed(search, playerId, entry)) continue;
 						if (cursor == slotIndex) {
 							if (incoming == null || incoming.isEmpty()) {
 								g.remove(entry.getEntryId());
@@ -438,11 +466,11 @@ public final class PlayerLoadout {
 		if (includeBackpack) {
 			ItemStack bp = getEquipment(EquipmentSlotType.BACKPACK);
 			if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem) {
-				boolean ok = !ContainerItemHelper.requiresSearch(bp)
-					|| (playerId != null && ContainerItemHelper.getSearchMemory(bp).isGridRevealed(playerId));
-				if (ok) {
+				ContainerSearchMemory search = requiredSearch(bp);
+				if (isGridExposed(search, playerId)) {
 					GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
 					for (var entry : bpGrid.getEntries()) {
+						if (!isEntryExposed(search, playerId, entry)) continue;
 						if (cursor == slotIndex) {
 							if (incoming == null || incoming.isEmpty()) {
 								bpGrid.remove(entry.getEntryId());
@@ -463,13 +491,13 @@ public final class PlayerLoadout {
 		if (incoming != null && !incoming.isEmpty()) {
 			ItemStack copy = incoming.copy();
 			if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
-				boolean ok = !ContainerItemHelper.requiresSearch(rig)
-					|| (playerId != null && ContainerItemHelper.getSearchMemory(rig).isGridRevealed(playerId));
-				if (ok) {
+				ContainerSearchMemory search = requiredSearch(rig);
+				if (isGridExposed(search, playerId)) {
 					List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
 					for (GridContainer g : grids) {
-						if (g.tryAutoPlace(copy)) {
+						if (tryAutoPlaceInExposedGrid(g, copy, search, playerId)) {
 							ContainerItemHelper.writeRigGrids(rig, grids);
+							if (search != null) ContainerItemHelper.saveSearchMemory(rig, search);
 							invalidateExposedCache();
 							return true;
 						}
@@ -479,12 +507,12 @@ public final class PlayerLoadout {
 			if (includeBackpack) {
 				ItemStack bp = getEquipment(EquipmentSlotType.BACKPACK);
 				if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem) {
-					boolean ok = !ContainerItemHelper.requiresSearch(bp)
-						|| (playerId != null && ContainerItemHelper.getSearchMemory(bp).isGridRevealed(playerId));
-					if (ok) {
+					ContainerSearchMemory search = requiredSearch(bp);
+					if (isGridExposed(search, playerId)) {
 						GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
-						if (bpGrid.tryAutoPlace(copy)) {
+						if (tryAutoPlaceInExposedGrid(bpGrid, copy, search, playerId)) {
 							ContainerItemHelper.writeBackpackGrid(bp, bpGrid);
+							if (search != null) ContainerItemHelper.saveSearchMemory(bp, search);
 							invalidateExposedCache();
 							return true;
 						}

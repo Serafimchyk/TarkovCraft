@@ -10,3 +10,7 @@ mods/
 *.log
 tree.txt
 ассеты/
+code_export/
+/tarkovcraft_models_pack/
+/.agents/
+/*1000_7_zxc_*.md
