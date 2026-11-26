@@ -84,6 +84,7 @@ public final class TarkovNetworking {
 	public static final byte LOC_DROP = 6;
 	public static final byte LOC_CORPSE_RIG_GRID = 7;     // Corpse rig OR ground rig compartments
 	public static final byte LOC_CORPSE_BACKPACK_GRID = 8;
+	public static final byte LOC_SECURE_CONTAINER = 10;
 	public static final byte LOC_FLOATING_CONTAINER = 9;   // Floating container window: idx = (winIdx << 8) | (subGridIdx & 0xFF)
 
 	private TarkovNetworking() {
@@ -239,7 +240,7 @@ public final class TarkovNetworking {
 			buf.writeBoolean(externalGridView != null);
 			if (externalGridView != null) externalGridView.write(buf);
 			buf.writeBoolean(corpseLoadout != null);
-			if (corpseLoadout != null) buf.writeNbt(corpseLoadout.writeNbt());
+			if (corpseLoadout != null) buf.writeNbt(corpseLoadout.writeLootNbt());
 			writeGridList(buf, corpseRigViews);
 			buf.writeBoolean(corpseBackpackView != null);
 			if (corpseBackpackView != null) corpseBackpackView.write(buf);
@@ -551,10 +552,20 @@ public final class TarkovNetworking {
 	}
 
 	public static void sendLoadoutSync(ServerPlayerEntity player, PlayerLoadout loadout) {
+		ItemStack headset = loadout.getEquipment(com.tarkovcraft.loadout.EquipmentSlotType.HEADSET);
+		if (!headset.isEmpty() && loadout.blocksHeadset()) {
+			loadout.setEquipment(com.tarkovcraft.loadout.EquipmentSlotType.HEADSET, ItemStack.EMPTY);
+			if (!loadout.tryInsertItem(headset, player.getUuid()) && !headset.isEmpty()) {
+				player.dropItem(headset, false);
+			}
+			player.sendMessage(Text.translatable("message.tarkovcraft.headset_removed"), true);
+		}
 		PacketByteBuf buf = PacketByteBufs.create();
 		buf.writeNbt(loadout.writeNbt());
 		ServerPlayNetworking.send(player, S2C_LOADOUT_SYNC, buf);
 		EquipmentAppearanceSync.update(player, loadout);
+			com.tarkovcraft.compat.voicechat.VoicechatAdapter.updateServerProfile(player.getUuid(),
+			com.tarkovcraft.audio.HearingProfile.forLoadout(loadout));
 	}
 
 	public static void sendHealthSync(ServerPlayerEntity player, com.tarkovcraft.health.BodyPartHealth health) {

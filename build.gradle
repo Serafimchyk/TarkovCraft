@@ -55,6 +55,8 @@ java {
 
 test {
 	useJUnitPlatform()
+	// Fabric must see the entrypoint adapter and fabric.mod.json as one mod in tests.
+	systemProperty 'fabric.classPathGroups', sourceSets.main.output.files.collect { it.absolutePath }.join(File.pathSeparator)
 }
 
 jar {

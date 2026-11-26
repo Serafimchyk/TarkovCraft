@@ -158,6 +158,9 @@ public class TarkovCraftClient implements ClientModInitializer {
 		));
 
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
+			com.tarkovcraft.compat.voicechat.VoicechatAdapter.updateClientProfile(client.player == null
+				? com.tarkovcraft.audio.HearingProfile.DEFAULT
+				: com.tarkovcraft.audio.HearingProfile.forLoadout(ClientLoadoutCache.getLoadout()));
 			while (ammoRadialKey.wasPressed()) {
 				if (client.player != null && client.currentScreen == null && client.player.isAlive()
 						&& !client.player.isSpectator() && ClientPlayNetworking.canSend(AmmoSelectionNetworking.SELECT)) {

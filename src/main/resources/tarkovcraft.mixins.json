@@ -9,13 +9,16 @@
     "ItemEntityPickupMixin",
     "ServerPlayNetworkHandlerMixin",
     "ArmorItemMixin",
-    "BlockStateMixin"
+    "BlockStateMixin",
+    "PlayerManagerSoundMixin"
   ],
   "client": [
     "MinecraftClientMixin",
     "InGameHudMixin",
     "ItemEntityRendererMixin",
-    "KeyBindingMixin"
+    "KeyBindingMixin",
+    "SoundSystemMixin",
+    "VoicePhysicsHudMixin"
   ],
   "injectors": {
     "defaultRequire": 1

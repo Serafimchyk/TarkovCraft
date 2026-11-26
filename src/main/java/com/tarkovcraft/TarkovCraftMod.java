@@ -8,6 +8,7 @@ import com.tarkovcraft.health.BodyHealthTicker;
 import com.tarkovcraft.health.TaCZBulletHelper;
 import com.tarkovcraft.item.HeldItemInteraction;
 import com.tarkovcraft.loadout.PlayerLoadoutHolder;
+import com.tarkovcraft.item.TarkovArmorRepairItem;
 import com.tarkovcraft.network.AmmoSelectionNetworking;
 import com.tarkovcraft.network.EquipmentAppearanceSync;
 import com.tarkovcraft.network.TarkovNetworking;
@@ -83,6 +84,7 @@ public class TarkovCraftMod implements ModInitializer {
 			for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
 				BodyHealthTicker.tickPlayer(player);
 				com.tarkovcraft.health.MedicalUseManager.tickPlayer(player);
+				TarkovArmorRepairItem.tickPlayer(player);
 				AmmoReloadTracker.tickPlayer(player);
 				if (player.currentScreenHandler instanceof TarkovScreenHandler tsh) {
 					tsh.tickServer(player);
@@ -93,6 +95,8 @@ public class TarkovCraftMod implements ModInitializer {
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
 			AmmoReloadTracker.removePlayer(handler.getPlayer().getUuid());
 			com.tarkovcraft.health.MedicalUseManager.removePlayer(handler.getPlayer().getUuid());
+			TarkovArmorRepairItem.removePlayer(handler.getPlayer().getUuid());
+			com.tarkovcraft.compat.voicechat.VoicechatAdapter.removePlayer(handler.getPlayer().getUuid());
 		});
 
 		// Sync loadout & body health when player joins
@@ -110,6 +114,8 @@ public class TarkovCraftMod implements ModInitializer {
 				boolean keepInv = oldPlayer.getWorld().getGameRules().getBoolean(GameRules.KEEP_INVENTORY);
 				if (alive || keepInv) {
 					newHolder.tarkovcraft$getLoadout().readNbt(oldHolder.tarkovcraft$getLoadout().writeNbt());
+				} else {
+					newHolder.tarkovcraft$getLoadout().copySecureContainerFrom(oldHolder.tarkovcraft$getLoadout());
 				}
 				if (alive) {
 					newHolder.tarkovcraft$getBodyHealth().readNbt(oldHolder.tarkovcraft$getBodyHealth().writeNbt());

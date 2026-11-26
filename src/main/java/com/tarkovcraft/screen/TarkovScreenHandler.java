@@ -747,7 +747,10 @@ public class TarkovScreenHandler extends ScreenHandler {
 		ItemStack transferCopy = peek.copy();
 		int before = transferCopy.getCount();
 		boolean movedBetweenContainers = false;
-		if (srcLoc == TarkovNetworking.LOC_BACKPACK_GRID) {
+		if (srcLoc == TarkovNetworking.LOC_SECURE_CONTAINER) {
+			loadout.tryInsertItem(transferCopy, playerId);
+			movedBetweenContainers = transferCopy.getCount() < before;
+		} else if (srcLoc == TarkovNetworking.LOC_BACKPACK_GRID) {
 			movedBetweenContainers = insertIntoPocketsOrRig(loadout, playerId, transferCopy) > 0;
 		} else if (srcLoc == TarkovNetworking.LOC_POCKET || srcLoc == TarkovNetworking.LOC_RIG_GRID) {
 			movedBetweenContainers = insertIntoOwnBackpack(loadout, playerId, transferCopy) > 0;
@@ -819,6 +822,10 @@ public class TarkovScreenHandler extends ScreenHandler {
 		ItemStack peek = peekSource(loadout, playerId, srcLoc, srcIdx, srcEntryId);
 		if (peek.isEmpty()) return;
 
+		if (EquipmentSlotType.HEADSET.accepts(peek) && loadout.blocksHeadset()) {
+			serverPlayer.sendMessage(Text.translatable("message.tarkovcraft.headset_blocked"), true);
+			return;
+		}
 		EquipmentSlotType targetSlot = findEquipOrHotswapSlotFor(loadout, peek);
 		if (targetSlot == null) return;
 
@@ -853,18 +860,10 @@ public class TarkovScreenHandler extends ScreenHandler {
 			return;
 		}
 		if (peek.getItem() instanceof TarkovArmorRepairItem) {
-			if (!TarkovArmorRepairItem.canRepairAny(serverPlayer)) {
-				serverPlayer.sendMessage(Text.translatable("message.tarkovcraft.repair_not_needed"), true);
-				return;
-			}
-			ItemStack toUse = peek.copyWithCount(1);
-			if (TarkovArmorRepairItem.applyRepair(serverPlayer, toUse)) {
-				if (!serverPlayer.isCreative()) {
-					extractSource(loadout, srcLoc, srcIdx, srcEntryId, 1);
-				}
-				markExternalDirty();
-				syncToClient(serverPlayer);
-			}
+			TarkovArmorRepairItem.start(serverPlayer,
+				() -> isOwnStorage(srcLoc) || serverPlayer.currentScreenHandler == this && canUse(serverPlayer)
+					? peekSource(loadout, playerId, srcLoc, srcIdx, srcEntryId) : ItemStack.EMPTY,
+				result -> replaceRepairKit(loadout, srcLoc, srcIdx, srcEntryId, result));
 			return;
 		}
 		if (!isConsumableItem(peek)) return;
@@ -993,6 +992,11 @@ public class TarkovScreenHandler extends ScreenHandler {
 				ItemStack st = corpse.getLoadout().getEquipment(slot);
 				yield ContainerItemHelper.isContainerItem(st) ? ContainerItemHelper.getOrCreateContainerUuid(st) : null;
 			}
+			case TarkovNetworking.LOC_SECURE_CONTAINER -> {
+				GridEntry entry = srcIdx == 0 && srcEntryId != null ? loadout.getSecureContainer().getEntry(srcEntryId) : null;
+				yield entry != null && ContainerItemHelper.isContainerItem(entry.getStack())
+					? ContainerItemHelper.getOrCreateContainerUuid(entry.getStack()) : null;
+			}
 			case TarkovNetworking.LOC_RIG_GRID -> ensureUuidInRig(loadout.getEquipment(EquipmentSlotType.RIG), srcIdx, srcEntryId);
 			case TarkovNetworking.LOC_BACKPACK_GRID -> ensureUuidInSingleContainer(loadout.getEquipment(EquipmentSlotType.BACKPACK), srcEntryId);
 			case TarkovNetworking.LOC_CORPSE_RIG_GRID -> {
@@ -1085,11 +1089,49 @@ public class TarkovScreenHandler extends ScreenHandler {
 		@Nullable BodyPart targetPart
 	) {
 		if (!canUse(serverPlayer) || serverPlayer.isSpectator() || !serverPlayer.isAlive()) return;
-		boolean isOwnStorage = srcLoc == TarkovNetworking.LOC_POCKET
-			|| srcLoc == TarkovNetworking.LOC_RIG_GRID
-			|| srcLoc == TarkovNetworking.LOC_BACKPACK_GRID;
-		if (!isOwnStorage) return;
+		if (!isOwnStorage(srcLoc)) return;
 		com.tarkovcraft.health.MedicalUseManager.startFromInventory(serverPlayer, srcLoc, srcIdx, srcEntryId, targetPart);
+	}
+
+	private static boolean isOwnStorage(byte loc) {
+		return loc == TarkovNetworking.LOC_POCKET || loc == TarkovNetworking.LOC_RIG_GRID
+			|| loc == TarkovNetworking.LOC_BACKPACK_GRID || loc == TarkovNetworking.LOC_SECURE_CONTAINER;
+	}
+
+	private void replaceRepairKit(PlayerLoadout loadout, byte loc, int idx,
+			@Nullable UUID entryId, ItemStack result) {
+		if (loc == TarkovNetworking.LOC_POCKET) {
+			loadout.setPocket(idx, result);
+		} else if (loc == TarkovNetworking.LOC_EQUIPMENT || loc == TarkovNetworking.LOC_CORPSE_EQUIPMENT) {
+			PlayerLoadout owner = loc == TarkovNetworking.LOC_EQUIPMENT ? loadout : corpse.getLoadout();
+			owner.setEquipment(slotByOrdinal(idx), result);
+		} else if (loc == TarkovNetworking.LOC_SECURE_CONTAINER) {
+			replaceGridStack(loadout.getSecureContainer(), entryId, result);
+		} else if (loc == TarkovNetworking.LOC_EXTERNAL_GRID && mode != MODE_GROUND_ITEM) {
+			replaceGridStack(getPrimaryExternalGrid(), entryId, result);
+		} else {
+			ContainerHandle handle = switch (loc) {
+				case TarkovNetworking.LOC_CORPSE_RIG_GRID -> mode == MODE_CORPSE
+					? wearableHandle(corpse.getLoadout().getEquipment(EquipmentSlotType.RIG))
+					: resolveContainerDestination(loadout, loc, idx);
+				case TarkovNetworking.LOC_CORPSE_BACKPACK_GRID -> wearableHandle(corpse.getLoadout().getEquipment(EquipmentSlotType.BACKPACK));
+				default -> resolveContainerDestination(loadout, loc, idx);
+			};
+			if (handle == null) return;
+			List<GridContainer> grids = handle.readGrids();
+			replaceGridStack(grids.get(getDestinationGridIndex(loc, idx)), entryId, result);
+			handle.saveGrids(grids);
+		}
+		loadout.invalidateExposedCache();
+		if (!isOwnStorage(loc)) markExternalDirty();
+	}
+
+	private static void replaceGridStack(GridContainer grid, UUID id, ItemStack result) {
+		if (result.isEmpty()) {
+			grid.remove(id);
+		} else {
+			grid.getEntry(id).setStack(result);
+		}
 	}
 
 	public ItemStack peekSourceForMed(ServerPlayerEntity serverPlayer, byte srcLoc, int srcIdx, @Nullable UUID srcEntryId) {
@@ -1167,6 +1209,14 @@ public class TarkovScreenHandler extends ScreenHandler {
 				if (res.applied() && st.isEmpty()) {
 					loadout.setPocket(srcIdx, ItemStack.EMPTY);
 				}
+				yield res;
+			}
+			case TarkovNetworking.LOC_SECURE_CONTAINER -> {
+				GridContainer grid = loadout.getSecureContainer();
+				GridEntry entry = srcIdx == 0 && srcEntryId != null ? grid.getEntry(srcEntryId) : null;
+				if (entry == null) yield failed;
+				MedicalHelper.ApplyResult res = MedicalHelper.applyMedical(health, entry.getStack(), targetPart, isCreative);
+				if (res.applied() && entry.getStack().isEmpty()) grid.remove(srcEntryId);
 				yield res;
 			}
 			case TarkovNetworking.LOC_RIG_GRID -> applyMedicalInRig(
@@ -1379,7 +1429,12 @@ public class TarkovScreenHandler extends ScreenHandler {
 		PlayerLoadout loadout, UUID playerId, byte srcLoc, int srcIdx, ItemStack splitCopy
 	) {
 		// 1. Try placing into the same grid first
-		if (srcLoc == TarkovNetworking.LOC_RIG_GRID) {
+		if (srcLoc == TarkovNetworking.LOC_SECURE_CONTAINER && PlayerLoadout.canPlaceInSecureContainer(splitCopy)) {
+			if (loadout.getSecureContainer().tryPlaceInFreeCell(splitCopy) != null) {
+				loadout.invalidateExposedCache();
+				return true;
+			}
+		} else if (srcLoc == TarkovNetworking.LOC_RIG_GRID) {
 			if (tryPlaceSplitInRig(loadout.getEquipment(EquipmentSlotType.RIG), playerId, srcIdx, splitCopy)) return true;
 		} else if (srcLoc == TarkovNetworking.LOC_BACKPACK_GRID) {
 			if (tryPlaceSplitInBackpack(loadout.getEquipment(EquipmentSlotType.BACKPACK), playerId, splitCopy)) return true;
@@ -1496,7 +1551,7 @@ public class TarkovScreenHandler extends ScreenHandler {
 		if (stack.getItem() instanceof BackpackItem) return EquipmentSlotType.BACKPACK;
 		if (stack.getItem() instanceof TacticalRigItem) return EquipmentSlotType.RIG;
 		for (EquipmentSlotType slot : new EquipmentSlotType[]{
-			EquipmentSlotType.HELMET, EquipmentSlotType.FACE_MASK, EquipmentSlotType.BODY_ARMOR,
+			EquipmentSlotType.HELMET, EquipmentSlotType.FACE_MASK, EquipmentSlotType.HEADSET, EquipmentSlotType.BODY_ARMOR,
 			EquipmentSlotType.PISTOL, EquipmentSlotType.PRIMARY_1, EquipmentSlotType.PRIMARY_2, EquipmentSlotType.MELEE
 		}) {
 			if (slot.accepts(stack)) {
@@ -1626,10 +1681,10 @@ public class TarkovScreenHandler extends ScreenHandler {
 			return EquipmentSlotType.RIG;
 		}
 		for (EquipmentSlotType slot : new EquipmentSlotType[]{
-			EquipmentSlotType.HELMET, EquipmentSlotType.FACE_MASK, EquipmentSlotType.BODY_ARMOR,
+			EquipmentSlotType.HELMET, EquipmentSlotType.FACE_MASK, EquipmentSlotType.HEADSET, EquipmentSlotType.BODY_ARMOR,
 			EquipmentSlotType.PISTOL, EquipmentSlotType.PRIMARY_1, EquipmentSlotType.PRIMARY_2, EquipmentSlotType.MELEE
 		}) {
-			if (loadout.getEquipment(slot).isEmpty() && slot.accepts(stack)) {
+			if (loadout.getEquipment(slot).isEmpty() && loadout.canEquip(slot, stack)) {
 				if ((slot == EquipmentSlotType.PRIMARY_1 || slot == EquipmentSlotType.PRIMARY_2 || slot == EquipmentSlotType.PISTOL)
 					&& !isWeaponLike(stack)) {
 					continue;
@@ -1697,6 +1752,12 @@ public class TarkovScreenHandler extends ScreenHandler {
 		}
 
 		// 3. Validate destination BEFORE mutating source
+		if (dstLoc == TarkovNetworking.LOC_EQUIPMENT && slotByOrdinal(dstIdx) == EquipmentSlotType.HEADSET
+			&& loadout.blocksHeadset()) {
+			serverPlayer.sendMessage(Text.translatable("message.tarkovcraft.headset_blocked"), true);
+			return;
+		}
+
 		if (!canInsertIntoDestination(loadout, playerId, movingPreview, dstLoc, dstIdx, dstX, dstY, dstRotated)) {
 			if (mode == MODE_VANILLA_CONTAINER && dstLoc == TarkovNetworking.LOC_EXTERNAL_GRID && vanillaStored != null) {
 				GridContainer vg = vanillaStored.getGrid();
@@ -1740,7 +1801,7 @@ public class TarkovScreenHandler extends ScreenHandler {
 		if (sourceLoc == TarkovNetworking.LOC_EQUIPMENT || sourceLoc == TarkovNetworking.LOC_CORPSE_EQUIPMENT) {
 			EquipmentSlotType sourceSlot = slotByOrdinal(sourceIdx);
 			PlayerLoadout sourceLoadout = sourceLoc == TarkovNetworking.LOC_EQUIPMENT ? loadout : corpse.getLoadout();
-			if (sourceSlot != null && sourceLoadout.getEquipment(sourceSlot).isEmpty() && sourceSlot.accepts(previous)) {
+			if (sourceSlot != null && sourceLoadout.getEquipment(sourceSlot).isEmpty() && sourceLoadout.canEquip(sourceSlot, previous)) {
 				sourceLoadout.setEquipment(sourceSlot, previous);
 				return true;
 			}
@@ -1780,7 +1841,8 @@ public class TarkovScreenHandler extends ScreenHandler {
 			|| loc == TarkovNetworking.LOC_EXTERNAL_GRID
 			|| loc == TarkovNetworking.LOC_CORPSE_RIG_GRID
 			|| loc == TarkovNetworking.LOC_CORPSE_BACKPACK_GRID
-			|| loc == TarkovNetworking.LOC_FLOATING_CONTAINER;
+			|| loc == TarkovNetworking.LOC_FLOATING_CONTAINER
+			|| loc == TarkovNetworking.LOC_SECURE_CONTAINER;
 	}
 
 	private ItemStack peekSource(PlayerLoadout loadout, UUID playerId, byte loc, int idx, @Nullable UUID entryId) {
@@ -1811,6 +1873,7 @@ public class TarkovScreenHandler extends ScreenHandler {
 	private GridEntry findSourceGridEntry(PlayerLoadout loadout, UUID playerId, byte loc, int idx, @Nullable UUID entryId) {
 		if (entryId == null) return null;
 		return switch (loc) {
+			case TarkovNetworking.LOC_SECURE_CONTAINER -> idx == 0 ? loadout.getSecureContainer().getEntry(entryId) : null;
 			case TarkovNetworking.LOC_RIG_GRID -> findRigEntry(loadout.getEquipment(EquipmentSlotType.RIG), playerId, idx, entryId);
 			case TarkovNetworking.LOC_BACKPACK_GRID -> findBackpackEntry(loadout.getEquipment(EquipmentSlotType.BACKPACK), playerId, entryId);
 			case TarkovNetworking.LOC_CORPSE_RIG_GRID -> {
@@ -1900,6 +1963,15 @@ public class TarkovScreenHandler extends ScreenHandler {
 				if (st.isEmpty()) loadout.setPocket(idx, ItemStack.EMPTY);
 				yield taken;
 			}
+			case TarkovNetworking.LOC_SECURE_CONTAINER -> {
+				GridContainer grid = loadout.getSecureContainer();
+				GridEntry entry = idx == 0 && entryId != null ? grid.getEntry(entryId) : null;
+				if (entry == null) yield ItemStack.EMPTY;
+				ItemStack removed = entry.getStack().split(count);
+				if (entry.getStack().isEmpty()) grid.remove(entryId);
+				loadout.invalidateExposedCache();
+				yield removed;
+			}
 			case TarkovNetworking.LOC_RIG_GRID -> extractFromRig(loadout.getEquipment(EquipmentSlotType.RIG), idx, entryId, count);
 			case TarkovNetworking.LOC_BACKPACK_GRID -> extractFromBackpack(loadout.getEquipment(EquipmentSlotType.BACKPACK), entryId, count);
 			case TarkovNetworking.LOC_CORPSE_RIG_GRID -> {
@@ -1986,6 +2058,22 @@ public class TarkovScreenHandler extends ScreenHandler {
 		byte loc, int idx, UUID entryId,
 		int dstX, int dstY, boolean dstRotated
 	) {
+		if (loc == TarkovNetworking.LOC_SECURE_CONTAINER) {
+			GridContainer grid = loadout.getSecureContainer();
+			GridEntry entry = idx == 0 ? grid.getEntry(entryId) : null;
+			if (entry == null || !PlayerLoadout.canPlaceInSecureContainer(entry.getStack())) return false;
+			GridEntry target = grid.getAt(dstX, dstY);
+			if (target != null && target != entry && canStackInto(target.getStack(), entry.getStack())) {
+				target.getStack().increment(entry.getStack().getCount());
+				grid.remove(entryId);
+			} else {
+				if (!grid.canPlace(entry.getStack(), dstX, dstY, dstRotated, entryId)) return false;
+				grid.remove(entryId);
+				grid.placeWithId(entryId, entry.getStack(), dstX, dstY, dstRotated);
+			}
+			loadout.invalidateExposedCache();
+			return true;
+		}
 		if (loc == TarkovNetworking.LOC_RIG_GRID) {
 			ItemStack rig = loadout.getEquipment(EquipmentSlotType.RIG);
 			List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
@@ -2053,11 +2141,15 @@ public class TarkovScreenHandler extends ScreenHandler {
 	) {
 		if (loc == TarkovNetworking.LOC_EQUIPMENT) {
 			EquipmentSlotType slot = slotByOrdinal(idx);
-			return slot != null && slot.accepts(stack);
+			return slot != null && loadout.canEquip(slot, stack);
 		}
 		if (loc == TarkovNetworking.LOC_POCKET) {
 			return idx >= 0 && idx < PlayerLoadout.POCKET_COUNT && loadout.canPlaceInPocket(stack)
 				&& (loadout.getPocket(idx).isEmpty() || canStackInto(loadout.getPocket(idx), stack));
+		}
+		if (loc == TarkovNetworking.LOC_SECURE_CONTAINER) {
+			return idx == 0 && PlayerLoadout.canPlaceInSecureContainer(stack)
+				&& canPlaceInVisibleGrid(loadout.getSecureContainer(), null, playerId, stack, dstX, dstY, dstRotated, true);
 		}
 		if (loc == TarkovNetworking.LOC_EXTERNAL_GRID && mode != MODE_GROUND_ITEM) {
 			GridContainer grid = getPrimaryExternalGrid();
@@ -2084,6 +2176,12 @@ public class TarkovScreenHandler extends ScreenHandler {
 			if (!canStackInto(current, stack)) return false;
 			current.increment(stack.getCount());
 			return true;
+		}
+		if (loc == TarkovNetworking.LOC_SECURE_CONTAINER) {
+			if (idx != 0 || !PlayerLoadout.canPlaceInSecureContainer(stack)) return false;
+			boolean placed = placeInVisibleGrid(loadout.getSecureContainer(), null, playerId, stack, dstX, dstY, dstRotated, true);
+			if (placed) loadout.invalidateExposedCache();
+			return placed;
 		}
 		if (loc == TarkovNetworking.LOC_EXTERNAL_GRID && mode != MODE_GROUND_ITEM) {
 			GridContainer grid = getPrimaryExternalGrid();
@@ -2326,6 +2424,10 @@ public class TarkovScreenHandler extends ScreenHandler {
 		// 1d. Inside own Backpack
 		ContainerHandle fromOwnBp = findInsideBackpack(loadout.getEquipment(EquipmentSlotType.BACKPACK), targetUuid, playerId, () -> {});
 		if (fromOwnBp != null) return fromOwnBp;
+
+		ContainerHandle fromSecure = findInsideGrid(loadout.getSecureContainer(), null, targetUuid, playerId,
+			false, grid -> loadout.invalidateExposedCache(), loadout::invalidateExposedCache);
+		if (fromSecure != null) return fromSecure;
 
 		// 2. Creative vanilla inventory
 		if (player.isCreative()) {

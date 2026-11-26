@@ -21,7 +21,8 @@ public enum EquipmentSlotType {
 	FACE_MASK("face_mask", "Face Mask"),
 	BODY_ARMOR("body_armor", "Body Armor"),
 	RIG("rig", "Tactical Rig"),
-	BACKPACK("backpack", "Backpack");
+	BACKPACK("backpack", "Backpack"),
+	HEADSET("headset", "Headset");
 
 	private final String id;
 	private final String displayName;
@@ -45,19 +46,20 @@ public enum EquipmentSlotType {
 		}
 		Item item = stack.getItem();
 		Identifier itemId = Registries.ITEM.getId(item);
+		boolean isHeadset = item instanceof TarkovFunctionalItem functional && functional.isHeadset();
 		boolean isTaczGun = "tacz".equals(itemId.getNamespace()) && itemId.getPath().contains("gun");
 
 		return switch (this) {
 			case BACKPACK -> item instanceof BackpackItem;
 			case RIG -> item instanceof TacticalRigItem;
 			case HELMET -> item instanceof TarkovArmorItem a && a.getTargetSlot() == HELMET;
-			case FACE_MASK -> (item instanceof TarkovArmorItem a && a.getTargetSlot() == FACE_MASK)
-				|| (item instanceof TarkovFunctionalItem functional && functional.isHeadset());
+			case FACE_MASK -> item instanceof TarkovArmorItem a && a.getTargetSlot() == FACE_MASK;
+			case HEADSET -> isHeadset;
 			case BODY_ARMOR -> item instanceof TarkovArmorItem a && a.getTargetSlot() == BODY_ARMOR;
 			case PISTOL -> isTaczGun && ItemSizeRegistry.isPistolLike(stack)
-				|| (!isTaczGun && !(item instanceof BackpackItem) && !(item instanceof TacticalRigItem) && !(item instanceof TarkovArmorItem) && ItemSizeRegistry.isPistolLike(stack));
+				|| (!isTaczGun && !(item instanceof BackpackItem) && !(item instanceof TacticalRigItem) && !(item instanceof TarkovArmorItem) && !isHeadset && ItemSizeRegistry.isPistolLike(stack));
 			case PRIMARY_1, PRIMARY_2 -> isTaczGun
-				|| (!(item instanceof BackpackItem) && !(item instanceof TacticalRigItem) && !(item instanceof TarkovArmorItem));
+				|| (!(item instanceof BackpackItem) && !(item instanceof TacticalRigItem) && !(item instanceof TarkovArmorItem) && !isHeadset);
 			case MELEE -> item instanceof SwordItem || item instanceof AxeItem
 				|| itemId.getPath().contains("knife") || itemId.getPath().contains("melee");
 		};

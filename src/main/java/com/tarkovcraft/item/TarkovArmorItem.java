@@ -40,7 +40,10 @@ public class TarkovArmorItem extends Item implements TarkovSizedItem {
 	private final float weightKg;
 	private final Set<HitZone> coveredZones;
 	private final ItemRarityTier rarityTier;
+	private static final String MAX_DURABILITY_KEY = "TarkovMaxDurability";
 	private final boolean gasProtection;
+	private final boolean blocksHeadset;
+	private final float hearingMultiplier;
 
 	public TarkovArmorItem(
 		Settings settings,
@@ -86,6 +89,14 @@ public class TarkovArmorItem extends Item implements TarkovSizedItem {
 		ItemRarityTier rarityTier,
 		boolean gasProtection
 	) {
+		this(settings, targetSlot, storedItemSize, armorClass, maxDurability, material, ricochetChance,
+			weightKg, coveredZones, rarityTier, gasProtection, false, 1.0f);
+	}
+
+	public TarkovArmorItem(Settings settings, EquipmentSlotType targetSlot, ItemSize storedItemSize,
+			int armorClass, int maxDurability, ArmorMaterialType material, float ricochetChance,
+			float weightKg, Set<HitZone> coveredZones, ItemRarityTier rarityTier, boolean gasProtection,
+			boolean blocksHeadset, float hearingMultiplier) {
 		super(armorClass > 0
 			? settings.maxCount(1).maxDamage(Math.max(1, maxDurability))
 			: settings.maxCount(1));
@@ -101,6 +112,16 @@ public class TarkovArmorItem extends Item implements TarkovSizedItem {
 		this.coveredZones = Collections.unmodifiableSet(zones);
 		this.rarityTier = rarityTier != null ? rarityTier : ItemRarityTier.UNCOMMON;
 		this.gasProtection = gasProtection;
+		this.blocksHeadset = blocksHeadset;
+		this.hearingMultiplier = Math.max(0.0f, Math.min(1.0f, hearingMultiplier));
+	}
+
+	public boolean blocksHeadset() {
+		return blocksHeadset;
+	}
+
+	public float getHearingMultiplier() {
+		return hearingMultiplier;
 	}
 
 	public boolean isGasProtection() {
@@ -153,7 +174,35 @@ public class TarkovArmorItem extends Item implements TarkovSizedItem {
 		if (armor.getArmorClass() <= 0 || !stack.isDamageable()) {
 			return 0;
 		}
-		return Math.max(0, stack.getMaxDamage() - stack.getDamage());
+		return Math.min(getEffectiveMaxDurability(stack), Math.max(0, stack.getMaxDamage() - stack.getDamage()));
+	}
+
+	public static int getEffectiveMaxDurability(ItemStack stack) {
+		int base = stack.getMaxDamage();
+		if (stack.getNbt() == null || !stack.getNbt().contains(MAX_DURABILITY_KEY, net.minecraft.nbt.NbtElement.NUMBER_TYPE)) {
+			return base;
+		}
+		return Math.min(base, Math.max(1, stack.getNbt().getInt(MAX_DURABILITY_KEY)));
+	}
+
+	public static int repair(ItemStack stack, int points, float lossRatio) {
+		int maximum = getEffectiveMaxDurability(stack);
+		int current = getRemainingDurability(stack);
+		int gap = maximum - current;
+		int restored = Math.min(points, Math.round(gap / (1.0f + lossRatio)));
+		int loss = Math.min(maximum - 1, Math.round(restored * lossRatio));
+		if (restored + loss > gap) {
+			restored--;
+			loss = Math.min(maximum - 1, Math.round(restored * lossRatio));
+		}
+		if (restored <= 0) return 0;
+		stack.getOrCreateNbt().putInt(MAX_DURABILITY_KEY, maximum - loss);
+		stack.setDamage(stack.getMaxDamage() - current - restored);
+		return restored;
+	}
+
+	public static String formatDurability(ItemStack stack) {
+		return getRemainingDurability(stack) + "/" + getEffectiveMaxDurability(stack) + " (" + stack.getMaxDamage() + ")";
 	}
 
 	public static boolean isBroken(ItemStack stack) {
@@ -170,16 +219,11 @@ public class TarkovArmorItem extends Item implements TarkovSizedItem {
 			tooltip.add(Text.translatable("tooltip.tarkovcraft.armor_material",
 				Text.translatable(material.getTranslationKey())).formatted(Formatting.GRAY));
 
-			int maxDur = Math.max(1, stack.getMaxDamage());
 			int curDur = getRemainingDurability(stack);
-			if (curDur <= 0) {
-				tooltip.add(Text.translatable("tooltip.tarkovcraft.armor_broken", maxDur).formatted(Formatting.RED));
-			} else {
-				float ratio = curDur / (float) maxDur;
-				Formatting durColor = ratio < 0.25f ? Formatting.RED
-					: (ratio < 0.50f ? Formatting.YELLOW : Formatting.GRAY);
-				tooltip.add(Text.translatable("tooltip.tarkovcraft.armor_durability", curDur, maxDur).formatted(durColor));
-			}
+			float ratio = curDur / (float) Math.max(1, getEffectiveMaxDurability(stack));
+			Formatting durColor = ratio < 0.25f ? Formatting.RED
+				: (ratio < 0.50f ? Formatting.YELLOW : Formatting.GRAY);
+			tooltip.add(Text.translatable("tooltip.tarkovcraft.armor_durability", formatDurability(stack)).formatted(durColor));
 
 			if (ricochetChance > 0.0f) {
 				tooltip.add(Text.translatable("tooltip.tarkovcraft.armor_ricochet", Math.round(ricochetChance * 100.0f))

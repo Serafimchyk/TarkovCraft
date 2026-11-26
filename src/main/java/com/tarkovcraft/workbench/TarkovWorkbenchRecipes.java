@@ -45,7 +45,7 @@ public final class TarkovWorkbenchRecipes {
 		HELMET("ui.tarkovcraft.wb_cat_helmets"),
 		BODY_ARMOR("ui.tarkovcraft.wb_cat_armor"),
 		FACE_MASK("ui.tarkovcraft.wb_cat_masks"),
-		PLATES_REPAIR("ui.tarkovcraft.wb_cat_plates"),
+		REPAIR_KITS("ui.tarkovcraft.wb_cat_repair_kits"),
 		RIG("ui.tarkovcraft.wb_cat_rigs"),
 		BACKPACK("ui.tarkovcraft.wb_cat_backpacks");
 
@@ -178,7 +178,7 @@ public final class TarkovWorkbenchRecipes {
 					}
 				}
 			}
-			case PLATES_REPAIR -> {
+			case REPAIR_KITS -> {
 				for (Item it : TarkovItemCatalog.getArmorItems()) {
 					if (it instanceof TarkovArmorRepairItem) {
 						candidates.add(it);

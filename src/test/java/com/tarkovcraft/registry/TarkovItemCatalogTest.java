@@ -74,7 +74,7 @@ class TarkovItemCatalogTest {
 		JsonObject root = loadCatalogRoot();
 		assertTrue(root.has("items") && root.get("items").isJsonArray(), "Catalog must contain items array");
 		JsonArray items = root.getAsJsonArray("items");
-		assertEquals(678, items.size(), "Catalog must contain 678 dynamic items");
+		assertEquals(642, items.size(), "Catalog must contain 642 dynamic items");
 
 		Set<String> seenIds = new HashSet<>();
 		Set<String> validMaterials = Set.of("COSMETIC", "ARAMID", "UHMWPE", "COMBINED", "TITANIUM", "STEEL");
@@ -93,6 +93,10 @@ class TarkovItemCatalogTest {
 
 			String category = obj.get("category").getAsString();
 			assertFalse(category.isBlank(), "Category must not be blank for " + id);
+			assertNotEquals("armor_plate", category);
+			if ("repair_kit".equals(category)) {
+				assertNotNull(TarkovArmorRepairItem.Tier.valueOf(obj.get("repairTier").getAsString()));
+			}
 
 			String rarity = obj.get("rarity").getAsString();
 			assertTrue(validRarities.contains(rarity), "Invalid rarity '" + rarity + "' for " + id);
@@ -170,8 +174,8 @@ class TarkovItemCatalogTest {
 				assertTrue(union.add(item), "Duplicate item across creative buckets: " + Registries.ITEM.getId(item));
 			}
 		}
-		assertEquals(678, sum);
-		assertEquals(678, union.size());
+		assertEquals(642, sum);
+		assertEquals(642, union.size());
 	}
 
 	@Test

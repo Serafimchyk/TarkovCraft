@@ -190,6 +190,11 @@ public final class AmmoReloadTracker {
 
 		ContainerSearchMemory search = ContainerItemHelper.requiresSearch(rig) ? ContainerItemHelper.getSearchMemory(rig) : null;
 		int exposed = 0;
+		for (GridEntry entry : loadout.getSecureContainer().getEntries()) {
+			if (!AmmoTier.isTaczAmmoStack(entry.getStack())) continue;
+			exposed++;
+			slots.add(new AmmoSlot(entry.getStack(), entry::setStack));
+		}
 		for (GridContainer grid : grids) {
 			for (GridEntry entry : grid.getEntries()) {
 				if (search != null && !search.isEntryDiscovered(playerId, entry.getEntryId())) continue;

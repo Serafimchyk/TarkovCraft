@@ -131,7 +131,7 @@ public final class MedicalUseManager {
 			return false;
 		}
 		UUID playerId = player.getUuid();
-		if (ACTIVE.containsKey(playerId)) {
+		if (holder.tarkovcraft$getBodyHealth().isMedUseActive()) {
 			player.sendMessage(Text.translatable("message.tarkovcraft.med_busy"), true);
 			return false;
 		}
@@ -306,6 +306,16 @@ public final class MedicalUseManager {
 			loadout.invalidateExposedCache();
 			return;
 		}
+		if (active.srcLoc == TarkovNetworking.LOC_SECURE_CONTAINER && active.srcEntryId != null) {
+			GridContainer grid = loadout.getSecureContainer();
+			GridEntry entry = grid.getEntry(active.srcEntryId);
+			if (entry == null || entry.getStack().getItem() != active.expectedItem) return;
+			if (applyOnStack(player, health, entry.getStack(), active, creative)) {
+				if (entry.getStack().isEmpty()) grid.remove(active.srcEntryId);
+				loadout.invalidateExposedCache();
+			}
+			return;
+		}
 		if (active.srcLoc == TarkovNetworking.LOC_RIG_GRID && active.srcEntryId != null) {
 			ItemStack rig = loadout.getEquipment(EquipmentSlotType.RIG);
 			if (rig.isEmpty() || !(rig.getItem() instanceof TacticalRigItem)) return;
@@ -376,6 +386,10 @@ public final class MedicalUseManager {
 		}
 		return switch (active.srcLoc) {
 			case TarkovNetworking.LOC_POCKET -> loadout.getPocket(active.srcIdx);
+			case TarkovNetworking.LOC_SECURE_CONTAINER -> {
+				GridEntry entry = active.srcEntryId == null ? null : loadout.getSecureContainer().getEntry(active.srcEntryId);
+				yield entry == null ? ItemStack.EMPTY : entry.getStack();
+			}
 			case TarkovNetworking.LOC_RIG_GRID -> {
 				if (active.srcEntryId == null) yield ItemStack.EMPTY;
 				ItemStack rig = loadout.getEquipment(EquipmentSlotType.RIG);

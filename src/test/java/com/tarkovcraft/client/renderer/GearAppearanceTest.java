@@ -41,6 +41,13 @@ class GearAppearanceTest {
 		assertEquals(GearModel.VISOR, GearAppearance.ground(new ItemStack(visor)));
 	}
 
+	@Test
+	void soundMixinsApplyWithVoiceModsAbsent() throws ClassNotFoundException {
+		ClassLoader knot = Thread.currentThread().getContextClassLoader();
+		Class.forName("net.minecraft.client.sound.SoundSystem", false, knot);
+		Class.forName("net.minecraft.server.PlayerManager", false, knot);
+	}
+
 	private static Item catalogItem(String path) {
 		return Registries.ITEM.get(new Identifier("tarkovcraft", path));
 	}

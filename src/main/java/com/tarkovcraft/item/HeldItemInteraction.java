@@ -18,6 +18,7 @@ public final class HeldItemInteraction {
 			stack = player.getOffHandStack();
 		}
 		return stack.getItem() instanceof TarkovGrenadeItem
+			|| stack.getItem() instanceof TarkovArmorRepairItem
 			|| stack.getItem() instanceof TarkovMedicalItem
 			|| stack.getItem() instanceof TarkovStimulatorItem
 			|| AmmoTier.isTaczGunStack(stack);

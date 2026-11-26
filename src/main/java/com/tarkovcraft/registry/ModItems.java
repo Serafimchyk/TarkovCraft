@@ -14,6 +14,7 @@ import com.tarkovcraft.item.TarkovArmorItem;
 import com.tarkovcraft.item.TarkovMedicalItem;
 import com.tarkovcraft.loadout.EquipmentSlotType;
 import com.tarkovcraft.loot.TarkovLootPool;
+import com.tarkovcraft.search.ItemRarityTier;
 import net.fabricmc.fabric.api.item.v1.FabricItemSettings;
 import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
 import net.minecraft.item.Item;
@@ -62,12 +63,12 @@ public final class ModItems {
 	// 6B47 Ratnik: Class 3, covers HEAD_TOP + HEAD_EARS (eyes & jaws remain EXPOSED!)
 	public static final TarkovArmorItem RATNIK_6B47_HELMET = register("ratnik_6b47_helmet",
 		new TarkovArmorItem(new FabricItemSettings(), EquipmentSlotType.HELMET, new ItemSize(2, 2), 3, 35,
-			ArmorMaterialType.ARAMID, 0.30f, 1.25f, EnumSet.of(HitZone.HEAD_TOP, HitZone.HEAD_EARS)));
+			ArmorMaterialType.ARAMID, 0.30f, 1.25f, EnumSet.of(HitZone.HEAD_TOP, HitZone.HEAD_EARS), ItemRarityTier.UNCOMMON, false, true, 0.85f));
 	// Altyn Visor Helmet: Class 5, covers HEAD_TOP + HEAD_EARS + HEAD_EYES + HEAD_JAWS (stops head-eyes oneshot!)
 	public static final TarkovArmorItem ALTYN_HELMET = register("altyn_helmet",
 		new TarkovArmorItem(new FabricItemSettings(), EquipmentSlotType.HELMET, new ItemSize(2, 2), 5, 55,
 			ArmorMaterialType.TITANIUM, 0.40f, 4.1f,
-			EnumSet.of(HitZone.HEAD_TOP, HitZone.HEAD_EARS, HitZone.HEAD_EYES, HitZone.HEAD_JAWS)));
+			EnumSet.of(HitZone.HEAD_TOP, HitZone.HEAD_EARS, HitZone.HEAD_EYES, HitZone.HEAD_JAWS), ItemRarityTier.UNCOMMON, false, true, 0.50f));
 
 	// Face Masks
 	// Balaclava: cosmetic (Class 0, zero ballistic protection)

@@ -9,7 +9,16 @@
   ],
   "license": "MIT",
   "environment": "*",
+  "languageAdapters": {
+    "tarkovcraft_voicechat": "com.tarkovcraft.compat.voicechat.VoicechatAdapter"
+  },
   "entrypoints": {
+    "voicechat": [
+      {
+        "adapter": "tarkovcraft_voicechat",
+        "value": "tarkovcraft"
+      }
+    ],
     "main": [
       "com.tarkovcraft.TarkovCraftMod"
     ],
@@ -26,6 +35,10 @@
   "mixins": [
     "tarkovcraft.mixins.json"
   ],
+  "suggests": {
+    "voicechat": "*",
+    "vc-audio-distance": "*"
+  },
   "depends": {
     "fabricloader": ">=0.15.0",
     "minecraft": "~1.20.1",

@@ -43,10 +43,13 @@ class AuditFixesV1Test {
 	}
 
 	@Test
-	void corpseTransferPreservesAll9EquipmentSlotsAndExtrasWithoutLoss() {
+	void corpseTransferPreservesAllEquipmentSlotsAndExtrasWithoutLoss() {
 		PlayerLoadout source = new PlayerLoadout();
 		source.setEquipment(EquipmentSlotType.HELMET, new ItemStack(ModItems.SSH68_HELMET));
 		source.setEquipment(EquipmentSlotType.FACE_MASK, new ItemStack(ModItems.BALACLAVA_MASK));
+		Item headset = Registries.ITEM.get(new Identifier("tarkovcraft", "aktivnye_naushniki_msa_sordin_suprem_5aa2ba"));
+		assertNotEquals(Items.AIR, headset);
+		source.setEquipment(EquipmentSlotType.HEADSET, new ItemStack(headset));
 		source.setEquipment(EquipmentSlotType.BODY_ARMOR, new ItemStack(ModItems.PACA_ARMOR));
 		source.setEquipment(EquipmentSlotType.RIG, new ItemStack(ModItems.SCAV_VEST));
 		source.setEquipment(EquipmentSlotType.BACKPACK, new ItemStack(ModItems.SLING_BACKPACK));
@@ -86,6 +89,7 @@ class AuditFixesV1Test {
 		assertEquals(Items.CROSSBOW, corpseLoadout.getEquipment(EquipmentSlotType.PRIMARY_2).getItem());
 		assertEquals(Items.SPYGLASS, corpseLoadout.getEquipment(EquipmentSlotType.PISTOL).getItem());
 		assertEquals(Items.IRON_SWORD, corpseLoadout.getEquipment(EquipmentSlotType.MELEE).getItem());
+		assertEquals(headset, corpseLoadout.getEquipment(EquipmentSlotType.HEADSET).getItem());
 
 		int afterPocketsCount = corpsePockets.getEntries().stream().mapToInt(e -> e.getStack().getCount()).sum();
 		int afterRigCount = ContainerItemHelper.readRigGrids(corpseLoadout.getEquipment(EquipmentSlotType.RIG)).stream()

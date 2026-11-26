@@ -12,6 +12,12 @@ import com.tarkovcraft.item.TarkovMedicalItem;
 import com.tarkovcraft.item.TarkovSizedItem;
 import com.tarkovcraft.search.ContainerSearchMemory;
 import net.minecraft.item.ItemStack;
+import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.item.TarkovArmorRepairItem;
+import com.tarkovcraft.item.TarkovCaseItem;
+import com.tarkovcraft.item.TarkovFunctionalItem;
+import com.tarkovcraft.item.TarkovStimulatorItem;
+import net.minecraft.item.Items;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
 import net.minecraft.nbt.NbtList;
@@ -37,6 +43,7 @@ public final class PlayerLoadout {
 	private final Map<EquipmentSlotType, ItemStack> equipment = new EnumMap<>(EquipmentSlotType.class);
 	private final ItemStack[] pockets = new ItemStack[POCKET_COUNT];
 	private boolean meleeSelected = false;
+	private GridContainer secureContainer = new GridContainer(2, 2);
 
 	private transient long exposedCacheTick = Long.MIN_VALUE;
 	private transient boolean exposedCacheIncludeBp = false;
@@ -54,6 +61,48 @@ public final class PlayerLoadout {
 
 	public ItemStack getEquipment(EquipmentSlotType slot) {
 		return equipment.getOrDefault(slot, ItemStack.EMPTY);
+	}
+
+	public GridContainer getSecureContainer() {
+		return secureContainer;
+	}
+
+	public void copySecureContainerFrom(PlayerLoadout old) {
+		secureContainer = GridContainer.fromNbt(old.secureContainer.toNbt(), 2, 2);
+		invalidateExposedCache();
+	}
+
+	public static boolean canPlaceInSecureContainer(ItemStack stack) {
+		if (stack.isEmpty()) return false;
+		var item = stack.getItem();
+		if (item instanceof TarkovCaseItem container) {
+			var role = container.getCaseRole();
+			return (role == TarkovCaseItem.CaseRole.INJECTOR || role == TarkovCaseItem.CaseRole.MONEY
+				|| role == TarkovCaseItem.CaseRole.MEDICAL)
+				&& ContainerItemHelper.readCaseGrid(stack).getEntries().stream()
+					.allMatch(entry -> container.canAcceptItem(entry.getStack()));
+		}
+		Identifier id = Registries.ITEM.getId(item);
+		return item instanceof TarkovMedicalItem || item instanceof TarkovStimulatorItem
+			|| item instanceof TarkovArmorRepairItem || ("tacz".equals(id.getNamespace()) && "ammo".equals(id.getPath()))
+			|| stack.isFood()
+			|| item == Items.EMERALD || item == Items.DIAMOND || item == Items.GOLD_INGOT
+			|| item == Items.GOLD_NUGGET || item == Items.NETHERITE_INGOT || item == Items.NETHERITE_SCRAP
+			|| item == Items.AMETHYST_SHARD || item == Items.PAPER || item == Items.NETHER_STAR
+			|| item == Items.HEART_OF_THE_SEA || item == Items.TOTEM_OF_UNDYING;
+	}
+
+	public boolean blocksHeadset() {
+		return blocksHeadset(getEquipment(EquipmentSlotType.HELMET))
+			|| blocksHeadset(getEquipment(EquipmentSlotType.FACE_MASK));
+	}
+
+	private static boolean blocksHeadset(ItemStack stack) {
+		return stack.getItem() instanceof TarkovArmorItem armor && armor.blocksHeadset();
+	}
+
+	public boolean canEquip(EquipmentSlotType slot, ItemStack stack) {
+		return slot.accepts(stack) && (slot != EquipmentSlotType.HEADSET || stack.isEmpty() || !blocksHeadset());
 	}
 
 	public void invalidateExposedCache() {
@@ -155,6 +204,13 @@ public final class PlayerLoadout {
 				incoming.setCount(0);
 				return true;
 			}
+		}
+
+		if (incoming.getItem() instanceof TarkovFunctionalItem functional && functional.isHeadset()
+			&& getEquipment(EquipmentSlotType.HEADSET).isEmpty() && canEquip(EquipmentSlotType.HEADSET, incoming)) {
+			setEquipment(EquipmentSlotType.HEADSET, incoming.copy());
+			incoming.setCount(0);
+			return true;
 		}
 
 		// Direct equip for TaCZ guns into empty weapon slots
@@ -308,6 +364,9 @@ public final class PlayerLoadout {
 		if (slotIndex < 0) return ItemStack.EMPTY;
 		if (exposedCache == null || exposedCacheTick != worldTick || exposedCacheIncludeBp != includeBackpack) {
 			java.util.ArrayList<ItemStack> rebuilt = new java.util.ArrayList<>();
+			for (GridEntry entry : secureContainer.getEntries()) {
+				if (AmmoTier.isTaczAmmoStack(entry.getStack())) rebuilt.add(entry.getStack());
+			}
 			ItemStack rig = getEquipment(EquipmentSlotType.RIG);
 			if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
 				ContainerSearchMemory search = requiredSearch(rig);
@@ -341,6 +400,9 @@ public final class PlayerLoadout {
 	public ItemStack getExposedStorageStack(int slotIndex, @Nullable UUID playerId, boolean includeBackpack) {
 		if (slotIndex < 0) return ItemStack.EMPTY;
 		int cursor = 0;
+		for (GridEntry entry : secureContainer.getEntries()) {
+			if (AmmoTier.isTaczAmmoStack(entry.getStack()) && cursor++ == slotIndex) return entry.getStack();
+		}
 
 		ItemStack rig = getEquipment(EquipmentSlotType.RIG);
 		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
@@ -384,6 +446,13 @@ public final class PlayerLoadout {
 	public ItemStack removeExposedStorageStack(int slotIndex, int amount, @Nullable UUID playerId, boolean includeBackpack) {
 		if (slotIndex < 0 || amount <= 0) return ItemStack.EMPTY;
 		int cursor = 0;
+		for (GridEntry entry : secureContainer.getEntries()) {
+			if (!AmmoTier.isTaczAmmoStack(entry.getStack()) || cursor++ != slotIndex) continue;
+			ItemStack removed = entry.getStack().split(amount);
+			if (entry.getStack().isEmpty()) secureContainer.remove(entry.getEntryId());
+			invalidateExposedCache();
+			return removed;
+		}
 
 		ItemStack rig = getEquipment(EquipmentSlotType.RIG);
 		ContainerSearchMemory rigSearch = requiredSearch(rig);
@@ -438,6 +507,18 @@ public final class PlayerLoadout {
 	public boolean setExposedStorageStack(int slotIndex, ItemStack incoming, @Nullable UUID playerId, boolean includeBackpack) {
 		if (slotIndex < 0) return false;
 		int cursor = 0;
+		for (GridEntry entry : secureContainer.getEntries()) {
+			if (!AmmoTier.isTaczAmmoStack(entry.getStack()) || cursor++ != slotIndex) continue;
+			if (incoming == null || incoming.isEmpty()) {
+				secureContainer.remove(entry.getEntryId());
+			} else {
+				if (!AmmoTier.isTaczAmmoStack(incoming)
+					|| !ItemSizeRegistry.getSize(incoming).equals(ItemSizeRegistry.getSize(entry.getStack()))) return false;
+				entry.setStack(incoming.copy());
+			}
+			invalidateExposedCache();
+			return true;
+		}
 
 		ItemStack rig = getEquipment(EquipmentSlotType.RIG);
 		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
@@ -534,6 +615,9 @@ public final class PlayerLoadout {
 		for (ItemStack st : pockets) {
 			kg += estimateItemWeight(st);
 		}
+		for (GridEntry entry : secureContainer.getEntries()) {
+			kg += estimateItemWeight(entry.getStack());
+		}
 		return kg;
 	}
 
@@ -564,6 +648,10 @@ public final class PlayerLoadout {
 	}
 
 	public boolean isEmpty() {
+		return isLootEmpty() && secureContainer.isEmpty();
+	}
+
+	public boolean isLootEmpty() {
 		for (ItemStack s : equipment.values()) {
 			if (!s.isEmpty()) return false;
 		}
@@ -574,6 +662,11 @@ public final class PlayerLoadout {
 	}
 
 	public void clear() {
+		clearLoot();
+		secureContainer = new GridContainer(2, 2);
+	}
+
+	public void clearLoot() {
 		for (EquipmentSlotType slot : EquipmentSlotType.values()) {
 			equipment.put(slot, ItemStack.EMPTY);
 		}
@@ -586,11 +679,23 @@ public final class PlayerLoadout {
 
 	public PlayerLoadout copy() {
 		PlayerLoadout clone = new PlayerLoadout();
-		clone.readNbt(this.writeNbt());
+		clone.readNbt(writeNbt());
+		return clone;
+	}
+
+	public PlayerLoadout copyLoot() {
+		PlayerLoadout clone = new PlayerLoadout();
+		clone.readNbt(writeLootNbt());
 		return clone;
 	}
 
 	public NbtCompound writeNbt() {
+		NbtCompound root = writeLootNbt();
+		root.put("SecureContainer", secureContainer.toNbt());
+		return root;
+	}
+
+	public NbtCompound writeLootNbt() {
 		NbtCompound root = new NbtCompound();
 		NbtCompound eqNbt = new NbtCompound();
 		for (Map.Entry<EquipmentSlotType, ItemStack> entry : equipment.entrySet()) {
@@ -636,6 +741,14 @@ public final class PlayerLoadout {
 					pockets[idx] = ItemStack.fromNbt(slotNbt.getCompound("Stack"));
 				}
 			}
+		}
+		ItemStack oldMask = getEquipment(EquipmentSlotType.FACE_MASK);
+		if (EquipmentSlotType.HEADSET.accepts(oldMask) && !oldMask.isEmpty() && getEquipment(EquipmentSlotType.HEADSET).isEmpty()) {
+			setEquipment(EquipmentSlotType.HEADSET, oldMask);
+			setEquipment(EquipmentSlotType.FACE_MASK, ItemStack.EMPTY);
+		}
+		if (root.contains("SecureContainer", NbtElement.COMPOUND_TYPE)) {
+			secureContainer = GridContainer.fromNbt(root.getCompound("SecureContainer"), 2, 2);
 		}
 		meleeSelected = root.getBoolean("MeleeSelected");
 	}

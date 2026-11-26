@@ -1,7 +1,13 @@
 package com.tarkovcraft.screen;
 
 import com.tarkovcraft.grid.GridContainer;
+import com.tarkovcraft.audio.HearingProfile;
+import com.tarkovcraft.item.TarkovArmorItem;
+import com.tarkovcraft.item.TarkovFunctionalItem;
+import com.tarkovcraft.loadout.EquipmentSlotType;
+import com.tarkovcraft.loadout.PlayerLoadout;
 import com.tarkovcraft.registry.ModItems;
+import com.tarkovcraft.registry.TarkovItemCatalog;
 import com.tarkovcraft.search.ContainerSearchMemory;
 import net.minecraft.Bootstrap;
 import net.minecraft.SharedConstants;
@@ -53,6 +59,58 @@ class TarkovInventoryLogicTest {
 		assertFalse(TarkovScreenHandler.canEquipItem(new ItemStack(Items.NETHERITE_CHESTPLATE)));
 		assertFalse(TarkovScreenHandler.canEquipItem(new ItemStack(Items.BREAD)));
 		assertFalse(TarkovScreenHandler.canEquipItem(ItemStack.EMPTY));
+	}
+
+	@Test
+	void secureContainerSurvivesDeathIndependentlyOfCorpseLoot() {
+		PlayerLoadout original = new PlayerLoadout();
+		ItemStack bread = new ItemStack(Items.BREAD, 4);
+		var entry = original.getSecureContainer().place(bread, 0, 0, false);
+		assertNotNull(entry);
+		original.setEquipment(EquipmentSlotType.HELMET, new ItemStack(ModItems.ALTYN_HELMET));
+		PlayerLoadout corpse = original.copyLoot();
+		original.clearLoot();
+		PlayerLoadout respawned = new PlayerLoadout();
+		respawned.copySecureContainerFrom(original);
+
+		assertTrue(corpse.getSecureContainer().isEmpty());
+		assertFalse(corpse.getEquipment(EquipmentSlotType.HELMET).isEmpty());
+		assertTrue(respawned.isLootEmpty());
+		assertEquals(4, respawned.getSecureContainer().getEntry(entry.getEntryId()).getStack().getCount());
+		assertEquals(4, respawned.copy().getSecureContainer().getEntry(entry.getEntryId()).getStack().getCount());
+		assertTrue(PlayerLoadout.canPlaceInSecureContainer(bread));
+		assertFalse(PlayerLoadout.canPlaceInSecureContainer(new ItemStack(ModItems.ALTYN_HELMET)));
+		assertFalse(PlayerLoadout.canPlaceInSecureContainer(new ItemStack(ModItems.BERKUT_BACKPACK)));
+	}
+
+	@Test
+	void repairedArmorKeepsItsReducedMaximumAfterSerialization() {
+		ItemStack armor = new ItemStack(ModItems.PRESS_ARMOR);
+		armor.setDamage(30);
+		assertEquals(60, TarkovArmorItem.getEffectiveMaxDurability(armor));
+		assertEquals(24, TarkovArmorItem.repair(armor, 45, 0.22f));
+		assertEquals("54/55 (60)", TarkovArmorItem.formatDurability(armor));
+		assertEquals(6, armor.getDamage());
+		ItemStack loaded = ItemStack.fromNbt(armor.writeNbt(new net.minecraft.nbt.NbtCompound()));
+		assertEquals("54/55 (60)", TarkovArmorItem.formatDurability(loaded));
+		assertEquals(1, TarkovArmorItem.repair(loaded, 45, 0.22f));
+		assertEquals(0, TarkovArmorItem.repair(loaded, 45, 0.22f));
+	}
+
+	@Test
+	void headsetAndClosedHelmetProduceDistinctProfiles() {
+		var headset = TarkovItemCatalog.getTacticalItems().stream()
+			.filter(item -> item instanceof TarkovFunctionalItem functional && functional.isHeadset())
+			.findFirst().orElseThrow();
+		PlayerLoadout loadout = new PlayerLoadout();
+		ItemStack stack = new ItemStack(headset);
+		assertTrue(loadout.trySmartPickup(stack, UUID.randomUUID()));
+		assertSame(headset, loadout.getEquipment(EquipmentSlotType.HEADSET).getItem());
+		assertEquals(1.35f, HearingProfile.forLoadout(loadout).range());
+		loadout.setEquipment(EquipmentSlotType.HELMET, new ItemStack(ModItems.ALTYN_HELMET));
+		assertFalse(loadout.canEquip(EquipmentSlotType.HEADSET, new ItemStack(headset)));
+		assertFalse(PlayerLoadout.canPlaceInSecureContainer(new ItemStack(headset)));
+		assertEquals(0.50f, HearingProfile.forLoadout(loadout).range());
 	}
 
 	@Test

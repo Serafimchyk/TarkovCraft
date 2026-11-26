@@ -161,10 +161,8 @@ public final class TarkovItemCatalog {
 				int gridH = Math.max(1, getInt(obj, "gridHeight", 2));
 				yield new BackpackItem(settings, gridW, gridH, size, rarity, weight);
 			}
-			case "armor_plate", "repair_kit" -> {
-				int repairAmount = Math.max(1, getInt(obj, "repairAmount", 25));
-				yield new TarkovArmorRepairItem(settings, repairAmount, size, rarity, weight);
-			}
+			case "repair_kit" -> new TarkovArmorRepairItem(settings,
+				TarkovArmorRepairItem.Tier.valueOf(getString(obj, "repairTier", "T1")), size, rarity, weight);
 			case "melee" -> {
 				float dmg = Math.max(1.0f, getFloat(obj, "meleeDamage", 6.0f));
 				yield new TarkovMeleeItem(settings, dmg, size, rarity, weight);
@@ -199,12 +197,13 @@ public final class TarkovItemCatalog {
 		float ricochet = getFloat(obj, "ricochet", 0.0f);
 		Set<HitZone> zones = parseZones(obj);
 		boolean gasProtection = getBoolean(obj, "gasProtection", false);
-		return new TarkovArmorItem(settings, slot, size, armorClass, durability, material, ricochet, weight, zones, rarity, gasProtection);
+		return new TarkovArmorItem(settings, slot, size, armorClass, durability, material, ricochet, weight,
+			zones, rarity, gasProtection, getBoolean(obj, "blocksHeadset", false), getFloat(obj, "hearingMultiplier", 1.0f));
 	}
 
 	private static void addToTabBucket(String category, Item item) {
 		switch (category) {
-			case "helmet", "body_armor", "face_mask", "armor_plate", "repair_kit" -> ARMOR_ITEMS.add(item);
+			case "helmet", "body_armor", "face_mask", "repair_kit" -> ARMOR_ITEMS.add(item);
 			case "rig" -> RIG_ITEMS.add(item);
 			case "backpack" -> BACKPACK_ITEMS.add(item);
 			case "medical", "stimulator" -> MEDICAL_ITEMS.add(item);

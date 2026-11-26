@@ -97,7 +97,7 @@ public class CorpseEntity extends Entity {
 		List<ItemStack> extras,
 		List<ItemStack> overflow
 	) {
-		PlayerLoadout copy = sourceLoadout.copy();
+		PlayerLoadout copy = sourceLoadout.copyLoot();
 		for (int i = 0; i < PlayerLoadout.POCKET_COUNT; i++) {
 			ItemStack p = copy.getPocket(i);
 			if (!p.isEmpty()) {
@@ -447,7 +447,7 @@ public class CorpseEntity extends Entity {
 	@Override
 	protected void writeCustomDataToNbt(NbtCompound nbt) {
 		nbt.putString("OwnerName", getOwnerName());
-		nbt.put("Loadout", loadout.writeNbt());
+		nbt.put("Loadout", loadout.writeLootNbt());
 		nbt.put("PocketsGrid", pocketsGrid.toNbt());
 		nbt.put("PocketsSearchMemory", pocketsSearchMemory.toNbt());
 		nbt.putInt("AgeTicks", ageTicks);

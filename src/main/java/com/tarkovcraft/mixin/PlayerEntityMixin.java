@@ -265,7 +265,7 @@ public abstract class PlayerEntityMixin implements PlayerLoadoutHolder {
 			}
 		}
 
-		if (!tarkovcraft$loadout.isEmpty() || !extras.isEmpty()) {
+		if (!tarkovcraft$loadout.isLootEmpty() || !extras.isEmpty()) {
 			List<ItemStack> overflow = new ArrayList<>();
 			CorpseEntity corpse = CorpseEntity.fromPlayer(self.getWorld(), self, tarkovcraft$loadout, extras, overflow);
 			self.getWorld().spawnEntity(corpse);
@@ -274,7 +274,7 @@ public abstract class PlayerEntityMixin implements PlayerLoadoutHolder {
 					self.dropItem(st, true, false);
 				}
 			}
-			tarkovcraft$loadout.clear();
+			tarkovcraft$loadout.clearLoot();
 			self.getInventory().clear();
 			tarkovcraft$syncLoadout();
 			ci.cancel();

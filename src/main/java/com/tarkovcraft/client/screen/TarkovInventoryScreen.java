@@ -444,11 +444,15 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		int rightColX = area.x + area.w - pad - sideW;
 
 		drawEquipSlot(context, area.x + pad, topY, sideW, sqH, EquipmentSlotType.HELMET, "HEADWEAR", null, loadout, false, null, mouseX, mouseY);
-		drawEquipSlot(context, rightColX, topY, sideW, sqH, EquipmentSlotType.FACE_MASK, "FACE / EARS", null, loadout, false, null, mouseX, mouseY);
+		drawEquipSlot(context, rightColX, topY, sideW, sqH, EquipmentSlotType.FACE_MASK, "FACE COVER", null, loadout, false, null, mouseX, mouseY);
 		drawEquipSlot(context, area.x + pad, row2Y, sideW, sqH, EquipmentSlotType.BODY_ARMOR, "BODY ARMOR", null, loadout, false, null, mouseX, mouseY);
 		drawEquipSlot(context, rightColX, row2Y, sideW, sqH, EquipmentSlotType.RIG, "TACTICAL RIG", null, loadout, false, null, mouseX, mouseY);
 
 		int wY = area.y + pad + upperH + 4;
+		int headsetX = area.x + pad + sideW + 3;
+		int headsetWidth = rightColX - headsetX - 3;
+		drawEquipSlot(context, headsetX, topY, headsetWidth, sqH, EquipmentSlotType.HEADSET,
+			Text.translatable("ui.tarkovcraft.headset").getString(), null, loadout, false, null, mouseX, mouseY);
 		int fullW = area.w - pad * 2;
 		int halfW = (fullW - 4) / 2;
 		String k1 = client != null ? TarkovCraftClient.getShortKeyLabel(client.options.hotbarKeys[0]) : "1";
@@ -533,6 +537,19 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			drawSingleCellSlot(context, r, TarkovNetworking.LOC_POCKET, i, loadout.getPocket(i), keyBadge, mouseX, mouseY);
 		}
 		curY += pCell + 10;
+
+		var secure = loadout.getSecureContainer();
+		var secureView = TarkovNetworking.GridView.fromContainer(secure, secure.getContainerId(), null, null, false);
+		int secureX = area.x + pad;
+		TarkovUiTheme.drawFlatText(context, textRenderer,
+			Text.translatable("ui.tarkovcraft.secure_container", secure.getWidth(), secure.getHeight()).getString(),
+			secureX, curY + 1, TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
+		curY += 11;
+		drawGridView(context, secureX, curY, area, TarkovNetworking.LOC_SECURE_CONTAINER, 0,
+			pCell, secureView, snap, true, mouseX, mouseY);
+		context.drawBorder(secureX - 1, curY - 1, secure.getWidth() * pCell + 2, secure.getHeight() * pCell + 2,
+			TarkovUiTheme.ACCENT_SAND);
+		curY += secure.getHeight() * pCell + 10;
 
 		// 3. BACKPACK SECTION
 		ItemStack bpStack = loadout.getEquipment(EquipmentSlotType.BACKPACK);
@@ -662,7 +679,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			int halfW = (area.w - pad * 2 - 8) / 2;
 
 			drawEquipSlot(context, area.x + pad, curY, halfW, 26, EquipmentSlotType.HELMET, "HELM", null, corpseLo, true, scrollClip, mouseX, mouseY);
-			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 26, EquipmentSlotType.FACE_MASK, "FACE / EARS", null, corpseLo, true, scrollClip, mouseX, mouseY);
+			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 26, EquipmentSlotType.FACE_MASK, "FACE COVER", null, corpseLo, true, scrollClip, mouseX, mouseY);
 			curY += 29;
 			drawEquipSlot(context, area.x + pad, curY, halfW, 26, EquipmentSlotType.BODY_ARMOR, "ARMOR", null, corpseLo, true, scrollClip, mouseX, mouseY);
 			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 26, EquipmentSlotType.RIG, "RIG", null, corpseLo, true, scrollClip, mouseX, mouseY);
@@ -674,6 +691,8 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 26, EquipmentSlotType.PRIMARY_2, "PRIMARY 2", null, corpseLo, true, scrollClip, mouseX, mouseY);
 			curY += 29;
 			drawEquipSlot(context, area.x + pad, curY, halfW, 26, EquipmentSlotType.PISTOL, "HOLSTER", null, corpseLo, true, scrollClip, mouseX, mouseY);
+			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 26, EquipmentSlotType.HEADSET,
+				Text.translatable("ui.tarkovcraft.headset").getString(), null, corpseLo, true, scrollClip, mouseX, mouseY);
 			curY += 32;
 
 			if (snap.externalGridView() != null) {
@@ -896,12 +915,12 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		}
 
 		if (armor != null) {
-			int maxDur = Math.max(1, stack.getMaxDamage());
+			int maxDur = Math.max(1, TarkovArmorItem.getEffectiveMaxDurability(stack));
 			int curDur = TarkovArmorItem.getRemainingDurability(stack);
 			float ratio = curDur / (float) maxDur;
 			int durCol = curDur <= 0 ? 0xFFFF5555
 				: (ratio < 0.25f ? 0xFFE53935 : (ratio < 0.50f ? 0xFFE0B23B : 0xFF77B85A));
-			TarkovUiTheme.drawFlatText(context, textRenderer, curDur + "/" + maxDur, x + 3, y + h - 8,
+			TarkovUiTheme.drawFlatText(context, textRenderer, TarkovArmorItem.formatDurability(stack), x + 3, y + h - 8,
 				durCol, TarkovUiTheme.TEXT_SCALE_SMALL);
 		} else if (!stack.isEmpty() && stack.getCount() > 1) {
 			TarkovUiTheme.drawRightAlignedFlatText(context, textRenderer, String.valueOf(stack.getCount()),
@@ -1024,12 +1043,12 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 
 	private void drawCellCornerTags(DrawContext context, int x, int y, int w, int h, ItemStack stack) {
 		if (stack.getItem() instanceof TarkovArmorItem armor && armor.getArmorClass() > 0) {
-			int maxDur = Math.max(1, stack.getMaxDamage());
+			int maxDur = Math.max(1, TarkovArmorItem.getEffectiveMaxDurability(stack));
 			int curDur = TarkovArmorItem.getRemainingDurability(stack);
 			float ratio = curDur / (float) maxDur;
 			int durCol = curDur <= 0 ? 0xFFFF5555
 				: (ratio < 0.25f ? 0xFFE53935 : (ratio < 0.50f ? 0xFFE0B23B : 0xFF77B85A));
-			TarkovUiTheme.drawCellCornerBadge(context, textRenderer, curDur + "/" + maxDur, x, y, w, h, durCol);
+			TarkovUiTheme.drawCellCornerBadge(context, textRenderer, TarkovArmorItem.formatDurability(stack), x, y, w, h, durCol);
 		} else if (stack.getItem() instanceof TarkovMedicalItem med) {
 			int max = med.getMedicalType().getMaxCapacity();
 			int cur = TarkovMedicalItem.getRemaining(stack);
@@ -1399,6 +1418,12 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 					InteractiveRegion region = findRegionAt(mouseX, mouseY);
 					if (region != null) {
 						DropEvaluation eval = evaluateDrop(region, mouseX, mouseY);
+						if (region.locType == TarkovNetworking.LOC_EQUIPMENT
+							&& region.containerIndex == EquipmentSlotType.HEADSET.ordinal()
+							&& EquipmentSlotType.HEADSET.accepts(drag.stack)
+							&& ClientLoadoutCache.getLoadout().blocksHeadset() && client != null && client.player != null) {
+							client.player.sendMessage(Text.translatable("message.tarkovcraft.headset_blocked"), true);
+						}
 						if (eval.valid) {
 							TarkovNetworking.sendMoveItem(
 								drag.srcLoc, drag.srcIdx, drag.srcEntryId,
@@ -1590,7 +1615,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		if (region.locType == TarkovNetworking.LOC_EQUIPMENT) {
 			EquipmentSlotType slot = EquipmentSlotType.values()[region.containerIndex];
 			boolean sameEquipSlot = drag.srcLoc == TarkovNetworking.LOC_EQUIPMENT && drag.srcIdx == region.containerIndex;
-			boolean ok = !sameEquipSlot && drag.moveCount <= 0 && slot.accepts(moving);
+			boolean ok = !sameEquipSlot && drag.moveCount <= 0 && loadout.canEquip(slot, moving);
 			return new DropEvaluation(ok, 0, 0, 1, 1);
 		}
 
@@ -1602,7 +1627,8 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		}
 
 		if (region.view != null) {
-			if (!region.view.gridRevealed()) {
+			if (!region.view.gridRevealed() || (region.locType == TarkovNetworking.LOC_SECURE_CONTAINER
+				&& !PlayerLoadout.canPlaceInSecureContainer(moving))) {
 				return new DropEvaluation(false, 0, 0, 1, 1);
 			}
 			// Prevent container recursion on client preview
@@ -1643,6 +1669,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 				|| region.locType == TarkovNetworking.LOC_BACKPACK_GRID
 				|| region.locType == TarkovNetworking.LOC_EXTERNAL_GRID
 				|| region.locType == TarkovNetworking.LOC_FLOATING_CONTAINER
+				|| region.locType == TarkovNetworking.LOC_SECURE_CONTAINER
 				|| (region.locType == TarkovNetworking.LOC_CORPSE_RIG_GRID
 				&& handler.getMode() == TarkovScreenHandler.MODE_GROUND_ITEM);
 			return new DropEvaluation(supportedLoc, gx, gy, sz.width(), sz.height());
@@ -1722,6 +1749,12 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			ItemStack st = loadout.getPocket(i);
 			if (!st.isEmpty() && st.getItem() instanceof TarkovMedicalItem) {
 				out.add(new HealthMedSlot(TarkovNetworking.LOC_POCKET, i, null, st, new Rect(0, 0, 0, 0)));
+			}
+		}
+		for (var entry : loadout.getSecureContainer().getEntries()) {
+			ItemStack stack = entry.getStack();
+			if (stack.getItem() instanceof TarkovMedicalItem) {
+				out.add(new HealthMedSlot(TarkovNetworking.LOC_SECURE_CONTAINER, 0, entry.getEntryId(), stack, new Rect(0, 0, 0, 0)));
 			}
 		}
 		if (snap != null) {

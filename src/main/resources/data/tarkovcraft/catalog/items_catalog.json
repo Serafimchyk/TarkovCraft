@@ -795,7 +795,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.6
     },
     {
       "id": "broneshlem_lshz_5_vulkan_5_chernyy_5ca20e",
@@ -813,7 +815,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.55
     },
     {
       "id": "broneshlem_maska_1shch_killa_edition_5c0e87",
@@ -831,7 +835,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.55
     },
     {
       "id": "broneshlem_maska_1shch_oliva_5c091a",
@@ -849,7 +855,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.55
     },
     {
       "id": "broneshlem_rys_t_chernyy_5f60c7",
@@ -867,7 +875,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.55
     },
     {
       "id": "legkaya_maska_shattered_5b432b",
@@ -899,7 +909,9 @@
       "zones": [
         "HEAD_TOP",
         "HEAD_EARS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.85
     },
     {
       "id": "svarochnaya_maska_tagilly_gorilla_60a7ad",
@@ -917,7 +929,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.5
     },
     {
       "id": "svarochnaya_maska_tagilly_ubey_60a7ad",
@@ -935,7 +949,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.5
     },
     {
       "id": "takticheskaya_tykva_59ef13",
@@ -1242,7 +1258,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.8
     },
     {
       "id": "shlem_zsh_1_2m_chernyy_chekhol_5aa7e4",
@@ -1260,7 +1278,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.8
     },
     {
       "id": "shlem_lshz_oliva_5b432d",
@@ -1307,7 +1327,9 @@
       "zones": [
         "HEAD_TOP",
         "HEAD_EARS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.75
     },
     {
       "id": "shlem_psh_97_dzheta_5c0d27",
@@ -5686,348 +5708,6 @@
       "weight": 2.6
     },
     {
-      "id": "broneplastiny_kustarnye_dlya_6b13_sp_656efd",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "RARE",
-      "weight": 2.5,
-      "repairAmount": 40
-    },
-    {
-      "id": "broneplita_6b23_2_spina_657b22",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "RARE",
-      "weight": 2.5,
-      "repairAmount": 40
-    },
-    {
-      "id": "broneplita_6b33_grud_656f60",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "RARE",
-      "weight": 2.5,
-      "repairAmount": 40
-    },
-    {
-      "id": "broneplita_ar500_legacy_plate_656f9d",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 25
-    },
-    {
-      "id": "broneplita_cult_locust_656fa8",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 25
-    },
-    {
-      "id": "broneplita_cult_termite_656fa9",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 25
-    },
-    {
-      "id": "broneplita_esapi_level_iv_64afdc",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "RARE",
-      "weight": 2.5,
-      "repairAmount": 40
-    },
-    {
-      "id": "broneplita_esbi_level_iv_bok_64afdb",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "RARE",
-      "weight": 2.5,
-      "repairAmount": 40
-    },
-    {
-      "id": "broneplita_gac_3s15m_656fae",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 25
-    },
-    {
-      "id": "broneplita_gac_4sss2_656faf",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 25
-    },
-    {
-      "id": "broneplita_global_armor_s_steel_plat_656fa0",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 25
-    },
-    {
-      "id": "broneplita_kiba_arms_steel_656fa7",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 25
-    },
-    {
-      "id": "broneplita_kiba_arms_titan_656fa2",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 25
-    },
-    {
-      "id": "broneplita_kiteco_sc_iv_sa_656faf",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "RARE",
-      "weight": 2.5,
-      "repairAmount": 40
-    },
-    {
-      "id": "broneplita_monoclete_level_iii_pe_656fad",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 25
-    },
-    {
-      "id": "broneplita_nesco_4400_sa_mc_656fa6",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 25
-    },
-    {
-      "id": "broneplita_newspheretech_level_iii_656fb2",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 25
-    },
-    {
-      "id": "broneplita_prtctr_lightweight_656fac",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 25
-    },
-    {
-      "id": "broneplita_sapi_level_iii_655746",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 30
-    },
-    {
-      "id": "broneplita_sprtn_elaphros_656fb0",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 25
-    },
-    {
-      "id": "broneplita_sprtn_omega_656f9f",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 25
-    },
-    {
-      "id": "broneplita_ssapi_level_iii_655745",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 30
-    },
-    {
-      "id": "broneplita_tac_kek_sapi_level_iii_re_6943c8",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 30
-    },
-    {
-      "id": "broneplita_tallcom_guardian_656fa5",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 25
-    },
-    {
-      "id": "broneplita_granit_bok_64afd8",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "RARE",
-      "weight": 2.5,
-      "repairAmount": 40
-    },
-    {
-      "id": "broneplita_granit_4_grud_656f61",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "RARE",
-      "weight": 2.5,
-      "repairAmount": 40
-    },
-    {
-      "id": "broneplita_granit_4rs_grud_656f63",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "RARE",
-      "weight": 2.5,
-      "repairAmount": 40
-    },
-    {
-      "id": "broneplita_granit_br4_65573f",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "RARE",
-      "weight": 2.5,
-      "repairAmount": 40
-    },
-    {
-      "id": "broneplita_granit_br5_64afc7",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "RARE",
-      "weight": 2.5,
-      "repairAmount": 40
-    },
-    {
-      "id": "broneplita_zhuk_3_grud_656f57",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 25
-    },
-    {
-      "id": "broneplita_korund_vm_bok_654a4f",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 30
-    },
-    {
-      "id": "broneplita_korund_vm_spina_657b27",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 30
-    },
-    {
-      "id": "broneplita_korund_vm_k_spina_657b28",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 30
-    },
-    {
-      "id": "broneplity_6b12_grud_654a4d",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "RARE",
-      "weight": 2.5,
-      "repairAmount": 40
-    },
-    {
-      "id": "broneplity_granit_4_spina_656efa",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "RARE",
-      "weight": 2.5,
-      "repairAmount": 40
-    },
-    {
-      "id": "broneplity_granit_4rs_spina_654a4a",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "RARE",
-      "weight": 2.5,
-      "repairAmount": 40
-    },
-    {
-      "id": "broneplity_korund_vm_grud_656f66",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 30
-    },
-    {
-      "id": "broneplity_korund_vm_k_grud_656f66",
-      "category": "armor_plate",
-      "width": 2,
-      "height": 2,
-      "rarity": "UNCOMMON",
-      "weight": 2.5,
-      "repairAmount": 30
-    },
-    {
       "id": "aktivnye_berushi_cens_proflex_dx5_694132",
       "category": "headset",
       "width": 2,
@@ -7478,7 +7158,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.6
     },
     {
       "id": "ballisticheskiy_shlem_devtac_ronin_r_68a9a9",
@@ -7496,7 +7178,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.6
     },
     {
       "id": "ballisticheskiy_shlem_devtac_ronin_r_6a670a",
@@ -7514,7 +7198,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.6
     },
     {
       "id": "bandana_big_pipe_628e4d",
@@ -7598,7 +7284,9 @@
       "ricochet": 0.3,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.5
     },
     {
       "id": "broneshlem_lshz_5_vulkan_5_vosmerka_68a986",
@@ -7616,7 +7304,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.55
     },
     {
       "id": "broneshlem_lshz_5_vulkan_5_kamuflyaz_68a987",
@@ -7634,7 +7324,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.55
     },
     {
       "id": "broneshlem_lshz_5_vulkan_5_plamya_68a987",
@@ -7652,7 +7344,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.55
     },
     {
       "id": "broneshlem_maska_1shch_vida_edition_697c79",
@@ -7670,7 +7364,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.55
     },
     {
       "id": "broneshlem_maska_1shch_novogodnyaya_6759af",
@@ -7688,7 +7384,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.55
     },
     {
       "id": "vyazanaya_shapka_572b7f",
@@ -8927,7 +8625,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.5
     },
     {
       "id": "takticheskaya_shapka_iz_flisa_pesoch_5aa2ba",
@@ -9350,7 +9050,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.6
     },
     {
       "id": "shlem_devtac_ronin_oliva_6a8462",
@@ -9368,7 +9070,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.6
     },
     {
       "id": "shlem_devtac_ronin_prototip_6a8462",
@@ -9386,7 +9090,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.6
     },
     {
       "id": "shlem_devtac_ronin_66bdc2",
@@ -9404,7 +9110,9 @@
         "HEAD_EARS",
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "blocksHeadset": true,
+      "hearingMultiplier": 0.6
     },
     {
       "id": "shlem_diamond_age_neosteel_oranzhevy_68a9be",
@@ -10209,19 +9917,37 @@
       "id": "nabor_dlya_remonta_bronezhiletov_591094",
       "category": "repair_kit",
       "width": 2,
-      "height": 3,
+      "height": 2,
       "rarity": "EPIC",
       "weight": 3.5,
-      "repairAmount": 60
+      "repairTier": "T4"
     },
     {
       "id": "nabor_dlya_remonta_oruzhiya_591096",
       "category": "repair_kit",
       "width": 2,
-      "height": 3,
+      "height": 2,
       "rarity": "EPIC",
       "weight": 3.5,
-      "repairAmount": 60
+      "repairTier": "T3"
+    },
+    {
+      "id": "field_armor_repair_t1",
+      "category": "repair_kit",
+      "width": 1,
+      "height": 2,
+      "rarity": "UNCOMMON",
+      "weight": 0.8,
+      "repairTier": "T1"
+    },
+    {
+      "id": "field_armor_repair_t2",
+      "category": "repair_kit",
+      "width": 2,
+      "height": 2,
+      "rarity": "RARE",
+      "weight": 1.6,
+      "repairTier": "T2"
     }
   ]
 }

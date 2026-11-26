@@ -47,7 +47,7 @@ public final class TarkovLootGenerator {
 	private static final List<Item> HELMETS_4_TO_6 = new ArrayList<>();
 	private static final List<Item> COSMETIC_MASKS = new ArrayList<>();
 	private static final List<Item> TACTICAL_MASKS = new ArrayList<>();
-	private static final List<Item> PLATES_REPAIR = new ArrayList<>();
+	private static final List<Item> REPAIR_KITS = new ArrayList<>();
 	private static final List<Item> ALL_RIGS = new ArrayList<>();
 	private static final List<Item> LIGHT_RIGS = new ArrayList<>();
 	private static final List<Item> LARGE_RIGS = new ArrayList<>();
@@ -132,7 +132,7 @@ public final class TarkovLootGenerator {
 					if (ac >= 2) TACTICAL_MASKS.add(item);
 				}
 			} else if (item instanceof TarkovArmorRepairItem) {
-				PLATES_REPAIR.add(item);
+				REPAIR_KITS.add(item);
 			} else if (item instanceof TacticalRigItem rig) {
 				ALL_RIGS.add(item);
 				int cells = rig.getCompartmentLayouts().stream().mapToInt(s -> s.width() * s.height()).sum();
@@ -607,13 +607,13 @@ public final class TarkovLootGenerator {
 			return rollAmmo(random, 45, 20, 30, 5, 12, 30);
 		}
 		if (p < 43) {
-			return rollAttachmentOrFallback(random, 40, 48, 12, PLATES_REPAIR);
+			return rollAttachmentOrFallback(random, 40, 48, 12, REPAIR_KITS);
 		}
 		if (p < 60) {
 			return random.nextBoolean() ? pickStack(ARMOR_2_TO_5, random, 1) : pickStack(HELMETS_2_TO_5, random, 1);
 		}
 		if (p < 70) {
-			return pickStack(PLATES_REPAIR, random, 1);
+			return pickStack(REPAIR_KITS, random, 1);
 		}
 		if (p < 82) {
 			return random.nextBoolean() ? pickStack(ALL_RIGS, random, 1) : pickStack(MEDIUM_BACKPACKS, random, 1);
@@ -674,7 +674,7 @@ public final class TarkovLootGenerator {
 			return rollAmmo(random, 0, 0, 55, 45, 20, 40);
 		}
 		if (p < 56) {
-			return rollAttachmentOrFallback(random, 10, 45, 45, PLATES_REPAIR);
+			return rollAttachmentOrFallback(random, 10, 45, 45, REPAIR_KITS);
 		}
 		if (p < 68) {
 			return pickStack(TOP_STIMS.isEmpty() ? ALL_STIMS : TOP_STIMS, random, 1);
@@ -688,7 +688,7 @@ public final class TarkovLootGenerator {
 		int sub = random.nextInt(3);
 		if (sub == 0) return pickStack(ALL_GRENADES, random, 1 + random.nextInt(3));
 		if (sub == 1) return pickStack(HIGH_TIER_MEDS.isEmpty() ? ALL_MEDS : HIGH_TIER_MEDS, random, 1);
-		return pickStack(PLATES_REPAIR, random, 1);
+		return pickStack(REPAIR_KITS, random, 1);
 	}
 
 	private static ItemStack rollScavPocket(Random random) {
@@ -771,7 +771,7 @@ public final class TarkovLootGenerator {
 		return new ItemStack(mats[random.nextInt(mats.length)], 2 + random.nextInt(4));
 	}
 
-	/** Industrial factory: crafting metals, armor plates/repair kits, rigs, melee tools, attachments & ammo. */
+	/** Industrial factory: crafting metals, armor repair kits, rigs, melee tools, attachments & ammo. */
 	private static ItemStack rollFactory(Random random) {
 		int p = random.nextInt(100);
 		if (p < 26) {
@@ -779,10 +779,10 @@ public final class TarkovLootGenerator {
 			return new ItemStack(mats[random.nextInt(mats.length)], 3 + random.nextInt(6));
 		}
 		if (p < 42) {
-			return pickStack(PLATES_REPAIR, random, 1);
+			return pickStack(REPAIR_KITS, random, 1);
 		}
 		if (p < 56) {
-			return rollAttachmentOrFallback(random, 60, 35, 5, PLATES_REPAIR);
+			return rollAttachmentOrFallback(random, 60, 35, 5, REPAIR_KITS);
 		}
 		if (p < 68) {
 			return rollAmmo(random, 50, 25, 25, 0, 10, 24);
@@ -803,7 +803,7 @@ public final class TarkovLootGenerator {
 	private static ItemStack rollPort(Random random) {
 		int p = random.nextInt(100);
 		if (p < 22) {
-			return rollAttachmentOrFallback(random, 30, 50, 20, PLATES_REPAIR);
+			return rollAttachmentOrFallback(random, 30, 50, 20, REPAIR_KITS);
 		}
 		if (p < 40) {
 			return rollAmmo(random, 35, 15, 42, 8, 14, 30);
@@ -896,7 +896,7 @@ public final class TarkovLootGenerator {
 			return rollAmmo(random, 55, 20, 25, 0, 12, 26);
 		}
 		if (p < 44) {
-			return rollAttachmentOrFallback(random, 55, 40, 5, PLATES_REPAIR);
+			return rollAttachmentOrFallback(random, 55, 40, 5, REPAIR_KITS);
 		}
 		if (p < 62) {
 			return random.nextBoolean() ? pickStack(ARMOR_1_TO_3, random, 1) : pickStack(HELMETS_2_TO_5, random, 1);
@@ -938,7 +938,7 @@ public final class TarkovLootGenerator {
 		return rollAmmo(random, 60, 20, 20, 0, 8, 18);
 	}
 
-	/** Garages / auto-repair / storage lockups: repair plates, scrap metals, melee tools, attachments, ammo. */
+	/** Garages / auto-repair / storage lockups: armor repair kits, scrap metals, melee tools, attachments, ammo. */
 	private static ItemStack rollGarage(Random random) {
 		int p = random.nextInt(100);
 		if (p < 28) {
@@ -946,10 +946,10 @@ public final class TarkovLootGenerator {
 			return new ItemStack(mats[random.nextInt(mats.length)], 2 + random.nextInt(6));
 		}
 		if (p < 46) {
-			return pickStack(PLATES_REPAIR, random, 1);
+			return pickStack(REPAIR_KITS, random, 1);
 		}
 		if (p < 62) {
-			return rollAttachmentOrFallback(random, 70, 28, 2, PLATES_REPAIR);
+			return rollAttachmentOrFallback(random, 70, 28, 2, REPAIR_KITS);
 		}
 		if (p < 74) {
 			return pickStack(MELEE_WEAPONS, random, 1);
@@ -970,7 +970,7 @@ public final class TarkovLootGenerator {
 			return rollAmmo(random, 35, 10, 45, 10, 14, 30);
 		}
 		if (p < 44) {
-			return rollAttachmentOrFallback(random, 30, 52, 18, PLATES_REPAIR);
+			return rollAttachmentOrFallback(random, 30, 52, 18, REPAIR_KITS);
 		}
 		if (p < 60) {
 			return random.nextBoolean() ? pickStack(ARMOR_2_TO_5, random, 1) : pickStack(HELMETS_2_TO_5, random, 1);
@@ -982,7 +982,7 @@ public final class TarkovLootGenerator {
 			return random.nextBoolean() ? pickStack(HIGH_TIER_MEDS, random, 1) : pickStack(ALL_STIMS, random, 1);
 		}
 		if (p < 94) {
-			return random.nextBoolean() ? pickStack(ALL_RIGS, random, 1) : pickStack(PLATES_REPAIR, random, 1);
+			return random.nextBoolean() ? pickStack(ALL_RIGS, random, 1) : pickStack(REPAIR_KITS, random, 1);
 		}
 		return random.nextBoolean() ? pickStack(HEADSETS, random, 1) : pickStack(TACTICAL_MASKS, random, 1);
 	}

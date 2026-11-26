@@ -669,7 +669,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 				TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
 			String line2 = (armor.getArmorClass() > 0
 				? Text.translatable("tooltip.tarkovcraft.armor_durability",
-					new ItemStack(item).getMaxDamage(), new ItemStack(item).getMaxDamage()).getString() + "  |  "
+					TarkovArmorItem.formatDurability(new ItemStack(item))).getString() + "  |  "
 				: "")
 				+ Text.translatable("tooltip.tarkovcraft.armor_weight",
 					String.format(Locale.ROOT, "%.1f", armor.getWeightKg())).getString();
