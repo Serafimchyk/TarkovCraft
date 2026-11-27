@@ -179,6 +179,8 @@ public final class TarkovItemCatalog {
 				yield new TarkovGrenadeItem(settings, gType, size, rarity, weight);
 			}
 			case "headset" -> new TarkovFunctionalItem(settings, category, size, rarity, weight);
+			case "barter", "valuable" -> new TarkovFunctionalItem(settings, category, size, rarity, weight,
+				obj.has("basePrice") ? obj.get("basePrice").getAsLong() : 0L);
 			default -> null;
 		};
 	}

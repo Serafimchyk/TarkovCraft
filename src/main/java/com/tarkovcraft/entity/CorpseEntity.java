@@ -1,5 +1,6 @@
 package com.tarkovcraft.entity;
 
+import com.tarkovcraft.arena.RaidSession;
 import com.tarkovcraft.config.TarkovConfig;
 import com.tarkovcraft.grid.ContainerItemHelper;
 import com.tarkovcraft.grid.GridContainer;
@@ -36,6 +37,7 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.math.random.Random;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
@@ -64,6 +66,8 @@ public class CorpseEntity extends Entity {
 	private ContainerSearchMemory pocketsSearchMemory = new ContainerSearchMemory();
 	private int ageTicks = 0;
 	private int emptyTicks = 0;
+	@Nullable
+	private UUID ownerUuid;
 
 	public CorpseEntity(EntityType<?> type, World world) {
 		super(type, world);
@@ -81,10 +85,25 @@ public class CorpseEntity extends Entity {
 		List<ItemStack> extras,
 		List<ItemStack> overflow
 	) {
+		return fromSnapshot(world, player.getPos(), player.getYaw(), player.getUuid(),
+			player.getName().getString(), sourceLoadout, extras, overflow);
+	}
+
+	public static CorpseEntity fromSnapshot(
+		World world,
+		Vec3d position,
+		float yaw,
+		UUID ownerUuid,
+		String ownerName,
+		PlayerLoadout sourceLoadout,
+		List<ItemStack> extras,
+		List<ItemStack> overflow
+	) {
 		CorpseEntity corpse = new CorpseEntity(ModEntities.CORPSE, world);
-		corpse.setPosition(player.getX(), player.getY(), player.getZ());
-		corpse.setYaw(player.getYaw());
-		corpse.setOwnerName(player.getName().getString());
+		corpse.setPosition(position.x, position.y, position.z);
+		corpse.setYaw(yaw);
+		corpse.ownerUuid = ownerUuid;
+		corpse.setOwnerName(ownerName);
 
 		corpse.loadout = transferPlayerInventoryToCorpse(sourceLoadout, corpse.pocketsGrid, extras, overflow);
 		corpse.syncVisualFlags();
@@ -300,6 +319,11 @@ public class CorpseEntity extends Entity {
 		return this.dataTracker.get(OWNER_NAME);
 	}
 
+	@Nullable
+	public UUID getOwnerUuid() {
+		return ownerUuid;
+	}
+
 	public void setOwnerName(String name) {
 		this.dataTracker.set(OWNER_NAME, name == null ? "Scav" : name);
 	}
@@ -403,6 +427,10 @@ public class CorpseEntity extends Entity {
 	}
 
 	public void openForPlayer(ServerPlayerEntity player) {
+		if (player.getUuid().equals(ownerUuid) && RaidSession.isScav(player)) {
+			player.sendMessage(Text.translatable("message.tarkovcraft.raid.own_corpse"), true);
+			return;
+		}
 		player.openHandledScreen(new ExtendedScreenHandlerFactory() {
 			@Override
 			public void writeScreenOpeningData(ServerPlayerEntity player, PacketByteBuf buf) {
@@ -431,6 +459,7 @@ public class CorpseEntity extends Entity {
 		if (nbt.contains("OwnerName", NbtElement.STRING_TYPE)) {
 			setOwnerName(nbt.getString("OwnerName"));
 		}
+		ownerUuid = nbt.containsUuid("OwnerUuid") ? nbt.getUuid("OwnerUuid") : null;
 		if (nbt.contains("Loadout", NbtElement.COMPOUND_TYPE)) {
 			loadout.readNbt(nbt.getCompound("Loadout"));
 		}
@@ -447,6 +476,7 @@ public class CorpseEntity extends Entity {
 	@Override
 	protected void writeCustomDataToNbt(NbtCompound nbt) {
 		nbt.putString("OwnerName", getOwnerName());
+		if (ownerUuid != null) nbt.putUuid("OwnerUuid", ownerUuid);
 		nbt.put("Loadout", loadout.writeLootNbt());
 		nbt.put("PocketsGrid", pocketsGrid.toNbt());
 		nbt.put("PocketsSearchMemory", pocketsSearchMemory.toNbt());

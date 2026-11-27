@@ -169,6 +169,14 @@ public final class BodyPartHealth {
 		return Math.max(0.0f, Math.min(1.0f, getTotalHp() / BodyPart.TOTAL_MAX_HP));
 	}
 
+	public boolean needsTreatment() {
+		if (hasAnyBleed() || countInjuries(InjuryType.FRACTURE) > 0) return true;
+		for (BodyPart part : BodyPart.values()) {
+			if (getHp(part) < part.getMaxHp()) return true;
+		}
+		return false;
+	}
+
 	public boolean isDead() {
 		return getHp(BodyPart.HEAD) <= 0.001f || getHp(BodyPart.THORAX) <= 0.001f;
 	}

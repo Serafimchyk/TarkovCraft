@@ -1,6 +1,6 @@
 # Спецификация: Верстак v2, Лут-таблицы, Worldgen структур, Аирдропы, Полный §6 (Обыск + Экипировка мобов) и Конфиг (`config/tarkovcraft.json`)
 
-**Статус:** Approved Design Spec (`architect`)  
+**Статус:** Утверждённая архитектурная спецификация
 **Стек:** Minecraft `1.20.1`, Fabric Loader `0.16.10`, Fabric API `0.92.12+1.20.1`, Yarn `1.20.1+build.10`, Java `17`, `environment: "*"` (обязательна совместимость с выделенным сервером).  
 **Gradle / `fabric.mod.json` / `tarkovcraft.mixins.json`:** Новые зависимости и новые миксины **не требуются** (используются существующие `LivingEntityDeathMixin` + Fabric API events `ServerEntityEvents.ENTITY_LOAD`, `BiomeModifications.addFeature`, `ServerTickEvents.END_SERVER_TICK`, `CommandRegistrationCallback`). **TactEq не трогать.**
 

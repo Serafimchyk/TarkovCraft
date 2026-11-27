@@ -1,7 +1,9 @@
 package com.tarkovcraft.network;
 
 import com.tarkovcraft.TarkovCraftMod;
+import com.tarkovcraft.arena.RaidSession;
 import com.tarkovcraft.block.SearchableLootBlockEntity;
+import com.tarkovcraft.block.WorldBlockInteraction;
 import com.tarkovcraft.block.TarkovWorkbenchBlock;
 import com.tarkovcraft.client.ClientLoadoutCache;
 import com.tarkovcraft.client.WorldInteractState;
@@ -25,6 +27,7 @@ import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.minecraft.block.BlockState;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.ItemEntity;
@@ -456,7 +459,7 @@ public final class TarkovNetworking {
 	}
 
 	private static void handleInteract(ServerPlayerEntity player, byte actionIndex) {
-		if (player.isSpectator()) return;
+		if (player.isSpectator() || !player.isAlive() || RaidSession.isLobby(player)) return;
 		double reach = 4.2;
 		Vec3d eye = player.getCameraPosVec(1.0f);
 		Vec3d look = player.getRotationVec(1.0f);
@@ -515,7 +518,14 @@ public final class TarkovNetworking {
 		}
 
 		if (blockHit.getType() == HitResult.Type.BLOCK) {
-			if (player.getWorld().getBlockState(blockHit.getBlockPos()).getBlock() instanceof TarkovWorkbenchBlock) {
+			var world = player.getServerWorld();
+			var pos = blockHit.getBlockPos();
+			BlockState state = world.getBlockState(pos);
+			if (WorldBlockInteraction.isOpenable(state.getBlock())) {
+				WorldBlockInteraction.useOpenable(player, state, blockHit);
+				return;
+			}
+			if (state.getBlock() instanceof TarkovWorkbenchBlock) {
 				TarkovWorkbenchScreenHandler.openForPlayer(player, blockHit.getBlockPos());
 				return;
 			}

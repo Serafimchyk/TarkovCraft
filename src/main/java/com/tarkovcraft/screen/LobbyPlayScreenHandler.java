@@ -1,0 +1,282 @@
+package com.tarkovcraft.screen;
+
+import com.tarkovcraft.arena.RaidSession;
+import com.tarkovcraft.lobby.LobbyManager;
+import com.tarkovcraft.lobby.LobbyManager.ArenaView;
+import com.tarkovcraft.lobby.LobbyManager.Configuration;
+import com.tarkovcraft.lobby.LobbyManager.PlayerView;
+import com.tarkovcraft.lobby.LobbyManager.Snapshot;
+import com.tarkovcraft.registry.ModScreenHandlers;
+import net.fabricmc.fabric.api.screenhandler.v1.ExtendedScreenHandlerFactory;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.item.ItemStack;
+import net.minecraft.network.PacketByteBuf;
+import net.minecraft.screen.Property;
+import net.minecraft.screen.ScreenHandler;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+public final class LobbyPlayScreenHandler extends ScreenHandler {
+	public static final int CHARACTER = 0;
+	public static final int EDITOR = 1;
+	public static final int JOIN_SCAV = 2;
+	public static final int TRANSFER = 3;
+	public static final int SPECTATE = 4;
+	public static final int TOGGLE_READY = 5;
+	public static final int TOGGLE_SQUADS = 6;
+	public static final int PREVIOUS_ARENA = 7;
+	public static final int NEXT_ARENA = 8;
+	public static final int TOGGLE_BOSS = 9;
+	public static final int TOGGLE_AIRDROPS = 10;
+	public static final int NEXT_TIME = 11;
+	public static final int ACCEPT = 12;
+	public static final int DECLINE = 13;
+	public static final int LEAVE = 14;
+	public static final int PREVIOUS_PLAYERS = 15;
+	public static final int NEXT_PLAYERS = 16;
+	public static final int INVITE_FIRST = 32;
+	public static final int KICK_FIRST = 48;
+	public static final int TRANSFER_LEADER_FIRST = 64;
+
+	private static final int READY = 1;
+	private static final int EDITOR_ALLOWED = 2;
+	private static final int SERVICE = 4;
+	private static final int CONFIGURE = 8;
+	private static final int SQUADS = 16;
+	private static final int LEADER = 32;
+	private static final int PREVIOUS_PAGE = 64;
+	private static final int NEXT_PAGE = 128;
+
+	private enum Field {
+		FLAGS, PARTY_READY, HEALTH, MAX_HEALTH, SCAV_STATUS, SCAV_DELAY, RAID, COUNTDOWN, READY_COUNT, QUEUED_COUNT,
+		PENDING_LOOT, WEIGHT, WARNING, RUBLES_0, RUBLES_1, RUBLES_2, RUBLES_3, KIT_0, KIT_1, KIT_2, KIT_3
+	}
+
+	private final PlayerEntity owner;
+	private final ArenaView arena;
+	private final List<String> arenas;
+	private final int arenaIndex;
+	private final List<PlayerView> party;
+	private final List<PlayerView> online;
+	private final String inviter;
+	private final Property[] live = new Property[Field.values().length];
+
+	private LobbyPlayScreenHandler(int syncId, PlayerEntity owner, ArenaView arena, List<String> arenas,
+			int arenaIndex, List<PlayerView> party, List<PlayerView> online, String inviter, int[] props) {
+		super(ModScreenHandlers.LOBBY_PLAY_SCREEN_HANDLER, syncId);
+		this.owner = owner;
+		this.arena = arena;
+		this.arenas = arenas;
+		this.arenaIndex = arenaIndex;
+		this.party = party;
+		this.online = online;
+		this.inviter = inviter;
+		for (int i = 0; i < live.length; i++) {
+			live[i] = addProperty(Property.create());
+			live[i].set(props[i]);
+		}
+	}
+
+	public static LobbyPlayScreenHandler fromClientBuf(int syncId, PlayerInventory inventory, PacketByteBuf buf) {
+		var arena = new ArenaView(buf.readString(128), buf.readVarInt(), buf.readBoolean(), buf.readBoolean(),
+			buf.readVarInt(), buf.readUnsignedByte(), buf.readBoolean());
+		var arenas = buf.readList(packet -> packet.readString(128));
+		int arenaIndex = buf.readVarInt();
+		var party = buf.readList(LobbyPlayScreenHandler::readPlayer);
+		var online = buf.readList(LobbyPlayScreenHandler::readPlayer);
+		String inviter = buf.readString(16);
+		int[] props = new int[Field.values().length];
+		for (int i = 0; i < props.length; i++) props[i] = buf.readShort();
+		return new LobbyPlayScreenHandler(syncId, inventory.player, arena, arenas, arenaIndex, party, online, inviter, props);
+	}
+
+	public static void open(ServerPlayerEntity player) {
+		if (!player.isAlive() || !RaidSession.isLobby(player)) return;
+		var snapshot = LobbyManager.snapshot(player);
+		var props = encodeProperties(snapshot);
+		player.openHandledScreen(new ExtendedScreenHandlerFactory() {
+			@Override
+			public void writeScreenOpeningData(ServerPlayerEntity viewer, PacketByteBuf buf) {
+				var arena = snapshot.arena();
+				buf.writeString(limit(arena.name()), 128);
+				buf.writeVarInt(arena.minutes());
+				buf.writeBoolean(arena.boss());
+				buf.writeBoolean(arena.airdrops());
+				buf.writeVarInt(arena.exits());
+				buf.writeByte(arena.timeOfDay());
+				buf.writeBoolean(arena.valid());
+				buf.writeCollection(snapshot.arenas(), (packet, name) -> packet.writeString(limit(name), 128));
+				buf.writeVarInt(snapshot.arenaIndex());
+				buf.writeCollection(snapshot.party(), LobbyPlayScreenHandler::writePlayer);
+				buf.writeCollection(snapshot.online(), LobbyPlayScreenHandler::writePlayer);
+				buf.writeString(snapshot.inviter(), 16);
+				for (int property : props) buf.writeShort(property);
+			}
+
+			@Override
+			public Text getDisplayName() {
+				return LobbyManager.label("tab.play", "Play");
+			}
+
+			@Override
+			public ScreenHandler createMenu(int syncId, PlayerInventory inventory, PlayerEntity viewer) {
+				return new LobbyPlayScreenHandler(syncId, viewer, snapshot.arena(), snapshot.arenas(), snapshot.arenaIndex(),
+					snapshot.party(), snapshot.online(), snapshot.inviter(), props);
+			}
+		});
+	}
+
+	private static String limit(String text) {
+		return text.length() <= 128 ? text : text.substring(0, 128);
+	}
+
+	private static void writePlayer(PacketByteBuf buf, PlayerView player) {
+		buf.writeUuid(player.id());
+		buf.writeString(player.name(), 16);
+		buf.writeBoolean(player.leader());
+	}
+
+	private static PlayerView readPlayer(PacketByteBuf buf) {
+		return new PlayerView(buf.readUuid(), buf.readString(16), false, buf.readBoolean());
+	}
+
+	private static int[] encodeProperties(Snapshot state) {
+		int[] props = new int[Field.values().length];
+		int flags = 0;
+		if (state.ready()) flags |= READY;
+		if (state.editor()) flags |= EDITOR_ALLOWED;
+		if (state.service()) flags |= SERVICE;
+		if (state.canConfigure()) flags |= CONFIGURE;
+		if (state.squads()) flags |= SQUADS;
+		if (state.leader()) flags |= LEADER;
+		if (state.canPreviousPlayers()) flags |= PREVIOUS_PAGE;
+		if (state.canNextPlayers()) flags |= NEXT_PAGE;
+		props[Field.FLAGS.ordinal()] = flags;
+		for (int i = 0; i < state.party().size(); i++) {
+			if (state.party().get(i).ready()) props[Field.PARTY_READY.ordinal()] |= 1 << i;
+		}
+		props[Field.HEALTH.ordinal()] = state.health();
+		props[Field.MAX_HEALTH.ordinal()] = state.maxHealth();
+		props[Field.SCAV_STATUS.ordinal()] = state.scavStatusSeconds();
+		props[Field.SCAV_DELAY.ordinal()] = state.scavSeconds();
+		props[Field.RAID.ordinal()] = Math.min(Short.MAX_VALUE, state.raidSeconds());
+		props[Field.COUNTDOWN.ordinal()] = state.countdownSeconds();
+		props[Field.READY_COUNT.ordinal()] = state.readyCount();
+		props[Field.QUEUED_COUNT.ordinal()] = state.queuedCount();
+		props[Field.PENDING_LOOT.ordinal()] = Math.min(Short.MAX_VALUE, state.pendingLoot());
+		props[Field.WEIGHT.ordinal()] = Math.min(Short.MAX_VALUE, Math.round(state.kitWeightKg() * 10));
+		props[Field.WARNING.ordinal()] = state.warningFlags();
+		writeMoney(props, Field.RUBLES_0, state.rubles());
+		writeMoney(props, Field.KIT_0, state.kitRubles());
+		return props;
+	}
+
+	private static void writeMoney(int[] props, Field start, long amount) {
+		for (int i = 0; i < 4; i++) props[start.ordinal() + i] = (short) (amount >>> (i * 16));
+	}
+
+	private long readMoney(Field start) {
+		long amount = 0;
+		for (int i = 0; i < 4; i++) amount |= (live[start.ordinal() + i].get() & 0xffffL) << (i * 16);
+		return amount;
+	}
+
+	private int get(Field field) {
+		return live[field.ordinal()].get();
+	}
+
+	public Snapshot snapshot() {
+		int flags = get(Field.FLAGS);
+		int ready = get(Field.PARTY_READY);
+		var members = new ArrayList<PlayerView>(party.size());
+		for (int i = 0; i < party.size(); i++) {
+			var member = party.get(i);
+			members.add(new PlayerView(member.id(), member.name(), (ready & (1 << i)) != 0, member.leader()));
+		}
+		return new Snapshot(arena, arenas, arenaIndex, members, online, inviter, (flags & SQUADS) != 0,
+			(flags & READY) != 0, (flags & LEADER) != 0, (flags & CONFIGURE) != 0, (flags & EDITOR_ALLOWED) != 0,
+			(flags & SERVICE) != 0, readMoney(Field.RUBLES_0), get(Field.HEALTH), get(Field.MAX_HEALTH),
+			get(Field.SCAV_STATUS), get(Field.SCAV_DELAY), get(Field.RAID), get(Field.COUNTDOWN), get(Field.READY_COUNT),
+			get(Field.QUEUED_COUNT), get(Field.PENDING_LOOT), (flags & PREVIOUS_PAGE) != 0, (flags & NEXT_PAGE) != 0,
+			get(Field.WEIGHT) / 10f, readMoney(Field.KIT_0), get(Field.WARNING));
+	}
+
+	public void refresh(ServerPlayerEntity player) {
+		if (player.currentScreenHandler != this || !canUse(player)) return;
+		var state = LobbyManager.snapshot(player);
+		if (!arena.equals(state.arena()) || !arenas.equals(state.arenas()) || arenaIndex != state.arenaIndex()
+			|| !sameParty(state.party()) || !online.equals(state.online()) || !inviter.equals(state.inviter())) {
+			open(player);
+			return;
+		}
+		int[] properties = encodeProperties(state);
+		for (int i = 0; i < live.length; i++) live[i].set(properties[i]);
+		sendContentUpdates();
+	}
+
+	private boolean sameParty(List<PlayerView> updated) {
+		if (party.size() != updated.size()) return false;
+		for (int i = 0; i < party.size(); i++) {
+			var current = party.get(i);
+			var next = updated.get(i);
+			if (!current.id().equals(next.id()) || current.leader() != next.leader()) return false;
+		}
+		return true;
+	}
+
+	@Override
+	public boolean canUse(PlayerEntity player) {
+		return owner == player && (!(player instanceof ServerPlayerEntity serverPlayer)
+			|| serverPlayer.isAlive() && RaidSession.isLobby(serverPlayer));
+	}
+
+	@Override
+	public ItemStack quickMove(PlayerEntity player, int slot) {
+		return ItemStack.EMPTY;
+	}
+
+	@Override
+	public boolean onButtonClick(PlayerEntity player, int id) {
+		if (!(player instanceof ServerPlayerEntity serverPlayer) || player.currentScreenHandler != this || !canUse(player)) return false;
+		boolean handled = switch (id) {
+			case CHARACTER -> { TarkovScreenHandler.openStash(serverPlayer); yield true; }
+			case EDITOR -> LobbyManager.toggleEditor(serverPlayer);
+			case JOIN_SCAV -> RaidSession.joinScav(serverPlayer);
+			case TRANSFER -> { RaidScreenHandler.openTransfer(serverPlayer); yield true; }
+			case SPECTATE -> LobbyManager.spectate(serverPlayer);
+			case TOGGLE_READY -> LobbyManager.toggleReady(serverPlayer);
+			case TOGGLE_SQUADS -> LobbyManager.configure(serverPlayer, Configuration.SQUADS);
+			case PREVIOUS_ARENA -> LobbyManager.configure(serverPlayer, Configuration.PREVIOUS_ARENA);
+			case NEXT_ARENA -> LobbyManager.configure(serverPlayer, Configuration.NEXT_ARENA);
+			case TOGGLE_BOSS -> LobbyManager.configure(serverPlayer, Configuration.BOSS);
+			case TOGGLE_AIRDROPS -> LobbyManager.configure(serverPlayer, Configuration.AIRDROPS);
+			case NEXT_TIME -> LobbyManager.configure(serverPlayer, Configuration.TIME);
+			case ACCEPT -> LobbyManager.answerInvite(serverPlayer, inviter, true);
+			case DECLINE -> LobbyManager.answerInvite(serverPlayer, inviter, false);
+			case LEAVE -> LobbyManager.leaveParty(serverPlayer);
+			case PREVIOUS_PLAYERS -> LobbyManager.changeInvitePage(serverPlayer, -1);
+			case NEXT_PLAYERS -> LobbyManager.changeInvitePage(serverPlayer, 1);
+			default -> handleIndexedAction(serverPlayer, id);
+		};
+		if (handled && player.currentScreenHandler == this) refresh(serverPlayer);
+		return handled;
+	}
+
+	private boolean handleIndexedAction(ServerPlayerEntity player, int id) {
+		UUID invitee = at(online, id - INVITE_FIRST);
+		if (invitee != null) return LobbyManager.invite(player, invitee);
+		UUID kicked = at(party, id - KICK_FIRST);
+		if (kicked != null) return LobbyManager.manageParty(player, kicked, false);
+		UUID promoted = at(party, id - TRANSFER_LEADER_FIRST);
+		return promoted != null && LobbyManager.manageParty(player, promoted, true);
+	}
+
+	private static UUID at(List<PlayerView> players, int index) {
+		return index >= 0 && index < players.size() ? players.get(index).id() : null;
+	}
+}

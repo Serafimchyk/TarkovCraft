@@ -13,6 +13,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 /**
  * Helper for reading and writing GridContainers, container UUIDs, and per-player
@@ -167,6 +168,24 @@ public final class ContainerItemHelper {
 		NbtCompound root = stack.getOrCreateSubNbt(KEY_ROOT);
 		root.putUuid(KEY_UUID, grid.getContainerId());
 		root.put(KEY_GRID, grid.toNbt());
+	}
+
+	/**
+	 * Validates every saved entry without initializing the case or discarding
+	 * entries that no longer fit its grid.
+	 */
+	public static boolean allCaseContentsMatch(ItemStack caseStack, Predicate<ItemStack> filter) {
+		NbtCompound root = caseStack.getSubNbt(KEY_ROOT);
+		if (root == null || !root.contains(KEY_GRID)) return true;
+		if (!root.contains(KEY_GRID, NbtElement.COMPOUND_TYPE)) return false;
+		NbtCompound grid = root.getCompound(KEY_GRID);
+		if (!grid.contains("Entries")) return true;
+		if (!(grid.get("Entries") instanceof NbtList entries)) return false;
+		for (NbtElement entry : entries) {
+			if (!(entry instanceof NbtCompound storedEntry)
+				|| !filter.test(ItemStack.fromNbt(storedEntry.getCompound("Stack")))) return false;
+		}
+		return true;
 	}
 
 	public static List<GridContainer> readAllGrids(ItemStack stack) {

@@ -12,6 +12,7 @@ import net.minecraft.entity.MovementType;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.particle.DustParticleEffect;
 import net.minecraft.particle.ParticleTypes;
+import net.minecraft.registry.tag.BlockTags;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.sound.SoundCategory;
 import net.minecraft.sound.SoundEvents;
@@ -28,6 +29,7 @@ public class AirdropEntity extends Entity {
 		new DustParticleEffect(new Vector3f(0.92f, 0.14f, 0.14f), 2.2f);
 
 	private int ticksInAir = 0;
+	private BlockPos landingPoint;
 
 	public AirdropEntity(EntityType<? extends AirdropEntity> type, World world) {
 		super(type, world);
@@ -42,11 +44,17 @@ public class AirdropEntity extends Entity {
 	@Override
 	protected void readCustomDataFromNbt(NbtCompound nbt) {
 		this.ticksInAir = nbt.getInt("TicksInAir");
+		landingPoint = nbt.contains("LandingPoint") ? BlockPos.fromLong(nbt.getLong("LandingPoint")) : null;
 	}
 
 	@Override
 	protected void writeCustomDataToNbt(NbtCompound nbt) {
 		nbt.putInt("TicksInAir", this.ticksInAir);
+		if (landingPoint != null) nbt.putLong("LandingPoint", landingPoint.asLong());
+	}
+
+	public void setLandingPoint(BlockPos landingPoint) {
+		this.landingPoint = landingPoint.toImmutable();
 	}
 
 	@Override
@@ -81,7 +89,20 @@ public class AirdropEntity extends Entity {
 			|| !sw.getFluidState(getBlockPos()).isEmpty()
 			|| this.ticksInAir > MAX_AIR_TICKS;
 
-		if (hitGround) {
+		if (landingPoint != null) {
+			if (getY() <= landingPoint.getY() + 0.08) {
+				BlockState support = sw.getBlockState(landingPoint.down());
+				if (sw.getBlockState(landingPoint).isAir()
+					&& sw.getTopY(Heightmap.Type.MOTION_BLOCKING, landingPoint.getX(), landingPoint.getZ()) == landingPoint.getY()
+					&& support.isSolidBlock(sw, landingPoint.down())
+					&& !support.isIn(BlockTags.LEAVES) && !support.isIn(BlockTags.LOGS)) {
+					placeCrate(sw, landingPoint);
+				}
+				discard();
+			} else if (hitGround) {
+				discard();
+			}
+		} else if (hitGround) {
 			land(sw);
 		}
 	}
@@ -99,7 +120,12 @@ public class AirdropEntity extends Entity {
 			placePos = placePos.up();
 		}
 
-		sw.setBlockState(placePos, ModBlocks.AIRDROP_CRATE.getDefaultState(), Block.NOTIFY_ALL);
+		if (sw.getBlockState(placePos).isReplaceable()) placeCrate(sw, placePos);
+		discard();
+	}
+
+	private static void placeCrate(ServerWorld sw, BlockPos placePos) {
+		if (!sw.setBlockState(placePos, ModBlocks.AIRDROP_CRATE.getDefaultState(), Block.NOTIFY_ALL)) return;
 		if (sw.getBlockEntity(placePos) instanceof SearchableLootBlockEntity be) {
 			be.populateFromPool(TarkovLootPool.AIRDROP, sw.random);
 			be.setSmokeTicksRemaining(TarkovConfig.get().airdropSmokeSeconds * 20);
@@ -107,6 +133,5 @@ public class AirdropEntity extends Entity {
 		sw.playSound(null, placePos, SoundEvents.BLOCK_ANVIL_LAND, SoundCategory.BLOCKS, 1.0f, 0.85f);
 		sw.spawnParticles(ParticleTypes.CLOUD, placePos.getX() + 0.5, placePos.getY() + 0.4, placePos.getZ() + 0.5,
 			16, 0.6, 0.15, 0.6, 0.04);
-		this.discard();
 	}
 }

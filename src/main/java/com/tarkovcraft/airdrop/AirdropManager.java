@@ -1,14 +1,18 @@
 package com.tarkovcraft.airdrop;
 
 import com.tarkovcraft.config.TarkovConfig;
+import com.tarkovcraft.arena.ArenaEventsState;
 import com.tarkovcraft.entity.AirdropEntity;
 import com.tarkovcraft.registry.ModEntities;
+import net.minecraft.block.BlockState;
+import net.minecraft.registry.tag.BlockTags;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.sound.SoundCategory;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.Heightmap;
 
 import java.util.List;
@@ -43,6 +47,9 @@ public final class AirdropManager {
 		if (overworld == null) {
 			return;
 		}
+		if (ArenaEventsState.get(overworld).arenas().stream().anyMatch(ArenaEventsState.Arena::ready)) {
+			return;
+		}
 		List<ServerPlayerEntity> activePlayers = overworld.getPlayers(p -> p.isAlive() && !p.isSpectator());
 		if (activePlayers.isEmpty()) {
 			return;
@@ -57,6 +64,65 @@ public final class AirdropManager {
 				spawnAirdropNear(target);
 			}
 		}
+	}
+
+	public static boolean isSafeArenaPoint(ServerWorld world, ArenaEventsState.Arena arena, BlockPos pos) {
+		if (!world.isInBuildLimit(pos) || pos.getY() > arena.maxGroundY()) return false;
+		for (int dx = -2; dx <= 2; dx++) {
+			for (int dz = -2; dz <= 2; dz++) {
+				int x = pos.getX() + dx;
+				int z = pos.getZ() + dz;
+				if (!arena.contains(x, z) || !world.isChunkLoaded(x >> 4, z >> 4)) return false;
+				int y = world.getTopY(Heightmap.Type.MOTION_BLOCKING, x, z);
+				if (y != pos.getY()) return false;
+				BlockPos surface = new BlockPos(x, y, z);
+				BlockPos floor = surface.down();
+				BlockState support = world.getBlockState(floor);
+				if (!support.isSolidBlock(world, floor) || support.isIn(BlockTags.LEAVES) || support.isIn(BlockTags.LOGS)
+					|| !support.getFluidState().isEmpty() || !world.getBlockState(surface).isAir()
+					|| !world.isSkyVisible(surface)) return false;
+			}
+		}
+		return true;
+	}
+
+	public static AirdropEntity spawnForArena(ServerWorld world, ArenaEventsState.Arena arena) {
+		if (!arena.ready() || !arena.airdropsEnabled()) return null;
+		if (!arena.airdropPoints().isEmpty()) {
+			List<BlockPos> safe = arena.airdropPoints().stream().filter(pos -> isSafeArenaPoint(world, arena, pos)).toList();
+			if (safe.isEmpty()) return null;
+			return spawnArenaDrop(world, safe.get(world.random.nextInt(safe.size())));
+		}
+		int minX = arena.corners().stream().mapToInt(BlockPos::getX).min().orElseThrow();
+		int maxX = arena.corners().stream().mapToInt(BlockPos::getX).max().orElseThrow();
+		int minZ = arena.corners().stream().mapToInt(BlockPos::getZ).min().orElseThrow();
+		int maxZ = arena.corners().stream().mapToInt(BlockPos::getZ).max().orElseThrow();
+		for (int i = 0; i < 96; i++) {
+			int x = i == 0 ? arena.center().getX() : minX + world.random.nextInt(maxX - minX + 1);
+			int z = i == 0 ? arena.center().getZ() : minZ + world.random.nextInt(maxZ - minZ + 1);
+			if (!arena.contains(x, z) || !world.isChunkLoaded(x >> 4, z >> 4)) continue;
+			BlockPos pos = new BlockPos(x, world.getTopY(Heightmap.Type.MOTION_BLOCKING, x, z), z);
+			if (isSafeArenaPoint(world, arena, pos)) return spawnArenaDrop(world, pos);
+		}
+		return null;
+	}
+
+	private static AirdropEntity spawnArenaDrop(ServerWorld world, BlockPos landing) {
+		return spawnAirdropAt(world, landing.getX(), landing.getZ(), true, landing);
+	}
+
+	public static AirdropEntity spawnFromCommand(ServerPlayerEntity player, boolean here) {
+		ServerWorld world = player.getServerWorld();
+		BlockPos pos = player.getBlockPos();
+		var arenas = ArenaEventsState.get(world).arenas().stream().filter(ArenaEventsState.Arena::ready).toList();
+		if (arenas.isEmpty()) {
+			return here ? spawnAirdropAt(world, pos.getX(), pos.getZ(), true) : spawnAirdropNear(player);
+		}
+		var arena = arenas.stream().filter(a -> a.contains(pos.getX(), pos.getZ())).findFirst().orElse(null);
+		if (arena == null || !arena.airdropsEnabled()) return null;
+		if (!here) return spawnForArena(world, arena);
+		if (!arena.airdropPoints().isEmpty() && !arena.airdropPoints().contains(pos)) return null;
+		return isSafeArenaPoint(world, arena, pos) ? spawnArenaDrop(world, pos) : null;
 	}
 
 	public static AirdropEntity spawnAirdropBetweenPlayers(ServerWorld world, List<ServerPlayerEntity> players) {
@@ -146,6 +212,10 @@ public final class AirdropManager {
 
 	@org.jetbrains.annotations.Nullable
 	public static AirdropEntity spawnAirdropAt(ServerWorld world, int x, int z, boolean announce) {
+		return spawnAirdropAt(world, x, z, announce, null);
+	}
+
+	private static AirdropEntity spawnAirdropAt(ServerWorld world, int x, int z, boolean announce, BlockPos landing) {
 		if (!world.isChunkLoaded(x >> 4, z >> 4)) {
 			return null;
 		}
@@ -153,8 +223,9 @@ public final class AirdropManager {
 		int spawnY = Math.min(world.getTopY() - 8, Math.max(surfaceY + 120, world.getSeaLevel() + 110));
 
 		AirdropEntity airdrop = new AirdropEntity(ModEntities.AIRDROP, world);
+		if (landing != null) airdrop.setLandingPoint(landing);
 		airdrop.refreshPositionAndAngles(x + 0.5, spawnY, z + 0.5, 0.0f, 0.0f);
-		world.spawnEntity(airdrop);
+		if (spawnY <= surfaceY || !world.spawnEntity(airdrop)) return null;
 
 		for (ServerPlayerEntity p : world.getPlayers()) {
 			double dx = p.getX() - x;

@@ -24,7 +24,7 @@ import java.util.Map;
 /**
  * Deterministic recipe engine for the Tarkov Workbench:
  * - AMMO tab: scratch crafting & FMJ -> HP/AP/IGN reloading for any TaCZ ballistic caliber.
- * - ARMOR & GEAR tab: auto-generated recipes for all Helmets, Body Armor, Face Masks, Plates/Repair Kits, Rigs, and Backpacks.
+ * - ARMOR & GEAR tab: auto-generated recipes for all Helmets, Body Armor, Face Masks, Repair Kits, Rigs, and Backpacks.
  */
 public final class TarkovWorkbenchRecipes {
 	private static final Map<GearCategory, List<GearRecipe>> GEAR_CACHE = new EnumMap<>(GearCategory.class);
@@ -77,55 +77,20 @@ public final class TarkovWorkbenchRecipes {
 		AmmoTier safeTier = tier != null ? tier : AmmoTier.FMJ;
 		boolean isUpgrade = upgradeFromFmj && safeTier != AmmoTier.FMJ;
 
-		List<Ingredient> mats = new ArrayList<>();
-		if (isUpgrade) {
-			switch (safeTier) {
-				case HP -> {
-					mats.add(new Ingredient(Items.COPPER_INGOT, m));
-					mats.add(new Ingredient(Items.REDSTONE, 2 * m));
-				}
-				case AP -> {
-					mats.add(new Ingredient(Items.GOLD_INGOT, 2 * m));
-					mats.add(new Ingredient(Items.GUNPOWDER, m));
-					mats.add(new Ingredient(Items.REDSTONE, m));
-				}
-				case IGN -> {
-					mats.add(new Ingredient(Items.DIAMOND, m));
-					mats.add(new Ingredient(Items.BLAZE_POWDER, 2 * m));
-					mats.add(new Ingredient(Items.GUNPOWDER, m));
-				}
-				default -> {
-				}
-			}
-			return new AmmoRecipe(spec.ammoId(), safeTier, true, batch, batch, List.copyOf(mats));
-		}
-
-		switch (safeTier) {
-			case FMJ -> {
-				mats.add(new Ingredient(Items.IRON_INGOT, 2 * m));
-				mats.add(new Ingredient(Items.COPPER_INGOT, 2 * m));
-				mats.add(new Ingredient(Items.GUNPOWDER, 2 * m));
-			}
-			case HP -> {
-				mats.add(new Ingredient(Items.IRON_INGOT, m));
-				mats.add(new Ingredient(Items.COPPER_INGOT, 3 * m));
-				mats.add(new Ingredient(Items.GUNPOWDER, 2 * m));
-				mats.add(new Ingredient(Items.REDSTONE, 2 * m));
-			}
-			case AP -> {
-				mats.add(new Ingredient(Items.IRON_INGOT, 2 * m));
-				mats.add(new Ingredient(Items.GOLD_INGOT, 2 * m));
-				mats.add(new Ingredient(Items.GUNPOWDER, 3 * m));
-				mats.add(new Ingredient(Items.REDSTONE, 2 * m));
-			}
-			case IGN -> {
-				mats.add(new Ingredient(Items.IRON_INGOT, 3 * m));
-				mats.add(new Ingredient(Items.DIAMOND, m));
-				mats.add(new Ingredient(Items.BLAZE_POWDER, 2 * m));
-				mats.add(new Ingredient(Items.GUNPOWDER, 3 * m));
-			}
-		}
-		return new AmmoRecipe(spec.ammoId(), safeTier, false, batch, 0, List.copyOf(mats));
+		List<Ingredient> materials = isUpgrade ? switch (safeTier) {
+			case HP -> List.of(material("brass_casings", m), material("gunpowder_hawk", m));
+			case AP -> List.of(material("ceramic_plate_raw", 2 * m), material("gunpowder_hawk", m));
+			case IGN -> List.of(material("military_electronics", m), material("gunpowder_hawk", 2 * m));
+			case FMJ -> throw new IllegalStateException("FMJ cannot be upgraded from FMJ");
+		} : switch (safeTier) {
+			case FMJ -> List.of(material("brass_casings", 4 * m), material("gunpowder_hawk", 2 * m));
+			case HP -> List.of(material("brass_casings", 5 * m), material("gunpowder_hawk", 2 * m));
+			case AP -> List.of(material("brass_casings", 4 * m), material("ceramic_plate_raw", 2 * m),
+				material("gunpowder_hawk", 3 * m));
+			case IGN -> List.of(material("brass_casings", 4 * m), material("military_electronics", m),
+				material("gunpowder_hawk", 4 * m));
+		};
+		return new AmmoRecipe(spec.ammoId(), safeTier, isUpgrade, batch, isUpgrade ? batch : 0, materials);
 	}
 
 	public static boolean isCraftableGear(Item item) {
@@ -217,78 +182,51 @@ public final class TarkovWorkbenchRecipes {
 				case FACE_MASK -> 0.75;
 				default -> 1.0;
 			};
-			int ac = armor.getArmorClass();
-			switch (ac) {
-				case 0 -> {
-					mats.add(new Ingredient(Items.LEATHER, ceilMul(2, s)));
-					mats.add(new Ingredient(Items.STRING, ceilMul(2, s)));
-					if (armor.isGasProtection()) {
-						mats.add(new Ingredient(Items.GLASS, 2));
-						mats.add(new Ingredient(Items.COAL, 2));
-					}
-				}
-				case 1 -> {
-					mats.add(new Ingredient(Items.LEATHER, ceilMul(3, s)));
-					mats.add(new Ingredient(Items.COPPER_INGOT, ceilMul(2, s)));
-					mats.add(new Ingredient(Items.IRON_INGOT, ceilMul(2, s)));
-				}
-				case 2 -> {
-					mats.add(new Ingredient(Items.LEATHER, ceilMul(4, s)));
-					mats.add(new Ingredient(Items.IRON_INGOT, ceilMul(4, s)));
-					mats.add(new Ingredient(Items.STRING, ceilMul(2, s)));
-				}
-				case 3 -> {
-					mats.add(new Ingredient(Items.LEATHER, ceilMul(4, s)));
-					mats.add(new Ingredient(Items.IRON_INGOT, ceilMul(6, s)));
-					mats.add(new Ingredient(Items.GOLD_INGOT, ceilMul(2, s)));
-				}
-				case 4 -> {
-					mats.add(new Ingredient(Items.LEATHER, ceilMul(4, s)));
-					mats.add(new Ingredient(Items.IRON_INGOT, ceilMul(8, s)));
-					mats.add(new Ingredient(Items.DIAMOND, ceilMul(2, s)));
-					mats.add(new Ingredient(Items.GOLD_INGOT, ceilMul(2, s)));
-				}
-				case 5 -> {
-					mats.add(new Ingredient(Items.LEATHER, ceilMul(4, s)));
-					mats.add(new Ingredient(Items.IRON_INGOT, ceilMul(10, s)));
-					mats.add(new Ingredient(Items.DIAMOND, ceilMul(4, s)));
-					mats.add(new Ingredient(Items.OBSIDIAN, ceilMul(3, s)));
-				}
-				default -> {
-					mats.add(new Ingredient(Items.LEATHER, ceilMul(4, s)));
-					mats.add(new Ingredient(Items.IRON_BLOCK, ceilMul(2, s)));
-					mats.add(new Ingredient(Items.DIAMOND, ceilMul(6, s)));
-					mats.add(new Ingredient(Items.OBSIDIAN, ceilMul(4, s)));
-					mats.add(new Ingredient(Items.NETHERITE_SCRAP, Math.max(1, (int) Math.round(s))));
-				}
+			int armorClass = armor.getArmorClass();
+			mats.add(material("kevlar_fabric", ceilMul(Math.min(4, armorClass + 2), s)));
+			if (armorClass > 0) {
+				mats.add(material("weapon_parts", ceilMul(2 * armorClass, s)));
+			}
+			if (armorClass >= 3) {
+				mats.add(material("ceramic_plate_raw", ceilMul(2 * (armorClass - 2), s)));
+			}
+			if (armorClass >= 5 || armor.isGasProtection()) {
+				mats.add(material("military_electronics", ceilMul(Math.max(1, armorClass - 4), s)));
 			}
 		} else if (item instanceof TarkovArmorRepairItem repair) {
 			int rep = repair.getRepairAmount();
-			mats.add(new Ingredient(Items.IRON_INGOT, Math.max(2, rep / 10)));
-			mats.add(new Ingredient(Items.COPPER_INGOT, Math.max(2, rep / 15)));
+			mats.add(material("weapon_parts", Math.max(2, rep / 10)));
+			mats.add(material("kevlar_fabric", Math.max(2, rep / 15)));
 			if (rep >= 40) {
-				mats.add(new Ingredient(Items.DIAMOND, 1));
+				mats.add(material("military_electronics", 1));
 			} else if (rep >= 25) {
-				mats.add(new Ingredient(Items.GOLD_INGOT, 1));
+				mats.add(material("ceramic_plate_raw", 1));
 			}
 		} else if (item instanceof TacticalRigItem rig) {
 			int totalCells = rig.getCompartmentLayouts().stream().mapToInt(sz -> sz.width() * sz.height()).sum();
-			mats.add(new Ingredient(Items.LEATHER, Math.max(3, totalCells / 3)));
-			mats.add(new Ingredient(Items.STRING, Math.max(4, totalCells / 2)));
-			mats.add(new Ingredient(Items.IRON_INGOT, Math.max(1, totalCells / 8)));
+			mats.add(material("kevlar_fabric", Math.max(3, totalCells / 2)));
+			mats.add(material("weapon_parts", Math.max(1, totalCells / 8)));
 			if (totalCells >= 18) {
-				mats.add(new Ingredient(Items.GOLD_INGOT, 2));
+				mats.add(material("ceramic_plate_raw", 2));
 			}
 		} else if (item instanceof BackpackItem bp) {
 			int cells = bp.getGridWidth() * bp.getGridHeight();
-			mats.add(new Ingredient(Items.LEATHER, Math.max(4, cells / 4)));
-			mats.add(new Ingredient(Items.STRING, Math.max(4, cells / 3)));
-			mats.add(new Ingredient(Items.IRON_INGOT, Math.max(1, cells / 12)));
+			mats.add(material("kevlar_fabric", Math.max(4, cells / 3)));
+			mats.add(material("weapon_parts", Math.max(1, cells / 12)));
 			if (cells >= 30) {
-				mats.add(new Ingredient(Items.DIAMOND, 2));
+				mats.add(material("ceramic_plate_raw", 2));
 			}
 		}
 		return List.copyOf(mats);
+	}
+
+	private static Ingredient material(String id, int count) {
+		Identifier itemId = new Identifier(TarkovCraftMod.MOD_ID, id);
+		Item item = Registries.ITEM.get(itemId);
+		if (item == Items.AIR) {
+			throw new IllegalStateException("Missing workbench material " + itemId);
+		}
+		return new Ingredient(item, count);
 	}
 
 	private static int ceilMul(int base, double scale) {

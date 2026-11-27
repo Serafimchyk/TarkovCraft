@@ -13,11 +13,7 @@ import com.tarkovcraft.item.TarkovSizedItem;
 import com.tarkovcraft.search.ContainerSearchMemory;
 import net.minecraft.item.ItemStack;
 import com.tarkovcraft.ammo.AmmoTier;
-import com.tarkovcraft.item.TarkovArmorRepairItem;
-import com.tarkovcraft.item.TarkovCaseItem;
 import com.tarkovcraft.item.TarkovFunctionalItem;
-import com.tarkovcraft.item.TarkovStimulatorItem;
-import net.minecraft.item.Items;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
 import net.minecraft.nbt.NbtList;
@@ -39,6 +35,8 @@ import java.util.UUID;
 public final class PlayerLoadout {
 	public static final int POCKET_COUNT = 6;
 	public static final int HOTBAR_SIZE = 9;
+	private static final EquipmentSlotType[] EQUIPMENT_SLOTS = EquipmentSlotType.values();
+	private static final long SYNC_HASH_PRIME = 0x100000001B3L;
 
 	private final Map<EquipmentSlotType, ItemStack> equipment = new EnumMap<>(EquipmentSlotType.class);
 	private final ItemStack[] pockets = new ItemStack[POCKET_COUNT];
@@ -51,7 +49,7 @@ public final class PlayerLoadout {
 	private transient List<ItemStack> exposedCache = null;
 
 	public PlayerLoadout() {
-		for (EquipmentSlotType slot : EquipmentSlotType.values()) {
+		for (EquipmentSlotType slot : EQUIPMENT_SLOTS) {
 			equipment.put(slot, ItemStack.EMPTY);
 		}
 		for (int i = 0; i < POCKET_COUNT; i++) {
@@ -73,23 +71,7 @@ public final class PlayerLoadout {
 	}
 
 	public static boolean canPlaceInSecureContainer(ItemStack stack) {
-		if (stack.isEmpty()) return false;
-		var item = stack.getItem();
-		if (item instanceof TarkovCaseItem container) {
-			var role = container.getCaseRole();
-			return (role == TarkovCaseItem.CaseRole.INJECTOR || role == TarkovCaseItem.CaseRole.MONEY
-				|| role == TarkovCaseItem.CaseRole.MEDICAL)
-				&& ContainerItemHelper.readCaseGrid(stack).getEntries().stream()
-					.allMatch(entry -> container.canAcceptItem(entry.getStack()));
-		}
-		Identifier id = Registries.ITEM.getId(item);
-		return item instanceof TarkovMedicalItem || item instanceof TarkovStimulatorItem
-			|| item instanceof TarkovArmorRepairItem || ("tacz".equals(id.getNamespace()) && "ammo".equals(id.getPath()))
-			|| stack.isFood()
-			|| item == Items.EMERALD || item == Items.DIAMOND || item == Items.GOLD_INGOT
-			|| item == Items.GOLD_NUGGET || item == Items.NETHERITE_INGOT || item == Items.NETHERITE_SCRAP
-			|| item == Items.AMETHYST_SHARD || item == Items.PAPER || item == Items.NETHER_STAR
-			|| item == Items.HEART_OF_THE_SEA || item == Items.TOTEM_OF_UNDYING;
+		return SecureContainerValidator.allows(stack);
 	}
 
 	public boolean blocksHeadset() {
@@ -139,6 +121,42 @@ public final class PlayerLoadout {
 		}
 		pockets[index] = stack == null ? ItemStack.EMPTY : stack;
 		return true;
+	}
+
+	public void sanitizeEmptyStacks() {
+		boolean equipmentChanged = false;
+		for (EquipmentSlotType slot : EQUIPMENT_SLOTS) {
+			ItemStack stack = equipment.get(slot);
+			if (stack != ItemStack.EMPTY && stack.isEmpty()) {
+				equipment.put(slot, ItemStack.EMPTY);
+				equipmentChanged = true;
+			}
+		}
+		for (int i = 0; i < POCKET_COUNT; i++) {
+			if (pockets[i] != ItemStack.EMPTY && pockets[i].isEmpty()) {
+				pockets[i] = ItemStack.EMPTY;
+			}
+		}
+		if (equipmentChanged) invalidateExposedCache();
+	}
+
+	// Hotbar stacks are mutated in place by vanilla use, placement and durability loss.
+	public long computeSyncHash() {
+		long hash = 0xCBF29CE484222325L;
+		for (EquipmentSlotType slot : EQUIPMENT_SLOTS) {
+			hash = hashStack(hash, equipment.get(slot));
+		}
+		for (ItemStack pocket : pockets) {
+			hash = hashStack(hash, pocket);
+		}
+		return (hash ^ (meleeSelected ? 1 : 0)) * SYNC_HASH_PRIME;
+	}
+
+	private static long hashStack(long hash, ItemStack stack) {
+		if (stack.isEmpty()) return hash * SYNC_HASH_PRIME * SYNC_HASH_PRIME * SYNC_HASH_PRIME;
+		hash = (hash ^ Registries.ITEM.getRawId(stack.getItem())) * SYNC_HASH_PRIME;
+		hash = (hash ^ stack.getCount()) * SYNC_HASH_PRIME;
+		return (hash ^ stack.getDamage()) * SYNC_HASH_PRIME;
 	}
 
 	public boolean isMeleeSelected() {
@@ -512,7 +530,8 @@ public final class PlayerLoadout {
 			if (incoming == null || incoming.isEmpty()) {
 				secureContainer.remove(entry.getEntryId());
 			} else {
-				if (!AmmoTier.isTaczAmmoStack(incoming)
+				if (!AmmoTier.isTaczAmmoStack(incoming) || !incoming.isOf(entry.getStack().getItem())
+					|| !canPlaceInSecureContainer(incoming)
 					|| !ItemSizeRegistry.getSize(incoming).equals(ItemSizeRegistry.getSize(entry.getStack()))) return false;
 				entry.setStack(incoming.copy());
 			}

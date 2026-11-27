@@ -1,6 +1,6 @@
 # Спецификация: Functional Items v2 (TarkovCraft — Minecraft 1.20.1 Fabric)
 
-**Статус:** Approved Design Spec (`architect`)  
+**Статус:** Утверждённая архитектурная спецификация
 **Стек:** Minecraft `1.20.1`, Fabric Loader `0.16.10`, Fabric API `0.92.12+1.20.1`, Yarn `1.20.1+build.10`, Java `17`, `environment: "*"` (обязательна совместимость с выделенным сервером).  
 **Mixin / Gradle / `fabric.mod.json`:** Изменения **не требуются** (0 новых миксинов, 0 новых зависимостей).
 

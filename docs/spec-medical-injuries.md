@@ -1,6 +1,6 @@
 # Спецификация: Пункт 4 ТЗ — Медицина, травмы, штрафы конечностей, жёсткий урон от падения и фикс Z-слоя драга
 
-> **Статус:** Утверждённая архитектурная спецификация (`architect`, `gemini-4-neon-high`)  
+> **Статус:** Утверждённая архитектурная спецификация
 > **Стек:** Minecraft `1.20.1`, Fabric Loader `0.16.10`, Fabric API `0.92.12+1.20.1`, Yarn `1.20.1+build.10`, Java `17`  
 > **Среда (`fabric.mod.json`):** `environment: "*"` — строгая изоляция клиентских классов (`com.tarkovcraft.client.*`).  
 > **Новые Mixin'ы:** **НЕ требуются.** `src/main/resources/tarkovcraft.mixins.json`, `fabric.mod.json` и `build.gradle` остаются без изменений.
@@ -533,7 +533,7 @@ public record ApplyResult(
 
 ---
 
-## 7. Команды, ресурсы (`assets-worker`) и план тестов
+## 7. Команды, ресурсы и план тестов
 
 ### 7.1 Команды в `com.tarkovcraft.command.TarkovCommand`
 
@@ -547,7 +547,7 @@ public record ApplyResult(
   - Подсказки: `List.of("left_arm", "right_arm", "left_leg", "right_leg")`.
   - Если часть — не конечность, вернуть ошибку обратной связью; иначе наложить `FRACTURE` и синхронизировать `tarkovcraft$syncBodyHealth()`.
 
-### 7.2 Задачи для `assets-worker` (`src/main/resources/assets/tarkovcraft/**`)
+### 7.2 Ресурсы (`src/main/resources/assets/tarkovcraft/**`)
 
 **1. 9 моделей предметов** (`src/main/resources/assets/tarkovcraft/models/item/<id>.json`), формат:
 ```json
@@ -612,7 +612,7 @@ public record ApplyResult(
 
 *(Примечание: `data/tarkovcraft/item_sizes/default_sizes.json` менять не нужно — размеры `TarkovMedicalItem` резолвятся напрямую в `ItemSizeRegistry.getSize` как у `TarkovArmorItem`.)*
 
-### 7.3 План JUnit 5 тестов для `java-coder`
+### 7.3 План JUnit 5 тестов
 
 Создать `src/test/java/com/tarkovcraft/health/MedicalAndInjuryTest.java` (с `@BeforeAll` bootstrap как в `BodyPartHealthTest`):
 1. `fallDamageScalesWithHeightAndWeightAndBlacksBothLegs`:
@@ -648,10 +648,10 @@ public record ApplyResult(
 
 ## 8. Границы файлов и критерии приёмки
 
-- **`java-coder` (`src/main/java/**`, `src/test/java/**`):**
+- **Java-код и тесты (`src/main/java/**`, `src/test/java/**`):**
   - Новые файлы: `InjuryType.java`, `MedicalHelper.java`, `BodyHealthTicker.java`, `MedicalType.java`, `TarkovMedicalItem.java`, `MedicalAndInjuryTest.java`.
   - Изменяемые файлы: `BodyPartHealth.java`, `PlayerEntityMixin.java`, `TarkovCraftMod.java`, `ModItems.java`, `ItemSizeRegistry.java`, `ItemRarityRegistry.java`, `PlayerLoadout.java`, `TarkovNetworking.java`, `ClientNetworkSender.java`, `TarkovScreenHandler.java`, `TarkovCommand.java`, `TarkovUiTheme.java`, `BodyHealthHudHelper.java`, `TarkovInventoryScreen.java`.
-- **`assets-worker` (`src/main/resources/assets/tarkovcraft/**`):**
+- **Ресурсы (`src/main/resources/assets/tarkovcraft/**`):**
   - 9 моделей `models/item/<id>.json`, 9 текстур 16×16 `textures/item/<id>.png`, синхронизированные `lang/en_us.json` и `lang/ru_ru.json`.
 - **Запрещено трогать:** `TactEq`, `tarkovcraft.mixins.json`, `fabric.mod.json`, `build.gradle`.
 - **Верификация:** `.\gradlew.bat build --no-daemon` (JDK 17) — компиляция, все старые + новые JUnit 5 тесты зелёные, `remapJar` успешен, клиентские импорты не просачиваются в common-классы.

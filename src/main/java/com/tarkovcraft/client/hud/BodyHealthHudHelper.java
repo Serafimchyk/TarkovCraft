@@ -177,7 +177,7 @@ public final class BodyHealthHudHelper {
 		BodyPartHealth health = ClientLoadoutCache.getBodyHealth();
 		PlayerLoadout loadout = ClientLoadoutCache.getLoadout();
 
-		int silTop = y + 8;
+		int silTop = y + (h >= 128 ? 8 : 2);
 		drawSilhouetteWithZoneBars(context, textRenderer, health, x + w / 2, silTop,
 			selectedMedStack, outHitboxes, availableMeds, outQuickHeals, mouseX, mouseY);
 
@@ -187,11 +187,13 @@ public final class BodyHealthHudHelper {
 
 		// 1. Penalties & Painkiller status strip under silhouette
 		int statusY = silTop + 123;
+		if (statusY + 12 > y + h) return;
 		drawStatusPenaltiesBar(context, textRenderer, health, panelX, statusY, panelW);
 
 		// 2. Armor Coverage panel
 		int covY = statusY + 15;
 		int covH = 50;
+		if (covY + covH > y + h) return;
 		context.fill(panelX, covY, panelX + panelW, covY + covH, 0xCC0E1114);
 		context.drawBorder(panelX, covY, panelW, covH, 0xFF2B3238);
 		drawTiny(context, textRenderer, Text.translatable("armor.tarkovcraft.coverage_header").getString(),
@@ -206,7 +208,7 @@ public final class BodyHealthHudHelper {
 		// 3. Recent Hit Log
 		if (!hits.isEmpty()) {
 			int logY = covY + covH + 3;
-			int logH = Math.min(42, Math.max(24, y + h - logY - 2));
+			int logH = Math.min(42, y + h - logY - 2);
 			if (logH >= 24) {
 				context.fill(panelX, logY, panelX + panelW, logY + logH, 0xCC0E1114);
 				context.drawBorder(panelX, logY, panelW, logH, 0xFF2B3238);

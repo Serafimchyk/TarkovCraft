@@ -20,6 +20,7 @@ import com.tarkovcraft.item.TarkovStimulatorItem;
 import com.tarkovcraft.loadout.EquipmentSlotType;
 import com.tarkovcraft.registry.ModItems;
 import com.tarkovcraft.registry.TarkovItemCatalog;
+import net.minecraft.enchantment.Enchantments;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -30,7 +31,6 @@ import net.minecraft.util.math.random.Random;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * Rich catalog-driven loot generator spanning all TarkovCraft items, tiered TaCZ ammunition,
@@ -40,10 +40,10 @@ public final class TarkovLootGenerator {
 	private static boolean poolsInitialized = false;
 
 	private static final List<Item> ARMOR_1_TO_3 = new ArrayList<>();
-	private static final List<Item> ARMOR_2_TO_5 = new ArrayList<>();
+	private static final List<Item> ARMOR_2_TO_4 = new ArrayList<>();
 	private static final List<Item> ARMOR_4_TO_6 = new ArrayList<>();
 	private static final List<Item> HELMETS_1_TO_3 = new ArrayList<>();
-	private static final List<Item> HELMETS_2_TO_5 = new ArrayList<>();
+	private static final List<Item> HELMETS_2_TO_4 = new ArrayList<>();
 	private static final List<Item> HELMETS_4_TO_6 = new ArrayList<>();
 	private static final List<Item> COSMETIC_MASKS = new ArrayList<>();
 	private static final List<Item> TACTICAL_MASKS = new ArrayList<>();
@@ -72,6 +72,14 @@ public final class TarkovLootGenerator {
 	private static final List<Item> LARGE_CASES = new ArrayList<>();
 	private static final List<Item> MELEE_WEAPONS = new ArrayList<>();
 	private static final List<Item> HEADSETS = new ArrayList<>();
+	private static final List<Item> BARTER_COMPONENTS = new ArrayList<>();
+	private static final List<Item> VALUABLES = new ArrayList<>();
+	private static final List<Item> COMMON_VALUABLES = new ArrayList<>();
+	private static final List<Item> ARMOR_4_TO_5 = new ArrayList<>();
+	private static final List<Item> HELMETS_4_TO_5 = new ArrayList<>();
+	private static final List<Item> ARMOR_5_TO_6 = new ArrayList<>();
+	private static final List<Item> HELMETS_5_TO_6 = new ArrayList<>();
+	private static final List<Item> CLASS_6_PROTECTION = new ArrayList<>();
 
 	private TarkovLootGenerator() {
 	}
@@ -121,15 +129,21 @@ public final class TarkovLootGenerator {
 				int ac = armor.getArmorClass();
 				if (armor.getTargetSlot() == EquipmentSlotType.BODY_ARMOR) {
 					if (ac >= 1 && ac <= 3) ARMOR_1_TO_3.add(item);
-					if (ac >= 2 && ac <= 5) ARMOR_2_TO_5.add(item);
-					if (ac >= 4) ARMOR_4_TO_6.add(item);
+					if (ac >= 2 && ac <= 4) ARMOR_2_TO_4.add(item);
+					if (ac >= 4 && ac <= 6) ARMOR_4_TO_6.add(item);
+					if (ac >= 4 && ac <= 5) ARMOR_4_TO_5.add(item);
+					if (ac >= 5 && ac <= 6) ARMOR_5_TO_6.add(item);
+					if (ac == 6) CLASS_6_PROTECTION.add(item);
 				} else if (armor.getTargetSlot() == EquipmentSlotType.HELMET) {
 					if (ac >= 1 && ac <= 3) HELMETS_1_TO_3.add(item);
-					if (ac >= 2 && ac <= 5) HELMETS_2_TO_5.add(item);
-					if (ac >= 4) HELMETS_4_TO_6.add(item);
+					if (ac >= 2 && ac <= 4) HELMETS_2_TO_4.add(item);
+					if (ac >= 4 && ac <= 6) HELMETS_4_TO_6.add(item);
+					if (ac >= 4 && ac <= 5) HELMETS_4_TO_5.add(item);
+					if (ac >= 5 && ac <= 6) HELMETS_5_TO_6.add(item);
+					if (ac == 6) CLASS_6_PROTECTION.add(item);
 				} else if (armor.getTargetSlot() == EquipmentSlotType.FACE_MASK) {
 					if (ac <= 1) COSMETIC_MASKS.add(item);
-					if (ac >= 2) TACTICAL_MASKS.add(item);
+					if (ac >= 2 && ac <= 4) TACTICAL_MASKS.add(item);
 				}
 			} else if (item instanceof TarkovArmorRepairItem) {
 				REPAIR_KITS.add(item);
@@ -177,8 +191,13 @@ public final class TarkovLootGenerator {
 				if (caze.getGridWidth() * caze.getGridHeight() >= 25) LARGE_CASES.add(item);
 			} else if (item instanceof TarkovMeleeItem) {
 				MELEE_WEAPONS.add(item);
-			} else if (item instanceof TarkovFunctionalItem fn && "headset".equalsIgnoreCase(fn.getCategory())) {
-				HEADSETS.add(item);
+			} else if (item instanceof TarkovFunctionalItem functional) {
+				if (functional.isHeadset()) HEADSETS.add(item);
+				if ("barter".equals(functional.getCategory())) BARTER_COMPONENTS.add(item);
+				if (functional.isValuable()) {
+					VALUABLES.add(item);
+					if (functional.getBasePrice() <= 60_000) COMMON_VALUABLES.add(item);
+				}
 			}
 		}
 	}
@@ -191,29 +210,29 @@ public final class TarkovLootGenerator {
 
 	private static final List<GunPreset> CIVILIAN_POLICE_GUNS = List.of(
 		new GunPreset("tacz:glock_17", "tacz:9mm", 17, "SEMI"),
-		new GunPreset("tacz:cz75", "tacz:9mm", 16, "SEMI"),
+		new GunPreset("tacz:cz75", "tacz:9mm", 16, "AUTO"),
 		new GunPreset("tacz:m1911", "tacz:45acp", 7, "SEMI"),
 		new GunPreset("tacz:hk_mk23", "tacz:45acp", 12, "SEMI"),
-		new GunPreset("tacz:m870", "tacz:12g", 6, "SEMI"),
-		new GunPreset("tacz:m1014", "tacz:12g", 7, "SEMI"),
+		new GunPreset("tacz:m870", "tacz:12g", 5, "SEMI"),
+		new GunPreset("tacz:m1014", "tacz:12g", 6, "SEMI"),
 		new GunPreset("tacz:hk_mp5a5", "tacz:9mm", 30, "AUTO")
 	);
 
 	private static final List<GunPreset> MILITARY_GUNS = List.of(
 		new GunPreset("tacz:glock_17", "tacz:9mm", 17, "SEMI"),
-		new GunPreset("tacz:cz75", "tacz:9mm", 16, "SEMI"),
+		new GunPreset("tacz:cz75", "tacz:9mm", 16, "AUTO"),
 		new GunPreset("tacz:m1911", "tacz:45acp", 7, "SEMI"),
 		new GunPreset("tacz:hk_mk23", "tacz:45acp", 12, "SEMI"),
 		new GunPreset("tacz:hk_mp5a5", "tacz:9mm", 30, "AUTO"),
-		new GunPreset("tacz:hk_mp7a1", "tacz:46x30", 30, "AUTO"),
-		new GunPreset("tacz:m870", "tacz:12g", 6, "SEMI"),
-		new GunPreset("tacz:m1014", "tacz:12g", 7, "SEMI"),
+		new GunPreset("tacz:hk_mp7a1", "tacz:46x30", 20, "AUTO"),
+		new GunPreset("tacz:m870", "tacz:12g", 5, "SEMI"),
+		new GunPreset("tacz:m1014", "tacz:12g", 6, "SEMI"),
 		new GunPreset("tacz:ak74m", "tacz:545x39", 30, "AUTO"),
 		new GunPreset("tacz:ak47", "tacz:762x39", 30, "AUTO"),
 		new GunPreset("tacz:m16a4", "tacz:556x45", 30, "BURST"),
 		new GunPreset("tacz:g36k", "tacz:556x45", 30, "AUTO"),
 		new GunPreset("tacz:aug", "tacz:556x45", 30, "AUTO"),
-		new GunPreset("tacz:kar98", "tacz:792x57", 5, "SEMI")
+		new GunPreset("tacz:kar98", "tacz:792x57", 4, "SEMI")
 	);
 
 	private static final List<GunPreset> AIRDROP_GUNS = List.of(
@@ -222,13 +241,13 @@ public final class TarkovLootGenerator {
 		new GunPreset("tacz:hk416d", "tacz:556x45", 30, "AUTO"),
 		new GunPreset("tacz:fn_fal", "tacz:308", 20, "AUTO"),
 		new GunPreset("tacz:hk_g3", "tacz:308", 20, "AUTO"),
-		new GunPreset("tacz:aa12", "tacz:12g", 20, "AUTO"),
+		new GunPreset("tacz:aa12", "tacz:12g", 8, "AUTO"),
 		new GunPreset("tacz:deagle", "tacz:50ae", 7, "SEMI"),
 		new GunPreset("tacz:m700", "tacz:30_06", 5, "SEMI"),
 		new GunPreset("tacz:ai_awp", "tacz:338", 5, "SEMI"),
 		new GunPreset("tacz:m107", "tacz:50bmg", 10, "SEMI"),
-		new GunPreset("tacz:m249", "tacz:556x45", 60, "AUTO"),
-		new GunPreset("tacz:fn_evolys", "tacz:556x45", 60, "AUTO")
+		new GunPreset("tacz:m249", "tacz:556x45", 75, "AUTO"),
+		new GunPreset("tacz:fn_evolys", "tacz:308", 75, "AUTO")
 	);
 
 	/**
@@ -407,84 +426,20 @@ public final class TarkovLootGenerator {
 		}
 		ensurePools();
 
-		// Zone-specific guaranteed / bonus firearms & weapon attachments
-		switch (pool) {
-			case MILITARY -> {
-				if (random.nextFloat() < 0.45f) {
-					tryPlaceGunWithAmmo(grid, MILITARY_GUNS, random.nextFloat() < 0.35f ? AmmoTier.AP : AmmoTier.FMJ, 10, 30, random);
-				}
-				if (random.nextFloat() < 0.55f) {
-					tryPlaceNonEmpty(grid, rollAttachment(random, 40, 48, 12));
-				}
+		if (pool == TarkovLootPool.AIRDROP) {
+			tryPlaceNonEmpty(grid, pickStack(VALUABLES, random, 1));
+			tryPlaceNonEmpty(grid, random.nextBoolean()
+				? pickStack(ARMOR_5_TO_6, random, 1) : pickStack(HELMETS_5_TO_6, random, 1));
+			int gunCount = random.nextBoolean() ? 2 : 1;
+			for (int gun = 0; gun < gunCount; gun++) {
+				tryPlaceGunWithAmmo(grid, AIRDROP_GUNS, random.nextFloat() < 0.45f ? AmmoTier.IGN : AmmoTier.AP, random);
 			}
-			case AIRDROP -> {
-				int gunCount = random.nextBoolean() ? 2 : 1;
-				for (int g = 0; g < gunCount; g++) {
-					tryPlaceGunWithAmmo(grid, AIRDROP_GUNS, random.nextFloat() < 0.45f ? AmmoTier.IGN : AmmoTier.AP, 15, 40, random);
-				}
-				int attCount = 1 + random.nextInt(2);
-				for (int a = 0; a < attCount; a++) {
-					tryPlaceNonEmpty(grid, rollAttachment(random, 10, 45, 45));
-				}
+			int attachmentCount = 1 + random.nextInt(2);
+			for (int attachment = 0; attachment < attachmentCount; attachment++) {
+				tryPlaceNonEmpty(grid, rollAttachment(random, 10, 45, 45));
 			}
-			case POLICE -> {
-				if (random.nextFloat() < 0.40f) {
-					tryPlaceGunWithAmmo(grid, CIVILIAN_POLICE_GUNS, random.nextFloat() < 0.25f ? AmmoTier.AP : AmmoTier.FMJ, 10, 24, random);
-				}
-				if (random.nextFloat() < 0.45f) {
-					tryPlaceNonEmpty(grid, rollAttachment(random, 55, 40, 5));
-				}
-			}
-			case PORT -> {
-				if (random.nextFloat() < 0.32f) {
-					tryPlaceGunWithAmmo(grid, MILITARY_GUNS, random.nextFloat() < 0.35f ? AmmoTier.AP : AmmoTier.FMJ, 10, 28, random);
-				}
-				if (random.nextFloat() < 0.50f) {
-					tryPlaceNonEmpty(grid, rollAttachment(random, 30, 50, 20));
-				}
-			}
-			case BATTLEFIELD -> {
-				if (random.nextFloat() < 0.50f) {
-					tryPlaceGunWithAmmo(grid, MILITARY_GUNS, random.nextFloat() < 0.40f ? AmmoTier.AP : AmmoTier.FMJ, 8, 25, random);
-				}
-				if (random.nextFloat() < 0.55f) {
-					tryPlaceNonEmpty(grid, rollAttachment(random, 35, 50, 15));
-				}
-			}
-			case FACTORY -> {
-				if (random.nextFloat() < 0.22f) {
-					tryPlaceGunWithAmmo(grid, CIVILIAN_POLICE_GUNS, AmmoTier.FMJ, 8, 20, random);
-				}
-				if (random.nextFloat() < 0.30f) {
-					tryPlaceNonEmpty(grid, rollAttachment(random, 65, 30, 5));
-				}
-			}
-			case GARAGE -> {
-				if (random.nextFloat() < 0.18f) {
-					tryPlaceGunWithAmmo(grid, CIVILIAN_POLICE_GUNS, random.nextBoolean() ? AmmoTier.FMJ : AmmoTier.HP, 6, 18, random);
-				}
-				if (random.nextFloat() < 0.28f) {
-					tryPlaceNonEmpty(grid, rollAttachment(random, 70, 28, 2));
-				}
-			}
-			case OFFICE -> {
-				if (random.nextFloat() < 0.15f) {
-					tryPlaceGunWithAmmo(grid, CIVILIAN_POLICE_GUNS, AmmoTier.FMJ, 8, 16, random);
-				}
-				if (random.nextFloat() < 0.25f) {
-					tryPlaceNonEmpty(grid, rollAttachment(random, 55, 40, 5));
-				}
-			}
-			case RESIDENTIAL, SCHOOL -> {
-				if (random.nextFloat() < 0.10f) {
-					tryPlaceGunWithAmmo(grid, CIVILIAN_POLICE_GUNS, AmmoTier.HP, 6, 14, random);
-				}
-				if (random.nextFloat() < 0.15f) {
-					tryPlaceNonEmpty(grid, rollAttachment(random, 85, 15, 0));
-				}
-			}
-			default -> {
-			}
+		} else {
+			populateZoneWeapons(grid, pool, false, random);
 		}
 
 		int baseRolls = switch (pool) {
@@ -519,30 +474,13 @@ public final class TarkovLootGenerator {
 		if (grid == null || pool == null || random == null) {
 			return;
 		}
-		if (isShulker || isDouble) {
+		if (isShulker || isDouble || pool == TarkovLootPool.AIRDROP) {
 			populateLootGrid(grid, pool, random);
 			return;
 		}
 		ensurePools();
 
-		// Smaller chance for a firearm/attachment in single barrels/chests
-		if (pool == TarkovLootPool.MILITARY || pool == TarkovLootPool.BATTLEFIELD || pool == TarkovLootPool.PORT) {
-			if (random.nextFloat() < 0.22f) {
-				tryPlaceGunWithAmmo(grid, MILITARY_GUNS, random.nextFloat() < 0.30f ? AmmoTier.AP : AmmoTier.FMJ, 8, 22, random);
-			}
-			if (random.nextFloat() < 0.35f) {
-				tryPlaceNonEmpty(grid, rollAttachment(random, 40, 48, 12));
-			}
-		} else if (pool == TarkovLootPool.POLICE) {
-			if (random.nextFloat() < 0.22f) {
-				tryPlaceGunWithAmmo(grid, CIVILIAN_POLICE_GUNS, AmmoTier.FMJ, 8, 20, random);
-			}
-			if (random.nextFloat() < 0.30f) {
-				tryPlaceNonEmpty(grid, rollAttachment(random, 55, 40, 5));
-			}
-		} else if ((pool == TarkovLootPool.FACTORY || pool == TarkovLootPool.GARAGE) && random.nextFloat() < 0.12f) {
-			tryPlaceGunWithAmmo(grid, CIVILIAN_POLICE_GUNS, AmmoTier.FMJ, 6, 16, random);
-		}
+		populateZoneWeapons(grid, pool, true, random);
 
 		int baseRolls = 2 + random.nextInt(3); // 2..4 items per barrel/single chest
 		float mult = TarkovConfig.get().lootDensityMultiplier;
@@ -555,21 +493,54 @@ public final class TarkovLootGenerator {
 		}
 	}
 
-	private static void tryPlaceGunWithAmmo(
-		GridContainer grid,
-		List<GunPreset> pool,
-		AmmoTier requestedTier,
-		int minAmmo,
-		int maxAmmo,
-		Random random
-	) {
+	private static void populateZoneWeapons(GridContainer grid, TarkovLootPool pool, boolean small, Random random) {
+		float gunChance = switch (pool) {
+			case MILITARY, BATTLEFIELD -> 0.65f;
+			case PORT, POLICE -> 0.55f;
+			case FACTORY, GARAGE -> 0.34f;
+			case OFFICE, CIVILIAN -> 0.24f;
+			case RESIDENTIAL, SCHOOL -> 0.18f;
+			case CAFE, SUPERMARKET -> 0.12f;
+			default -> 0.0f;
+		};
+		boolean military = isMilitaryZone(pool);
+		if (gunChance > 0 && random.nextFloat() < gunChance * (small ? 0.65f : 1.0f)) {
+			List<GunPreset> guns = military || pool == TarkovLootPool.FACTORY ? MILITARY_GUNS : CIVILIAN_POLICE_GUNS;
+			tryPlaceGunWithAmmo(grid, guns, random.nextBoolean() ? AmmoTier.HP : AmmoTier.FMJ, random);
+		}
+
+		float attachmentChance = switch (pool) {
+			case MILITARY, BATTLEFIELD -> 0.55f;
+			case PORT -> 0.50f;
+			case POLICE -> 0.45f;
+			case FACTORY, GARAGE -> 0.30f;
+			case OFFICE -> 0.25f;
+			case RESIDENTIAL, SCHOOL -> 0.15f;
+			default -> 0.0f;
+		};
+		if (attachmentChance > 0 && random.nextFloat() < attachmentChance * (small ? 0.65f : 1.0f)) {
+			tryPlaceNonEmpty(grid, military ? rollAttachment(random, 40, 48, 12) : rollAttachment(random, 70, 28, 2));
+		}
+	}
+
+	private static boolean isMilitaryZone(TarkovLootPool pool) {
+		return pool == TarkovLootPool.MILITARY || pool == TarkovLootPool.BATTLEFIELD || pool == TarkovLootPool.PORT;
+	}
+
+	private static void tryPlaceGunWithAmmo(GridContainer grid, List<GunPreset> pool, AmmoTier requestedTier, Random random) {
 		GunPreset gun = pool.get(random.nextInt(pool.size()));
-		AmmoTier tier = TaCZCaliberCatalog.getSpecOrDynamic(gun.ammoId()).clampTier(requestedTier);
-		ItemStack gunStack = createTaczGunStack(gun, tier, random);
-		if (!gunStack.isEmpty()) {
-			grid.tryAutoPlace(gunStack);
-			int count = Math.min(maxAmmo, Math.max(minAmmo, gun.magSize()));
-			tryPlaceNonEmpty(grid, AmmoTier.createTaczAmmoStack(gun.ammoId(), tier, count));
+		var caliber = TaCZCaliberCatalog.getSpecOrDynamic(gun.ammoId());
+		ItemStack gunStack = createTaczGunStack(gun, caliber.clampTier(requestedTier), random);
+		if (grid.tryPlaceInFreeCell(gunStack) == null) {
+			return;
+		}
+		int stacks = 2 + random.nextInt(2);
+		for (int i = 0; i < stacks; i++) {
+			AmmoTier spareTier = requestedTier == AmmoTier.AP || requestedTier == AmmoTier.IGN
+				? requestedTier : random.nextBoolean() ? AmmoTier.HP : AmmoTier.FMJ;
+			ItemStack ammo = AmmoTier.createTaczAmmoStack(gun.ammoId(), caliber.clampTier(spareTier), gun.magSize());
+			ammo.setCount(Math.min(ammo.getCount(), ammo.getMaxCount()));
+			grid.tryPlaceInFreeCell(ammo);
 		}
 	}
 
@@ -581,7 +552,7 @@ public final class TarkovLootGenerator {
 
 	public static ItemStack rollItem(TarkovLootPool pool, Random random) {
 		ensurePools();
-		return switch (pool) {
+		ItemStack stack = switch (pool) {
 			case MILITARY -> rollMilitary(random);
 			case MEDICAL -> rollMedical(random);
 			case CIVILIAN -> rollCivilian(random);
@@ -599,18 +570,20 @@ public final class TarkovLootGenerator {
 			case GARAGE -> rollGarage(random);
 			case BATTLEFIELD -> rollBattlefield(random);
 		};
+		return stack.getItem() instanceof TarkovFoodItem && random.nextInt(8) >= 3
+			? pickStack(BARTER_COMPONENTS, random, 1 + random.nextInt(2)) : stack;
 	}
 
 	private static ItemStack rollMilitary(Random random) {
 		int p = random.nextInt(100);
 		if (p < 25) {
-			return rollAmmo(random, 45, 20, 30, 5, 12, 30);
+			return rollAmmo(random, 58, 21, 18, 3, 12, 30);
 		}
 		if (p < 43) {
 			return rollAttachmentOrFallback(random, 40, 48, 12, REPAIR_KITS);
 		}
 		if (p < 60) {
-			return random.nextBoolean() ? pickStack(ARMOR_2_TO_5, random, 1) : pickStack(HELMETS_2_TO_5, random, 1);
+			return rollMilitaryArmor(p - 43, random);
 		}
 		if (p < 70) {
 			return pickStack(REPAIR_KITS, random, 1);
@@ -625,6 +598,34 @@ public final class TarkovLootGenerator {
 		if (sub == 0) return pickStack(HEADSETS, random, 1);
 		if (sub == 1) return pickStack(TACTICAL_MASKS, random, 1);
 		return pickStack(MELEE_WEAPONS, random, 1);
+	}
+
+	private static ItemStack rollMilitaryArmor(int roll, Random random) {
+		if (roll < 2) {
+			return pickStack(CLASS_6_PROTECTION, random, 1);
+		}
+		boolean helmet = random.nextBoolean();
+		if (roll < 7) {
+			return pickStack(helmet ? HELMETS_4_TO_5 : ARMOR_4_TO_5, random, 1);
+		}
+		return pickStack(helmet ? HELMETS_1_TO_3 : ARMOR_1_TO_3, random, 1);
+	}
+
+	public record BossLoot(ItemStack bodyArmor, ItemStack helmet, ItemStack weapon, List<ItemStack> trophies) {
+	}
+
+	public static BossLoot createBossLoot(Random random) {
+		ensurePools();
+		GunPreset gun = AIRDROP_GUNS.get(random.nextInt(AIRDROP_GUNS.size()));
+		AmmoTier tier = TaCZCaliberCatalog.getSpecOrDynamic(gun.ammoId()).clampTier(AmmoTier.IGN);
+		ItemStack weapon = createTaczGunStack(gun, tier, random);
+		if (weapon.isEmpty()) {
+			weapon = new ItemStack(Items.CROSSBOW);
+			weapon.addEnchantment(Enchantments.QUICK_CHARGE, 2);
+			weapon.addEnchantment(Enchantments.PIERCING, 2);
+		}
+		return new BossLoot(pickStack(ARMOR_5_TO_6, random, 1), pickStack(HELMETS_5_TO_6, random, 1),
+			weapon, List.of(pickStack(VALUABLES, random, 1), pickStack(VALUABLES, random, 1)));
 	}
 
 	private static ItemStack rollMedical(Random random) {
@@ -656,8 +657,7 @@ public final class TarkovLootGenerator {
 			return pickStack(BASIC_MEDS, random, 1);
 		}
 		if (p < 91) {
-			Item[] mats = {Items.IRON_INGOT, Items.COPPER_INGOT, Items.LEATHER, Items.GUNPOWDER, Items.GOLD_INGOT};
-			return new ItemStack(mats[random.nextInt(mats.length)], 2 + random.nextInt(5));
+			return pickStack(BARTER_COMPONENTS, random, 2 + random.nextInt(5));
 		}
 		if (p < 96) {
 			return rollAttachmentOrFallback(random, 85, 15, 0, BASIC_MEDS);
@@ -711,8 +711,7 @@ public final class TarkovLootGenerator {
 		if (p < 95) {
 			return rollAttachmentOrFallback(random, 85, 15, 0, ONE_BY_ONE_MEDS);
 		}
-		Item[] mats = {Items.IRON_INGOT, Items.COPPER_INGOT, Items.GUNPOWDER};
-		return new ItemStack(mats[random.nextInt(mats.length)], 1 + random.nextInt(3));
+		return pickStack(BARTER_COMPONENTS, random, 1 + random.nextInt(3));
 	}
 
 	// ==================== Abandoned War-Torn City Zones ====================
@@ -767,16 +766,14 @@ public final class TarkovLootGenerator {
 		if (p < 96) {
 			return pickStack(ALL_GRENADES, random, 1);
 		}
-		Item[] mats = {Items.PAPER, Items.LEATHER, Items.STRING, Items.IRON_INGOT};
-		return new ItemStack(mats[random.nextInt(mats.length)], 2 + random.nextInt(4));
+		return pickStack(BARTER_COMPONENTS, random, 2 + random.nextInt(4));
 	}
 
 	/** Industrial factory: crafting metals, armor repair kits, rigs, melee tools, attachments & ammo. */
 	private static ItemStack rollFactory(Random random) {
 		int p = random.nextInt(100);
 		if (p < 26) {
-			Item[] mats = {Items.IRON_INGOT, Items.COPPER_INGOT, Items.GUNPOWDER, Items.REDSTONE, Items.COAL, Items.GOLD_INGOT};
-			return new ItemStack(mats[random.nextInt(mats.length)], 3 + random.nextInt(6));
+			return pickStack(BARTER_COMPONENTS, random, 3 + random.nextInt(6));
 		}
 		if (p < 42) {
 			return pickStack(REPAIR_KITS, random, 1);
@@ -806,13 +803,13 @@ public final class TarkovLootGenerator {
 			return rollAttachmentOrFallback(random, 30, 50, 20, REPAIR_KITS);
 		}
 		if (p < 40) {
-			return rollAmmo(random, 35, 15, 42, 8, 14, 30);
+			return rollAmmo(random, 58, 21, 18, 3, 14, 30);
 		}
 		if (p < 54) {
 			return random.nextBoolean() ? pickStack(LARGE_BACKPACKS, random, 1) : pickStack(LARGE_RIGS, random, 1);
 		}
 		if (p < 68) {
-			return random.nextBoolean() ? pickStack(ARMOR_2_TO_5, random, 1) : pickStack(HELMETS_2_TO_5, random, 1);
+			return rollMilitaryArmor(p - 54, random);
 		}
 		if (p < 78) {
 			return pickStack(ALL_CASES, random, 1);
@@ -823,8 +820,7 @@ public final class TarkovLootGenerator {
 		if (p < 94) {
 			return pickStack(ALL_FOOD, random, 1 + random.nextInt(2));
 		}
-		Item[] cargo = {Items.IRON_INGOT, Items.GOLD_INGOT, Items.EMERALD, Items.GUNPOWDER, Items.DIAMOND};
-		return new ItemStack(cargo[random.nextInt(cargo.length)], 2 + random.nextInt(5));
+		return pickStack(BARTER_COMPONENTS, random, 2 + random.nextInt(5));
 	}
 
 	/** Residential apartments: food, basic meds, clothes/masks, light bags, occasional civilian defense gear. */
@@ -849,8 +845,7 @@ public final class TarkovLootGenerator {
 			return rollAttachmentOrFallback(random, 85, 15, 0, BASIC_MEDS);
 		}
 		if (p < 97) {
-			Item[] household = {Items.LEATHER, Items.IRON_INGOT, Items.COPPER_INGOT, Items.GOLD_INGOT};
-			return new ItemStack(household[random.nextInt(household.length)], 1 + random.nextInt(4));
+			return pickStack(BARTER_COMPONENTS, random, 1 + random.nextInt(4));
 		}
 		return pickStack(SMALL_CASES.isEmpty() ? ALL_CASES : SMALL_CASES, random, 1);
 	}
@@ -868,8 +863,7 @@ public final class TarkovLootGenerator {
 			return pickStack(BASIC_MEDS, random, 1);
 		}
 		if (p < 94) {
-			Item[] mats = {Items.LEATHER, Items.COPPER_INGOT, Items.IRON_INGOT, Items.PAPER};
-			return new ItemStack(mats[random.nextInt(mats.length)], 2 + random.nextInt(4));
+			return pickStack(BARTER_COMPONENTS, random, 2 + random.nextInt(4));
 		}
 		return random.nextBoolean() ? pickStack(COSMETIC_MASKS, random, 1) : pickStack(MELEE_WEAPONS, random, 1);
 	}
@@ -899,7 +893,7 @@ public final class TarkovLootGenerator {
 			return rollAttachmentOrFallback(random, 55, 40, 5, REPAIR_KITS);
 		}
 		if (p < 62) {
-			return random.nextBoolean() ? pickStack(ARMOR_1_TO_3, random, 1) : pickStack(HELMETS_2_TO_5, random, 1);
+			return random.nextBoolean() ? pickStack(ARMOR_2_TO_4, random, 1) : pickStack(HELMETS_2_TO_4, random, 1);
 		}
 		if (p < 74) {
 			return random.nextBoolean() ? pickStack(ALL_RIGS, random, 1) : pickStack(TACTICAL_MASKS, random, 1);
@@ -916,9 +910,11 @@ public final class TarkovLootGenerator {
 	/** Offices / administration / HQ: valuables, cases, headsets, stims, tactical attachments. */
 	private static ItemStack rollOffice(Random random) {
 		int p = random.nextInt(100);
+		if (p < 7) {
+			return pickStack(COMMON_VALUABLES, random, 1);
+		}
 		if (p < 26) {
-			Item[] valuables = {Items.GOLD_INGOT, Items.EMERALD, Items.DIAMOND, Items.IRON_INGOT, Items.PAPER};
-			return new ItemStack(valuables[random.nextInt(valuables.length)], 1 + random.nextInt(4));
+			return pickStack(BARTER_COMPONENTS, random, 1 + random.nextInt(4));
 		}
 		if (p < 42) {
 			return pickStack(ALL_FOOD, random, 1 + random.nextInt(2));
@@ -942,8 +938,7 @@ public final class TarkovLootGenerator {
 	private static ItemStack rollGarage(Random random) {
 		int p = random.nextInt(100);
 		if (p < 28) {
-			Item[] mats = {Items.IRON_INGOT, Items.COPPER_INGOT, Items.GUNPOWDER, Items.COAL, Items.LEATHER};
-			return new ItemStack(mats[random.nextInt(mats.length)], 2 + random.nextInt(6));
+			return pickStack(BARTER_COMPONENTS, random, 2 + random.nextInt(6));
 		}
 		if (p < 46) {
 			return pickStack(REPAIR_KITS, random, 1);
@@ -967,13 +962,13 @@ public final class TarkovLootGenerator {
 	private static ItemStack rollBattlefield(Random random) {
 		int p = random.nextInt(100);
 		if (p < 24) {
-			return rollAmmo(random, 35, 10, 45, 10, 14, 30);
+			return rollAmmo(random, 58, 21, 18, 3, 14, 30);
 		}
 		if (p < 44) {
 			return rollAttachmentOrFallback(random, 30, 52, 18, REPAIR_KITS);
 		}
 		if (p < 60) {
-			return random.nextBoolean() ? pickStack(ARMOR_2_TO_5, random, 1) : pickStack(HELMETS_2_TO_5, random, 1);
+			return rollMilitaryArmor(p - 44, random);
 		}
 		if (p < 74) {
 			return pickStack(ALL_GRENADES, random, 1 + random.nextInt(2));

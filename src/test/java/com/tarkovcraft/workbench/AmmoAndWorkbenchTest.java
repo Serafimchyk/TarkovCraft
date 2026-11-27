@@ -6,6 +6,7 @@ import com.tarkovcraft.ammo.TaCZCaliberCatalog;
 import com.tarkovcraft.grid.ContainerItemHelper;
 import com.tarkovcraft.grid.GridContainer;
 import com.tarkovcraft.health.TaCZBulletHelper;
+import com.tarkovcraft.item.TarkovFunctionalItem;
 import com.tarkovcraft.loadout.EquipmentSlotType;
 import com.tarkovcraft.loadout.PlayerLoadout;
 import com.tarkovcraft.registry.ModBlocks;
@@ -70,10 +71,14 @@ class AmmoAndWorkbenchTest {
 
 	@Test
 	void workbenchRecipesForAmmoAndGearAreValidAndSafe() {
+		Item brass = Registries.ITEM.get(new Identifier(TarkovCraftMod.MOD_ID, "brass_casings"));
+		Item powder = Registries.ITEM.get(new Identifier(TarkovCraftMod.MOD_ID, "gunpowder_hawk"));
+		Item electronics = Registries.ITEM.get(new Identifier(TarkovCraftMod.MOD_ID, "military_electronics"));
 		for (TaCZCaliberCatalog.CaliberSpec spec : TaCZCaliberCatalog.getDefaultCalibers()) {
 			for (AmmoTier tier : AmmoTier.values()) {
 				TarkovWorkbenchRecipes.AmmoRecipe scratch = TarkovWorkbenchRecipes.getAmmoRecipe(spec.ammoId(), tier, false);
 				assertFalse(scratch.materials().isEmpty());
+				assertTrue(scratch.materials().stream().allMatch(i -> isBarterComponent(i.item())));
 				assertEquals(spec.getBatchSize(), scratch.batchSize());
 				assertEquals(0, scratch.requiredFmjCount());
 
@@ -82,12 +87,11 @@ class AmmoAndWorkbenchTest {
 					assertTrue(upgrade.upgradeFromFmj());
 					assertEquals(spec.getBatchSize(), upgrade.requiredFmjCount());
 					assertFalse(upgrade.materials().isEmpty());
-					int scratchMetalGunpowder = countItem(scratch.materials(), Items.IRON_INGOT)
-						+ countItem(scratch.materials(), Items.GUNPOWDER);
-					int upgradeMetalGunpowder = countItem(upgrade.materials(), Items.IRON_INGOT)
-						+ countItem(upgrade.materials(), Items.GUNPOWDER);
-					assertTrue(upgradeMetalGunpowder < scratchMetalGunpowder,
-						"Upgrade must save iron/gunpowder over scratch for " + spec.ammoId() + " " + tier);
+					assertTrue(upgrade.materials().stream().allMatch(i -> isBarterComponent(i.item())));
+					int scratchCasingAndPowder = countItem(scratch.materials(), brass) + countItem(scratch.materials(), powder);
+					int upgradeCasingAndPowder = countItem(upgrade.materials(), brass) + countItem(upgrade.materials(), powder);
+					assertTrue(upgradeCasingAndPowder < scratchCasingAndPowder,
+						"Upgrade must save casings and gunpowder over scratch for " + spec.ammoId() + " " + tier);
 				}
 			}
 		}
@@ -98,6 +102,7 @@ class AmmoAndWorkbenchTest {
 			for (TarkovWorkbenchRecipes.GearRecipe r : list) {
 				assertTrue(TarkovWorkbenchRecipes.isCraftableGear(r.resultItem()));
 				assertFalse(r.materials().isEmpty());
+				assertTrue(r.materials().stream().allMatch(i -> isBarterComponent(i.item())));
 			}
 		}
 
@@ -106,8 +111,13 @@ class AmmoAndWorkbenchTest {
 
 		List<TarkovWorkbenchRecipes.Ingredient> class0Cost = TarkovWorkbenchRecipes.computeGearIngredients(ModItems.BALACLAVA_MASK);
 		List<TarkovWorkbenchRecipes.Ingredient> class6Cost = TarkovWorkbenchRecipes.computeGearIngredients(ModItems.ZABRALO_ARMOR);
-		assertEquals(0, countItem(class0Cost, Items.NETHERITE_SCRAP));
-		assertTrue(countItem(class6Cost, Items.NETHERITE_SCRAP) >= 1);
+		assertEquals(0, countItem(class0Cost, electronics));
+		assertTrue(countItem(class6Cost, electronics) >= 1);
+	}
+
+	private static boolean isBarterComponent(Item item) {
+		return item instanceof TarkovFunctionalItem functional
+			&& "barter".equals(functional.getCategory());
 	}
 
 	@Test

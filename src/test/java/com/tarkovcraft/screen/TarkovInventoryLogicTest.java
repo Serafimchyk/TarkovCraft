@@ -1,11 +1,14 @@
 package com.tarkovcraft.screen;
 
 import com.tarkovcraft.grid.GridContainer;
+import com.tarkovcraft.grid.ContainerItemHelper;
 import com.tarkovcraft.audio.HearingProfile;
 import com.tarkovcraft.item.TarkovArmorItem;
+import com.tarkovcraft.item.TarkovCaseItem;
 import com.tarkovcraft.item.TarkovFunctionalItem;
 import com.tarkovcraft.loadout.EquipmentSlotType;
 import com.tarkovcraft.loadout.PlayerLoadout;
+import com.tarkovcraft.loadout.SecureContainerValidator;
 import com.tarkovcraft.registry.ModItems;
 import com.tarkovcraft.registry.TarkovItemCatalog;
 import com.tarkovcraft.search.ContainerSearchMemory;
@@ -13,6 +16,10 @@ import net.minecraft.Bootstrap;
 import net.minecraft.SharedConstants;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtElement;
+import net.minecraft.registry.Registries;
+import net.minecraft.util.Identifier;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -62,6 +69,32 @@ class TarkovInventoryLogicTest {
 	}
 
 	@Test
+	void loadoutSyncDetectsInPlaceConsumptionAndDurabilityChanges() {
+		PlayerLoadout loadout = new PlayerLoadout();
+		long empty = loadout.computeSyncHash();
+		ItemStack blocks = new ItemStack(Items.COBBLESTONE, 2);
+		assertTrue(loadout.setPocket(0, blocks));
+		long twoBlocks = loadout.computeSyncHash();
+
+		blocks.decrement(1);
+		long oneBlock = loadout.computeSyncHash();
+		assertNotEquals(twoBlocks, oneBlock);
+
+		ItemStack tool = new ItemStack(Items.IRON_PICKAXE);
+		loadout.setEquipment(EquipmentSlotType.PRIMARY_1, tool);
+		long undamaged = loadout.computeSyncHash();
+		tool.setDamage(1);
+		assertNotEquals(undamaged, loadout.computeSyncHash());
+
+		blocks.decrement(1);
+		tool.decrement(1);
+		loadout.sanitizeEmptyStacks();
+		assertSame(ItemStack.EMPTY, loadout.getHotbarDisplayStack(3));
+		assertSame(ItemStack.EMPTY, loadout.getHotbarDisplayStack(0));
+		assertEquals(empty, loadout.computeSyncHash());
+	}
+
+	@Test
 	void secureContainerSurvivesDeathIndependentlyOfCorpseLoot() {
 		PlayerLoadout original = new PlayerLoadout();
 		ItemStack bread = new ItemStack(Items.BREAD, 4);
@@ -81,6 +114,49 @@ class TarkovInventoryLogicTest {
 		assertTrue(PlayerLoadout.canPlaceInSecureContainer(bread));
 		assertFalse(PlayerLoadout.canPlaceInSecureContainer(new ItemStack(ModItems.ALTYN_HELMET)));
 		assertFalse(PlayerLoadout.canPlaceInSecureContainer(new ItemStack(ModItems.BERKUT_BACKPACK)));
+	}
+
+	@Test
+	void generalCaseRejectsAnotherCase() {
+		TarkovCaseItem generalCase = TarkovItemCatalog.getTacticalItems().stream()
+			.filter(TarkovCaseItem.class::isInstance)
+			.map(TarkovCaseItem.class::cast)
+			.filter(item -> item.getCaseRole() == TarkovCaseItem.CaseRole.GENERAL)
+			.findFirst().orElseThrow();
+
+		assertFalse(generalCase.canAcceptItem(wallet()));
+		assertTrue(generalCase.canAcceptItem(new ItemStack(Items.GOLD_INGOT)));
+	}
+
+	@Test
+	void secureCaseInsertionChecksExistingAndIncomingItems() {
+		ItemStack wallet = wallet();
+		ItemStack gold = new ItemStack(Items.GOLD_INGOT);
+		assertTrue(PlayerLoadout.canPlaceInSecureContainer(wallet));
+		assertFalse(wallet.hasNbt());
+
+		GridContainer grid = ContainerItemHelper.readCaseGrid(wallet);
+		assertNotNull(grid.place(gold, 0, 0, false));
+		ContainerItemHelper.writeCaseGrid(wallet, grid);
+		assertTrue(PlayerLoadout.canPlaceInSecureContainer(wallet));
+		assertTrue(SecureContainerValidator.allowsCaseInsertion(wallet, gold));
+		assertFalse(SecureContainerValidator.allowsCaseInsertion(wallet, new ItemStack(Items.BREAD)));
+		assertFalse(SecureContainerValidator.allowsCaseInsertion(wallet, wallet()));
+
+		assertNotNull(grid.place(new ItemStack(Items.COBBLESTONE), 1, 0, false));
+		ContainerItemHelper.writeCaseGrid(wallet, grid);
+		assertFalse(PlayerLoadout.canPlaceInSecureContainer(wallet));
+		assertFalse(SecureContainerValidator.allowsCaseInsertion(wallet, gold));
+
+		// An out-of-bounds entry is invisible in the loaded grid, but still lives in the saved case.
+		NbtCompound storedGrid = wallet.getSubNbt("TarkovContainer").getCompound("Grid");
+		storedGrid.getList("Entries", NbtElement.COMPOUND_TYPE).getCompound(1).putInt("X", 100);
+		assertEquals(1, ContainerItemHelper.readCaseGrid(wallet).getEntries().size());
+		assertFalse(PlayerLoadout.canPlaceInSecureContainer(wallet));
+	}
+
+	private static ItemStack wallet() {
+		return new ItemStack(Registries.ITEM.get(new Identifier("tarkovcraft", "bumazhnik_wz_60b0f6")));
 	}
 
 	@Test

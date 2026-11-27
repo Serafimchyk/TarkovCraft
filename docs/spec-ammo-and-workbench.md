@@ -1,6 +1,6 @@
 # Спецификация: Тиры патронов TaCZ и Верстак брони/патронов (`tarkov_workbench`)
 
-**Статус:** Approved Design Spec (`architect`)  
+**Статус:** Утверждённая архитектурная спецификация
 **Стек:** Minecraft `1.20.1`, Fabric Loader `0.16.10`, Fabric API `0.92.12+1.20.1`, Yarn `1.20.1+build.10`, Java `17`, `environment: "*"`.  
 **Интеграция с TaCZ Refabricated (`tacz-refabricated-1.0.1-forge1.20.1`):** строго **zero-hard-dependency** (только `Identifier`, NBT, reflection); `build.gradle` и `fabric.mod.json` **не меняются**, `tarkovcraft.mixins.json` **не требует новых миксинов** (дорабатывается существующий `PlayerInventoryMixin.java`), **TactEq не трогать**.
 

@@ -19,12 +19,15 @@ import java.util.function.Consumer;
 /** Creates the Simple Voice Chat entrypoint only when its API is available. */
 public final class VoicechatAdapter implements LanguageAdapter {
 	private static final String API = "de.maxhenkel.voicechat.api.";
+	private static final String SIMPLE_VOICE_CHAT = "voicechat";
+	private static final String VOICE_PHYSICS = "vc-audio-distance";
 	private static final Map<UUID, HearingProfile> SERVER_PROFILES = new ConcurrentHashMap<>();
 	private static final Map<UUID, Float> FILTER_STATE = new ConcurrentHashMap<>();
 	private static volatile HearingProfile clientProfile = HearingProfile.DEFAULT;
 
 	public static void updateServerProfile(UUID player, HearingProfile profile) {
-		if (FabricLoader.getInstance().isModLoaded("voicechat")) SERVER_PROFILES.put(player, profile);
+		if (FabricLoader.getInstance().isModLoaded(SIMPLE_VOICE_CHAT)
+			&& !FabricLoader.getInstance().isModLoaded(VOICE_PHYSICS)) SERVER_PROFILES.put(player, profile);
 	}
 
 	public static void removePlayer(UUID player) {
@@ -38,7 +41,7 @@ public final class VoicechatAdapter implements LanguageAdapter {
 
 	@Override
 	public <T> T create(ModContainer mod, String value, Class<T> type) throws LanguageAdapterException {
-		if (!FabricLoader.getInstance().isModLoaded("voicechat") || !type.getName().equals(API + "VoicechatPlugin")) {
+		if (!FabricLoader.getInstance().isModLoaded(SIMPLE_VOICE_CHAT) || !type.getName().equals(API + "VoicechatPlugin")) {
 			throw new LanguageAdapterException("Simple Voice Chat API is unavailable");
 		}
 		Object proxy = Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type},
@@ -61,7 +64,10 @@ public final class VoicechatAdapter implements LanguageAdapter {
 
 	private static void registerEvents(Object registration) throws ReflectiveOperationException {
 		Method register = api("events.EventRegistration").getMethod("registerEvent", Class.class, Consumer.class, int.class);
-		registerRangeEvents(register, registration);
+		// Voice Physics owns proximity routing when installed. Both plugins can still process client PCM.
+		if (!FabricLoader.getInstance().isModLoaded(VOICE_PHYSICS)) {
+			registerRangeEvents(register, registration);
+		}
 		if (FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT) {
 			registerClientEvents(register, registration);
 		}

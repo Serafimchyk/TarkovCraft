@@ -33,7 +33,7 @@
 
 ---
 
-## 2. Спецификация для `java-coder` (`src/main/java/**`, `src/test/java/**`)
+## 2. Спецификация Java-кода и тестов (`src/main/java/**`, `src/test/java/**`)
 
 > `tarkovcraft.mixins.json` уже обновлён архитектором: `"ArmorItemMixin"` добавлен в секцию `"mixins"`. `build.gradle` и `fabric.mod.json` не меняются.
 
@@ -218,7 +218,7 @@
 
 ---
 
-## 3. Спецификация для `assets-worker` (`src/main/resources/assets/**`, `data/**`)
+## 3. Спецификация ресурсов (`src/main/resources/assets/**`, `data/**`)
 
 Новые модели/текстуры `.png` не требуются (все 8 ID предметов брони сохраняются и уже имеют модели и текстуры).
 Нужно синхронно обновить **оба** файла локализации (`en_us.json` и `ru_ru.json`, UTF-8 без BOM):

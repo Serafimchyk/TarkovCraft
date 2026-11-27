@@ -7,6 +7,8 @@ public interface PlayerLoadoutHolder {
 
 	void tarkovcraft$syncLoadout();
 
+	void tarkovcraft$syncLoadoutIfChanged();
+
 	BodyPartHealth tarkovcraft$getBodyHealth();
 
 	void tarkovcraft$syncBodyHealth();

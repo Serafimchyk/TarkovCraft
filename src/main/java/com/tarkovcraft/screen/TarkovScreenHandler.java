@@ -1,5 +1,10 @@
 package com.tarkovcraft.screen;
 
+import com.tarkovcraft.arena.PlayerProfileState;
+import com.tarkovcraft.arena.RaidSession;
+import com.tarkovcraft.lobby.LobbyManager;
+import net.minecraft.screen.Property;
+
 import com.tarkovcraft.block.SearchableLootBlockEntity;
 import com.tarkovcraft.container.VanillaContainerBridge;
 import com.tarkovcraft.container.VanillaContainerState;
@@ -18,6 +23,7 @@ import com.tarkovcraft.item.TarkovMedicalItem;
 import com.tarkovcraft.item.TarkovStimulatorItem;
 import com.tarkovcraft.loadout.EquipmentSlotType;
 import com.tarkovcraft.loadout.PlayerLoadout;
+import com.tarkovcraft.loadout.SecureContainerValidator;
 import com.tarkovcraft.loadout.PlayerLoadoutHolder;
 import com.tarkovcraft.network.TarkovNetworking;
 import com.tarkovcraft.registry.ModScreenHandlers;
@@ -62,6 +68,16 @@ public class TarkovScreenHandler extends ScreenHandler {
 	public static final byte MODE_CORPSE = 2;
 	public static final byte MODE_GROUND_ITEM = 3;
 	public static final byte MODE_VANILLA_CONTAINER = 4;
+	public static final byte MODE_STASH = 5;
+	public static final int STASH_PLAY = 0;
+	public static final int STASH_EDITOR = 1;
+	public static final int STASH_STORE_ALL = 2;
+	public static final int STASH_SORT = 3;
+
+	public static final int STASH_READY = 1;
+	public static final int STASH_SERVICE = 2;
+	public static final int STASH_CAN_EDIT = 4;
+
 	public static final int MAX_OPEN_WINDOWS = 4;
 
 	private final PlayerEntity player;
@@ -87,6 +103,10 @@ public class TarkovScreenHandler extends ScreenHandler {
 	private final EnderChestBlockEntity vanillaEnderChestBe;
 	private boolean vanillaOpened = false;
 	private final SearchSession searchSession;
+	private final Property stashFlags;
+	private final Property stashScavSeconds;
+	private final Property stashRaidSeconds;
+	private final Property[] stashRubles;
 	private int syncCooldown = 0;
 	private final List<UUID> openContainerUuids = new ArrayList<>();
 
@@ -130,6 +150,13 @@ public class TarkovScreenHandler extends ScreenHandler {
 		this.vanillaIsShulker = vanillaIsShulker;
 		this.vanillaEnderChestBe = vanillaEnderChestBe;
 		this.searchSession = new SearchSession(player.getUuid());
+		this.stashFlags = mode == MODE_STASH ? addProperty(Property.create()) : Property.create();
+		this.stashScavSeconds = mode == MODE_STASH ? addProperty(Property.create()) : Property.create();
+		this.stashRaidSeconds = mode == MODE_STASH ? addProperty(Property.create()) : Property.create();
+		this.stashRubles = new Property[mode == MODE_STASH ? 4 : 0];
+		for (int i = 0; i < stashRubles.length; i++) stashRubles[i] = addProperty(Property.create());
+		stashRaidSeconds.set(-1);
+		if (mode == MODE_STASH && player instanceof ServerPlayerEntity serverPlayer) updateStashProperties(serverPlayer);
 	}
 
 	public static TarkovScreenHandler forOwnInventory(int syncId, PlayerInventory inv) {
@@ -186,25 +213,42 @@ public class TarkovScreenHandler extends ScreenHandler {
 			BlockPos pos = buf.readBlockPos();
 			return new TarkovScreenHandler(syncId, inv, mode, null, null, null, pos, null, null, null, null, false, null);
 		}
+		if (mode == MODE_STASH) {
+			var handler = new TarkovScreenHandler(syncId, inv, mode, null, null, null);
+			handler.setStashRubles(buf.readLong());
+			return handler;
+		}
 		return new TarkovScreenHandler(syncId, inv, MODE_OWN_INVENTORY, null, null, null);
 	}
 
 	public static void openOwnInventory(ServerPlayerEntity player) {
+		openPersonalInventory(player, RaidSession.isLobby(player) ? MODE_STASH : MODE_OWN_INVENTORY, null);
+	}
+
+	public static void openStash(ServerPlayerEntity player) {
+		if (RaidSession.isLobby(player) && player.isAlive()) openPersonalInventory(player, MODE_STASH, null);
+	}
+
+	private static void openPersonalInventory(ServerPlayerEntity player, byte mode, @Nullable UUID caseUuid) {
 		player.openHandledScreen(new ExtendedScreenHandlerFactory() {
 			@Override
 			public void writeScreenOpeningData(ServerPlayerEntity p, PacketByteBuf buf) {
-				buf.writeByte(MODE_OWN_INVENTORY);
+				buf.writeByte(mode);
+				if (mode == MODE_STASH) buf.writeLong(PlayerProfileState.get(p.getServer()).rubles(p.getUuid()));
 			}
 
 			@Override
 			public Text getDisplayName() {
-				return Text.translatable("screen.tarkovcraft.inventory");
+				return mode == MODE_STASH ? Text.translatableWithFallback("screen.tarkovcraft.lobby.character", "Character")
+					: Text.translatable("screen.tarkovcraft.inventory");
 			}
 
 			@Nullable
 			@Override
 			public ScreenHandler createMenu(int syncId, PlayerInventory inv, PlayerEntity p) {
-				return forOwnInventory(syncId, inv);
+				var handler = new TarkovScreenHandler(syncId, inv, mode, null, null, null);
+				if (caseUuid != null) handler.openContainerUuids.add(caseUuid);
+				return handler;
 			}
 		});
 		if (player.currentScreenHandler instanceof TarkovScreenHandler tsh) {
@@ -213,30 +257,7 @@ public class TarkovScreenHandler extends ScreenHandler {
 	}
 
 	public static void openCaseScreen(ServerPlayerEntity player, UUID caseUuid) {
-		player.openHandledScreen(new ExtendedScreenHandlerFactory() {
-			@Override
-			public void writeScreenOpeningData(ServerPlayerEntity p, PacketByteBuf buf) {
-				buf.writeByte(MODE_OWN_INVENTORY);
-			}
-
-			@Override
-			public Text getDisplayName() {
-				return Text.translatable("screen.tarkovcraft.inventory");
-			}
-
-			@Nullable
-			@Override
-			public ScreenHandler createMenu(int syncId, PlayerInventory inv, PlayerEntity p) {
-				return forOwnInventory(syncId, inv);
-			}
-		});
-		if (player.currentScreenHandler instanceof TarkovScreenHandler tsh) {
-			tsh.openContainerUuids.clear();
-			if (caseUuid != null) {
-				tsh.openContainerUuids.add(caseUuid);
-			}
-			tsh.syncToClient(player);
-		}
+		openPersonalInventory(player, RaidSession.isLobby(player) ? MODE_STASH : MODE_OWN_INVENTORY, caseUuid);
 	}
 
 	public static void openGroundContainer(ServerPlayerEntity player, ItemEntity groundItem) {
@@ -319,6 +340,10 @@ public class TarkovScreenHandler extends ScreenHandler {
 
 	@Override
 	public boolean canUse(PlayerEntity player) {
+		if (mode == MODE_STASH) {
+			return this.player == player && player.isAlive()
+				&& (!(player instanceof ServerPlayerEntity serverPlayer) || RaidSession.isLobby(serverPlayer));
+		}
 		if (mode == MODE_LOOT_BLOCK) {
 			return lootBlock != null && !lootBlock.isRemoved()
 				&& player.squaredDistanceTo(lootBlock.getPos().toCenterPos()) <= 36.0;
@@ -343,6 +368,111 @@ public class TarkovScreenHandler extends ScreenHandler {
 			return vanillaInventory.canPlayerUse(player);
 		}
 		return true;
+	}
+
+	@Override
+	public boolean onButtonClick(PlayerEntity player, int id) {
+		if (mode != MODE_STASH || !(player instanceof ServerPlayerEntity owner)
+			|| owner.currentScreenHandler != this || !canUse(owner)) return false;
+		switch (id) {
+			case STASH_PLAY -> RaidScreenHandler.openLobby(owner);
+			case STASH_EDITOR -> { return LobbyManager.toggleEditor(owner); }
+			case STASH_STORE_ALL -> storeAll(owner);
+			case STASH_SORT -> sortStash(owner);
+			default -> { return false; }
+		}
+		return true;
+	}
+
+	public long stashRubles() {
+		long balance = 0;
+		for (int i = 0; i < stashRubles.length; i++) balance |= (stashRubles[i].get() & 0xffffL) << (i * 16);
+		return balance;
+	}
+
+	private void setStashRubles(long balance) {
+		for (int i = 0; i < stashRubles.length; i++) stashRubles[i].set((short) (balance >>> (i * 16)));
+	}
+
+	public int stashFlags() { return stashFlags.get(); }
+	public int stashScavSeconds() { return stashScavSeconds.get(); }
+	public int stashRaidSeconds() { return stashRaidSeconds.get(); }
+
+	@Override
+	public void sendContentUpdates() {
+		if (mode == MODE_STASH && player instanceof ServerPlayerEntity owner) updateStashProperties(owner);
+		super.sendContentUpdates();
+	}
+
+	private void updateStashProperties(ServerPlayerEntity owner) {
+		int flags = 0;
+		if (LobbyManager.isReady(owner)) flags |= STASH_READY;
+		if (LobbyManager.needsService(owner)) flags |= STASH_SERVICE;
+		if (owner.hasPermissionLevel(2)) flags |= STASH_CAN_EDIT;
+		stashFlags.set(flags);
+		PlayerProfileState profiles = PlayerProfileState.get(owner.getServer());
+		setStashRubles(profiles.rubles(owner.getUuid()));
+		stashScavSeconds.set(LobbyManager.scavStatusSeconds(owner));
+		stashRaidSeconds.set(Math.min(Short.MAX_VALUE, RaidSession.remainingSeconds(owner.getServer())));
+	}
+
+	private void storeAll(ServerPlayerEntity owner) {
+		GridContainer stash = getPrimaryExternalGrid();
+		PlayerLoadout loadout = getPlayerLoadout(owner);
+		boolean complete = true;
+		for (int i = 0; i < PlayerLoadout.POCKET_COUNT && complete; i++) {
+			ItemStack stack = loadout.getPocket(i);
+			if (!stack.isEmpty()) {
+				complete = stash.tryAutoPlace(stack);
+				if (stack.isEmpty()) loadout.setPocket(i, ItemStack.EMPTY);
+			}
+		}
+		for (EquipmentSlotType slot : List.of(EquipmentSlotType.RIG, EquipmentSlotType.BACKPACK)) {
+			if (!complete) break;
+			ContainerHandle handle = wearableHandle(loadout.getEquipment(slot));
+			if (handle == null) continue;
+			List<GridContainer> grids = handle.readGrids();
+			for (GridContainer grid : grids) {
+				for (GridEntry entry : grid.getEntries()) {
+					complete = stash.tryAutoPlace(entry.getStack());
+					if (entry.getStack().isEmpty()) grid.remove(entry.getEntryId());
+					if (!complete) break;
+				}
+				if (!complete) break;
+			}
+			handle.saveGrids(grids);
+		}
+		loadout.invalidateExposedCache();
+		markExternalDirty();
+		syncToClient(owner);
+		if (!complete) owner.sendMessage(Text.translatableWithFallback("screen.tarkovcraft.lobby.stash_full",
+			"The stash is full. Remaining items stayed in your inventory."), true);
+	}
+
+	private void sortStash(ServerPlayerEntity owner) {
+		GridContainer stash = getPrimaryExternalGrid();
+		var entries = new ArrayList<>(stash.getEntries());
+		entries.sort(java.util.Comparator.<GridEntry>comparingInt(entry -> {
+			var size = entry.getOccupiedSize();
+			return size.width() * size.height();
+		}).reversed().thenComparing(entry -> net.minecraft.registry.Registries.ITEM.getId(entry.getStack().getItem())));
+		var sorted = new GridContainer(stash.getWidth(), stash.getHeight(), stash.getContainerId());
+		for (GridEntry entry : entries) {
+			GridEntry placed = sorted.tryPlaceInFreeCell(entry.getStack());
+			if (placed == null) {
+				owner.sendMessage(Text.translatableWithFallback("screen.tarkovcraft.lobby.stash_sort_full",
+					"The current layout fits more items than the sorted layout."), true);
+				return;
+			}
+		}
+		var placements = sorted.getEntries();
+		stash.clear();
+		for (int i = 0; i < entries.size(); i++) {
+			GridEntry placed = placements.get(i);
+			stash.placeWithId(entries.get(i).getEntryId(), placed.getStack(), placed.getX(), placed.getY(), placed.isRotated());
+		}
+		markExternalDirty();
+		syncToClient(owner);
 	}
 
 	@Override
@@ -376,7 +506,7 @@ public class TarkovScreenHandler extends ScreenHandler {
 		List<SearchTarget> externalTargets = getExternalSearchTargets();
 		List<SearchTarget> ownTargets = getOwnSearchTargets(serverPlayer);
 
-		boolean ownInventoryOpen = (mode == MODE_OWN_INVENTORY);
+		boolean ownInventoryOpen = mode == MODE_OWN_INVENTORY || mode == MODE_STASH;
 		if (searchSession.tickQueue(ownInventoryOpen, externalTargets, ownTargets)) {
 			stateChanged = true;
 		}
@@ -480,8 +610,9 @@ public class TarkovScreenHandler extends ScreenHandler {
 
 	public void syncToClient(ServerPlayerEntity serverPlayer) {
 		UUID playerId = serverPlayer.getUuid();
-		PlayerLoadout loadout = getPlayerLoadout(serverPlayer);
-		TarkovNetworking.sendLoadoutSync(serverPlayer, loadout);
+		PlayerLoadoutHolder holder = (PlayerLoadoutHolder) serverPlayer;
+		PlayerLoadout loadout = holder.tarkovcraft$getLoadout();
+		holder.tarkovcraft$syncLoadout();
 
 		List<TarkovNetworking.GridView> ownRigViews = buildRigViews(loadout.getEquipment(EquipmentSlotType.RIG), playerId);
 		TarkovNetworking.GridView ownBpView = buildBackpackView(loadout.getEquipment(EquipmentSlotType.BACKPACK), playerId);
@@ -492,7 +623,10 @@ public class TarkovScreenHandler extends ScreenHandler {
 		List<TarkovNetworking.GridView> corpseRigViews = List.of();
 		TarkovNetworking.GridView corpseBpView = null;
 
-		if (mode == MODE_LOOT_BLOCK && lootBlock != null) {
+		if (mode == MODE_STASH) {
+			GridContainer stash = getPrimaryExternalGrid();
+			extView = TarkovNetworking.GridView.fromContainer(stash, stash.getContainerId(), null, playerId, false);
+		} else if (mode == MODE_LOOT_BLOCK && lootBlock != null) {
 			extTitle = lootBlock.getDisplayTitle().getString();
 			extView = TarkovNetworking.GridView.fromContainer(
 				lootBlock.getGrid(), lootBlock.getGrid().getContainerId(),
@@ -655,6 +789,20 @@ public class TarkovScreenHandler extends ScreenHandler {
 			return;
 		}
 
+		if (mode == MODE_STASH && isOwnStorage(srcLoc)) {
+			ItemStack stack = peek.copy();
+			getPrimaryExternalGrid().tryAutoPlace(stack);
+			int moved = peek.getCount() - stack.getCount();
+			if (moved > 0) {
+				extractSource(loadout, srcLoc, srcIdx, srcEntryId, moved);
+				markExternalDirty();
+				syncToClient(serverPlayer);
+			} else {
+				serverPlayer.sendMessage(Text.translatable("message.tarkovcraft.no_space"), true);
+			}
+			return;
+		}
+
 		// From own Equipment -> unequip into Pockets -> Rig -> Backpack (never into itself!)
 		if (srcLoc == TarkovNetworking.LOC_EQUIPMENT) {
 			unequipToStorage(serverPlayer, loadout, playerId, srcIdx);
@@ -727,7 +875,7 @@ public class TarkovScreenHandler extends ScreenHandler {
 			}
 		}
 
-		if (mode == MODE_OWN_INVENTORY && !openContainerUuids.isEmpty()
+		if ((mode == MODE_OWN_INVENTORY || mode == MODE_STASH) && !openContainerUuids.isEmpty()
 			&& (srcLoc == TarkovNetworking.LOC_POCKET || srcLoc == TarkovNetworking.LOC_RIG_GRID || srcLoc == TarkovNetworking.LOC_BACKPACK_GRID)) {
 			UUID topUuid = openContainerUuids.get(openContainerUuids.size() - 1);
 			UUID sourceContainer = srcLoc == TarkovNetworking.LOC_POCKET ? null : ContainerItemHelper.getContainerUuid(
@@ -1089,7 +1237,7 @@ public class TarkovScreenHandler extends ScreenHandler {
 		@Nullable BodyPart targetPart
 	) {
 		if (!canUse(serverPlayer) || serverPlayer.isSpectator() || !serverPlayer.isAlive()) return;
-		if (!isOwnStorage(srcLoc)) return;
+		if (!isOwnStorage(srcLoc) && !(mode == MODE_STASH && srcLoc == TarkovNetworking.LOC_EXTERNAL_GRID)) return;
 		com.tarkovcraft.health.MedicalUseManager.startFromInventory(serverPlayer, srcLoc, srcIdx, srcEntryId, targetPart);
 	}
 
@@ -1270,7 +1418,7 @@ public class TarkovScreenHandler extends ScreenHandler {
 				}
 				GridContainer grid = getPrimaryExternalGrid();
 				ContainerSearchMemory mem = getPrimaryExternalMemory();
-				if (grid == null || mem == null || !mem.isGridRevealed(playerId) || !mem.isEntryDiscovered(playerId, srcEntryId)) {
+				if (grid == null || !isEntryVisible(mem, playerId, srcEntryId)) {
 					yield failed;
 				}
 				GridEntry entry = grid.getEntry(srcEntryId);
@@ -1463,12 +1611,12 @@ public class TarkovScreenHandler extends ScreenHandler {
 			} else {
 				GridContainer g = getPrimaryExternalGrid();
 				ContainerSearchMemory mem = getPrimaryExternalMemory();
-				if (g != null && mem != null && mem.isGridRevealed(playerId)
+				if (g != null && (mode == MODE_STASH || mem != null && mem.isGridRevealed(playerId))
 					&& !isVanillaNestingBlocked(splitCopy)
 					&& canAddNewEntryToVanillaGrid(g)) {
 					GridEntry created = g.tryPlaceInFreeCell(splitCopy);
 					if (created != null) {
-						mem.markEntryDiscovered(playerId, created.getEntryId());
+						if (mem != null) mem.markEntryDiscovered(playerId, created.getEntryId());
 						return true;
 					}
 				}
@@ -1902,7 +2050,7 @@ public class TarkovScreenHandler extends ScreenHandler {
 				}
 				GridContainer grid = getPrimaryExternalGrid();
 				ContainerSearchMemory mem = getPrimaryExternalMemory();
-				yield grid != null && mem != null && isEntryVisible(mem, playerId, entryId) ? grid.getEntry(entryId) : null;
+				yield grid != null && isEntryVisible(mem, playerId, entryId) ? grid.getEntry(entryId) : null;
 			}
 			default -> null;
 		};
@@ -2125,7 +2273,7 @@ public class TarkovScreenHandler extends ScreenHandler {
 			}
 			GridContainer grid = getPrimaryExternalGrid();
 			ContainerSearchMemory mem = getPrimaryExternalMemory();
-			if (grid == null || mem == null || !mem.isEntryDiscovered(playerId, entryId)) return false;
+			if (grid == null || !isEntryVisible(mem, playerId, entryId)) return false;
 			GridEntry entry = grid.getEntry(entryId);
 			if (entry == null || !grid.canPlace(entry.getStack(), dstX, dstY, dstRotated, entryId)) return false;
 			grid.remove(entryId);
@@ -2154,7 +2302,7 @@ public class TarkovScreenHandler extends ScreenHandler {
 		if (loc == TarkovNetworking.LOC_EXTERNAL_GRID && mode != MODE_GROUND_ITEM) {
 			GridContainer grid = getPrimaryExternalGrid();
 			ContainerSearchMemory memory = getPrimaryExternalMemory();
-			return grid != null && memory != null && !isVanillaNestingBlocked(stack)
+			return grid != null && (mode == MODE_STASH || memory != null) && !isVanillaNestingBlocked(stack)
 				&& canPlaceInVisibleGrid(grid, memory, playerId, stack, dstX, dstY, dstRotated, canAddNewEntryToVanillaGrid(grid));
 		}
 
@@ -2186,7 +2334,7 @@ public class TarkovScreenHandler extends ScreenHandler {
 		if (loc == TarkovNetworking.LOC_EXTERNAL_GRID && mode != MODE_GROUND_ITEM) {
 			GridContainer grid = getPrimaryExternalGrid();
 			ContainerSearchMemory memory = getPrimaryExternalMemory();
-			return grid != null && memory != null && !isVanillaNestingBlocked(stack)
+			return grid != null && (mode == MODE_STASH || memory != null) && !isVanillaNestingBlocked(stack)
 				&& placeInVisibleGrid(grid, memory, playerId, stack, dstX, dstY, dstRotated, canAddNewEntryToVanillaGrid(grid));
 		}
 		return placeInContainerGrid(resolveContainerDestination(loadout, loc, idx), getDestinationGridIndex(loc, idx),
@@ -2267,6 +2415,9 @@ public class TarkovScreenHandler extends ScreenHandler {
 
 	@Nullable
 	private GridContainer getPrimaryExternalGrid() {
+		if (mode == MODE_STASH && player instanceof ServerPlayerEntity owner) {
+			return PlayerProfileState.get(owner.getServer()).stash(owner.getUuid());
+		}
 		if (mode == MODE_LOOT_BLOCK && lootBlock != null) return lootBlock.getGrid();
 		if (mode == MODE_VANILLA_CONTAINER && vanillaStored != null) return vanillaStored.getGrid();
 		if (mode == MODE_CORPSE && corpse != null) return corpse.getPocketsGrid();
@@ -2302,7 +2453,9 @@ public class TarkovScreenHandler extends ScreenHandler {
 	}
 
 	private void markExternalDirty() {
-		if (mode == MODE_LOOT_BLOCK && lootBlock != null) {
+		if (mode == MODE_STASH && player instanceof ServerPlayerEntity owner) {
+			PlayerProfileState.get(owner.getServer()).markDirty();
+		} else if (mode == MODE_LOOT_BLOCK && lootBlock != null) {
 			lootBlock.markDirty();
 		} else if (mode == MODE_VANILLA_CONTAINER && vanillaStored != null && vanillaInventory != null) {
 			VanillaContainerBridge.syncGridToInventory(vanillaStored.getGrid(), vanillaInventory);
@@ -2360,8 +2513,12 @@ public class TarkovScreenHandler extends ScreenHandler {
 	}
 
 	private boolean canPlaceIntoFloatingContainer(ContainerHandle handle, UUID targetUuid, ItemStack incoming) {
-		if (handle.getStack().getItem() instanceof TarkovCaseItem caseItem && !caseItem.canAcceptItem(incoming)) {
-			return false;
+		ItemStack target = handle.getStack();
+		if (target.getItem() instanceof TarkovCaseItem caseItem) {
+			if (!caseItem.canAcceptItem(incoming)) return false;
+			GridContainer secure = getPlayerLoadout(player).getSecureContainer();
+			if (secure.getEntries().stream().anyMatch(entry -> entry.getStack() == target)
+				&& !SecureContainerValidator.allowsCaseInsertion(target, incoming)) return false;
 		}
 		if (targetUuid != null && ContainerItemHelper.containsContainerId(incoming, targetUuid)) {
 			return false;
@@ -2446,6 +2603,12 @@ public class TarkovScreenHandler extends ScreenHandler {
 					return directStackHandle(inv.offHand.get(slotIdx), false, inv::markDirty);
 				}
 			}
+		}
+
+		if (mode == MODE_STASH) {
+			ContainerHandle inStash = findInsideGrid(getPrimaryExternalGrid(), null, targetUuid, playerId,
+				false, grid -> markExternalDirty(), this::markExternalDirty);
+			if (inStash != null) return inStash;
 		}
 
 		// 3. Inside open Loot Block

@@ -1,5 +1,6 @@
 package com.tarkovcraft.block;
 
+import com.tarkovcraft.arena.HackableCrateEvent;
 import com.tarkovcraft.config.TarkovConfig;
 import com.tarkovcraft.grid.GridContainer;
 import com.tarkovcraft.loot.TarkovLootGenerator;
@@ -45,6 +46,9 @@ public class SearchableLootBlockEntity extends BlockEntity {
 	private boolean pendingLootGeneration = false;
 	private long lastLootEpochMs = 0L;
 	private boolean autoRespawn = true;
+	private boolean eventCrate;
+	@Nullable
+	private HackableCrateEvent hack;
 
 	public SearchableLootBlockEntity(BlockPos pos, BlockState state) {
 		this(ModBlocks.LOOT_CONTAINER_ENTITY, pos, state,
@@ -148,6 +152,27 @@ public class SearchableLootBlockEntity extends BlockEntity {
 		markDirty();
 	}
 
+	public void lockForEvent() {
+		eventCrate = true;
+		hack = new HackableCrateEvent();
+		setAutoRespawn(false);
+	}
+
+	public boolean isEventCrate() {
+		return eventCrate;
+	}
+
+	public boolean isHackInProgress() {
+		return hack != null && hack.isInProgress();
+	}
+
+	public void unlockEventCrate(Random random) {
+		if (hack == null) return;
+		populateFromPool(TarkovLootPool.AIRDROP, random);
+		hack = null;
+		markDirty();
+	}
+
 	public static boolean isRespawnDue(long lastLootEpochMs) {
 		long intervalMs = TarkovConfig.get().getLootRespawnMillis();
 		if (intervalMs <= 0L || lastLootEpochMs <= 0L) {
@@ -161,9 +186,9 @@ public class SearchableLootBlockEntity extends BlockEntity {
 	}
 
 	public static void serverTick(World world, BlockPos pos, BlockState state, SearchableLootBlockEntity be) {
-		if (!(world instanceof ServerWorld sw) || be.smokeTicksRemaining <= 0) {
-			return;
-		}
+		if (!(world instanceof ServerWorld sw)) return;
+		if (be.hack != null) be.hack.tick(sw, pos, be);
+		if (be.smokeTicksRemaining <= 0) return;
 		be.smokeTicksRemaining--;
 		if (be.smokeTicksRemaining % 3 == 0) {
 			double cx = pos.getX() + 0.5;
@@ -189,6 +214,10 @@ public class SearchableLootBlockEntity extends BlockEntity {
 	}
 
 	public void openForPlayer(ServerPlayerEntity player) {
+		if (hack != null && world instanceof ServerWorld serverWorld) {
+			hack.start(serverWorld, pos, player);
+			return;
+		}
 		if (world != null) {
 			if (pendingLootGeneration) {
 				populateFromPool(getEffectiveLootPool(), world.getRandom());
@@ -238,6 +267,10 @@ public class SearchableLootBlockEntity extends BlockEntity {
 			nbt.putLong("LastLootEpochMs", lastLootEpochMs);
 		}
 		nbt.putBoolean("AutoRespawn", autoRespawn);
+		if (eventCrate) {
+			nbt.putBoolean("EventCrate", true);
+			nbt.putBoolean("HackLocked", hack != null);
+		}
 	}
 
 	@Override
@@ -268,5 +301,7 @@ public class SearchableLootBlockEntity extends BlockEntity {
 		this.pendingLootGeneration = nbt.getBoolean("PendingLoot");
 		this.lastLootEpochMs = Math.max(0L, nbt.getLong("LastLootEpochMs"));
 		this.autoRespawn = !nbt.contains("AutoRespawn") || nbt.getBoolean("AutoRespawn");
+		this.eventCrate = nbt.getBoolean("EventCrate");
+		this.hack = eventCrate && nbt.getBoolean("HackLocked") ? new HackableCrateEvent() : null;
 	}
 }

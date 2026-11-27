@@ -1,6 +1,6 @@
 # Спецификация: Ванильные контейнеры в системе лута и обыска TarkovCraft
 
-**Статус:** Approved Design Spec (`architect`)  
+**Статус:** Утверждённая архитектурная спецификация
 **Стек:** Minecraft `1.20.1`, Fabric Loader `0.16.10`, Fabric API `0.92.12+1.20.1`, Yarn `1.20.1+build.10`, Java `17`, `environment: "*"`.  
 **Mixin / Gradle / `fabric.mod.json`:** **Новые Mixin и правки `tarkovcraft.mixins.json` / `build.gradle` НЕ требуются!** Всё реализуется чисто через Fabric API `UseBlockCallback.EVENT`, `PlayerBlockBreakEvents.AFTER`, существующие `TarkovNetworking`, `TarkovScreenHandler`, `TarkovInventoryScreen` и `InGameHudMixin`.
 
@@ -18,7 +18,7 @@
 2. `src/main/java/com/tarkovcraft/container/VanillaContainerBridge.java` **(новый)** — определение поддерживаемых ванильных блоков, проверка блокировки крышки, триггер ванильных лут-таблиц (`checkLootInteraction`), канонические ключи (вкл. двойной сундук и эндер-сундук), математически безубыточная двусторонняя синхронизация `GridContainer <-> Inventory` и дельта-реконсиляция (воронки/внешние правки).
 3. `src/main/java/com/tarkovcraft/screen/TarkovScreenHandler.java` — новый режим `MODE_VANILLA_CONTAINER = 4`, открытие `openVanillaContainer(...)`, `onOpen`/`onClose` (анимация и звуки крышки), `canUse`, все операции `LOC_EXTERNAL_GRID`, `LOC_FLOATING_CONTAINER` (открытие обысканных кейсов/рюкзаков/разгрузок из ванильного сундука!), лимит числа стаков `entries.size() < inv.size()` и запрет вложения шалкера в шалкер (`stack.getItem().canBeNested()`).
 4. `src/main/java/com/tarkovcraft/network/TarkovNetworking.java` — в `handleInteract` (`[F]` по блоку) вызывать `VanillaContainerBridge.tryOpenForPlayer(player, blockHit.getBlockPos())`.
-5. `src/main/java/com/tarkovcraft/TarkovCraftMod.java` — регистрация `UseBlockCallback.EVENT` (перехват ПКМ в Survival/Adventure) и `PlayerBlockBreakEvents.AFTER` (очистка `VanillaContainerState` при сломе блока).
+5. `src/main/java/com/tarkovcraft/TarkovCraftMod.java` — регистрация `UseBlockCallback.EVENT` (учёт размещённых игроками контейнеров) и `PlayerBlockBreakEvents.AFTER` (очистка `VanillaContainerState` при сломе блока).
 6. `src/main/java/com/tarkovcraft/mixin/InGameHudMixin.java` — подсказка у прицела `[F] Обыскать <Сундук / Бочка / Шалкер / Эндер-сундук>` для `VanillaContainerBridge.isSupportedBlock(...)` (идентично `SearchableLootBlock`).
 7. `src/main/java/com/tarkovcraft/client/screen/TarkovInventoryScreen.java` — проверить/адаптировать `extCell` под `9×7` (двойной сундук) в правой колонке, чтобы `9×7` полностью помещался без обрезки по ширине.
 8. `src/test/java/com/tarkovcraft/container/VanillaContainerBridgeTest.java` **(новый)** — JUnit 5 тесты на конвертацию, динамический рост высоты, анти-потерю при 27/54 стаках, дельта-реконсиляцию, канонический ключ двойного сундука и NBT round-trip `VanillaContainerState`.
@@ -58,24 +58,13 @@
 
 ---
 
-## 3. Механизм открытия (100% идентично модовым `SearchableLootBlock`)
+## 3. Управление сундуками, дверями, люками и калитками
 
-1. **Клавиша `[F]` (основной способ — Survival и Creative):**
-   - В `InGameHudMixin.renderWorldInteractPrompt`: когда прицел на блоке `VanillaContainerBridge.isSupportedBlock(state.getBlock())`, выводить точно такой же промпт, как для `SearchableLootBlock`: `prompt.tarkovcraft.search` (`[F] Обыскать Сундук` / `Бочка` / `Шалкер` / `Эндер-сундук`).
-   - В `TarkovNetworking.handleInteract`: если блок — поддерживаемый ванильный контейнер -> вызвать `VanillaContainerBridge.tryOpenForPlayer(player, blockHit.getBlockPos())`.
-2. **ПКМ (`UseBlockCallback.EVENT` в `TarkovCraftMod.onInitialize()`):**
-   - Если `player.isSpectator()` -> `ActionResult.PASS`.
-   - Если `player.shouldCancelInteraction()` (`Shift + ПКМ` с предметом в руке — установка блока/воронки/факела на сундук) -> `ActionResult.PASS`.
-   - Если `player.isCreative()` -> `ActionResult.PASS` (в Creative доступен ванильный просмотр по ПКМ, а по `[F]` — EFT-интерфейс, согласованно с `InGameHudMixin`).
-   - В **Survival / Adventure**:
-     - Для поддерживаемых ванильных контейнеров **НЕ давать** открыться ванильному GUI (иначе обходится §6 обыск и тетрис-сетка!).
-     - Если в руке **нет** TaCZ-оружия (`!AmmoTier.isTaczGunStack(player.getStackInHand(hand))`):
-       - Для максимального удобства: либо на сервере открыть `VanillaContainerBridge.tryOpenForPlayer(sp, pos)` и вернуть `ActionResult.SUCCESS`, ЛИБО строго как `SearchableLootBlock` (только `[F]`).
-       - **Выбранное решение (лучшее из обоих миров без конфликта с TaCZ ADS!):**
-         - Если в руке TaCZ-оружие -> вернуть `ActionResult.FAIL` (отменяет ванильный сундук, позволяя TaCZ ADS работать свободно, и на сервере не спамит экран во время перестрелки).
-         - Если в руке НЕ TaCZ-оружие (пустая рука / любой предмет при `!shouldCancelInteraction()`) -> на сервере вызвать `VanillaContainerBridge.tryOpenForPlayer(sp, pos)` (при `hand == Hand.MAIN_HAND`) и вернуть `ActionResult.SUCCESS`! Таким образом и `[F]`, и обычный ПКМ открывают наш EFT-интерфейс (с §6 обыском), а прицеливание из оружия TaCZ и `Shift+ПКМ` для постановки блоков не ломаются!
-         - *(Дополнительно: проверь, стоит ли разрешить и для `SearchableLootBlock` такой же чистый `[F]` — `SearchableLootBlock` можно не трогать или оставить как есть, т.к. задача просит «чтобы ванильные контейнеры лутались и открывались также как модовые», т.е. обязательны `[F]` + подсказка у прицела + отсутствие ванильного GUI! Если игрок жмёт ПКМ с оружием — только подсказка `[F]`, если без оружия — удобно открывается EFT-экран.)*
-3. **Проверка блокировки крышки (перед открытием):**
+1. В Survival и Adventure клавиша взаимодействия **F** открывает тетрис-интерфейс обыска сундуков, бочек, шалкеров и эндер-сундуков. Этой же клавишей открываются и закрываются двери, люки и калитки, которые можно переключать вручную.
+2. `BlockStateMixin` возвращает `PASS` до вызова действия этих блоков по ПКМ. Minecraft продолжает обработку предмета в руке, поэтому рядом с дверью или сундуком работают прицеливание TaCZ, медикаменты, гранаты и установка блоков. В Creative доступно ванильное действие по ПКМ.
+3. `TarkovNetworking.handleInteract` определяет цель лучом на сервере. Для контейнеров используется `VanillaContainerBridge`. Для дверей, люков и калиток вызывается `Block.onUse` после проверки границы мира и защиты позиции. Сохраняются правила ванильного блока, включая редстоун для железной двери и люка, и события открытия и закрытия для сброса арены. `UseBlockCallback` учитывает размещение контейнеров игроками.
+
+4. **Проверка блокировки крышки (перед открытием):**
    - `ChestBlock`: проверить `ChestBlock.isChestBlocked(world, pos)`; если двойной сундук (`CHEST_TYPE != SINGLE`), проверить и соседнюю половинку `otherPos = pos.offset(ChestBlock.getFacing(state))`!
    - `EnderChestBlock`: проверить `world.getBlockState(pos.up()).isSolidBlock(world, pos.up())` (как в ванильном `EnderChestBlock.onUse`).
    - `ShulkerBoxBlock`: проверить `canOpenShulker(state, world, pos, shulkerBe)`:

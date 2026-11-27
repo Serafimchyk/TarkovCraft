@@ -328,6 +328,17 @@ public final class VanillaContainerBridge {
 		return true;
 	}
 
+	public static boolean refillArenaContainer(ServerWorld world, BlockPos pos) {
+		BlockState state = world.getBlockState(pos);
+		Block block = state.getBlock();
+		if (!isSupportedBlock(block) || block instanceof EnderChestBlock) return false;
+		String key = resolveCanonicalKey(pos, state, new UUID(0L, 0L));
+		var stored = VanillaContainerState.get(world).getEntry(key);
+		if (stored != null && stored.isPlayerPlaced()) return false;
+		TarkovLootPool pool = stored != null ? stored.getAssignedPool() : null;
+		return assignZoneAndRefill(world, pos, pool != null ? pool : CityZoneClassifier.classify(world, pos, block));
+	}
+
 	/**
 	 * Reconciles persisted Tetris GridContainer against the live vanilla Inventory.
 	 * - Fast-path: 100% multiset match -> preserves exact coordinates, rotations, UUIDs, and search memory.

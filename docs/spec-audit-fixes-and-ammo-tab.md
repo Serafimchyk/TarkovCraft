@@ -1,6 +1,6 @@
 # Спецификация: Критичный аудит (P0/P1 фиксы) + Вкладка патронов в креативе (`tarkov_ammo_tab`)
 
-**Статус:** Approved Design Spec (`architect`)  
+**Статус:** Утверждённая архитектурная спецификация
 **Стек:** Minecraft `1.20.1`, Fabric Loader `0.16.10`, Fabric API `0.92.12+1.20.1`, Yarn `1.20.1+build.10`, Java `17`, `environment: "*"`.  
 **Gradle / `fabric.mod.json` / `tarkovcraft.mixins.json`:** Изменения **не требуются** (0 новых зависимостей, 0 новых миксинов; правятся только существующие `PlayerEntityMixin` и `PlayerInventoryMixin`). **TactEq не трогать.**
 

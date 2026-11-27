@@ -3,6 +3,7 @@ package com.tarkovcraft.mixin;
 import com.tarkovcraft.ammo.AmmoTier;
 import com.tarkovcraft.block.SearchableLootBlock;
 import com.tarkovcraft.block.TarkovWorkbenchBlock;
+import com.tarkovcraft.block.WorldBlockInteraction;
 import com.tarkovcraft.client.ClientLoadoutCache;
 import com.tarkovcraft.client.TaCZGunInfoHelper;
 import com.tarkovcraft.client.TarkovCraftClient;
@@ -40,6 +41,9 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import com.tarkovcraft.client.screen.LobbyPauseScreen;
+import com.tarkovcraft.client.screen.LobbyPlayScreen;
+import com.tarkovcraft.client.screen.RaidScreen;
 import com.tarkovcraft.client.screen.TarkovDeathScreen;
 import com.tarkovcraft.client.screen.TarkovInventoryScreen;
 
@@ -88,7 +92,9 @@ public abstract class InGameHudMixin {
 		}
 		ci.cancel();
 
-		if (client.currentScreen instanceof TarkovInventoryScreen || client.currentScreen instanceof TarkovDeathScreen) {
+		if (client.currentScreen instanceof TarkovInventoryScreen || client.currentScreen instanceof TarkovDeathScreen
+			|| client.currentScreen instanceof LobbyPlayScreen || client.currentScreen instanceof LobbyPauseScreen
+			|| client.currentScreen instanceof RaidScreen) {
 			WorldInteractState.updateTarget(null);
 			return;
 		}
@@ -212,6 +218,8 @@ public abstract class InGameHudMixin {
 				prompt = Text.translatable("prompt.tarkovcraft.search", key, Text.translatable(lootBlock.getContainerTitleKey()).getString());
 			} else if (state.getBlock() instanceof TarkovWorkbenchBlock wb) {
 				prompt = Text.translatable("prompt.tarkovcraft.workbench", key, wb.getName().getString());
+			} else if (eye.squaredDistanceTo(bhr.getPos()) <= reach * reach && WorldBlockInteraction.canOpenByHand(state)) {
+				prompt = Text.translatable("prompt.tarkovcraft.openable", key, state.getBlock().getName());
 			} else if (com.tarkovcraft.container.VanillaContainerBridge.isSupportedBlock(state.getBlock())) {
 				prompt = Text.translatable("prompt.tarkovcraft.search", key, state.getBlock().getName().getString());
 			}

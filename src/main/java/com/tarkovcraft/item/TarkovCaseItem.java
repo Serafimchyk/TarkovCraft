@@ -118,7 +118,7 @@ public class TarkovCaseItem extends Item implements TarkovSizedItem {
 	 * Returns true if the given ItemStack is allowed inside this storage case.
 	 */
 	public boolean canAcceptItem(ItemStack stack) {
-		if (stack == null || stack.isEmpty()) {
+		if (stack == null || stack.isEmpty() || stack.getItem() instanceof TarkovCaseItem) {
 			return false;
 		}
 		Item item = stack.getItem();
@@ -135,7 +135,8 @@ public class TarkovCaseItem extends Item implements TarkovSizedItem {
 				|| item instanceof SwordItem || item instanceof BowItem
 				|| item instanceof CrossbowItem || item instanceof TridentItem;
 			case ARMOR_PLATE -> item instanceof TarkovArmorRepairItem || item instanceof TarkovArmorItem;
-			case MONEY -> item == Items.EMERALD || item == Items.GOLD_INGOT || item == Items.GOLD_NUGGET
+			case MONEY -> item instanceof TarkovFunctionalItem functional && functional.isValuable()
+				|| item == Items.EMERALD || item == Items.GOLD_INGOT || item == Items.GOLD_NUGGET
 				|| item == Items.DIAMOND || item == Items.NETHERITE_INGOT || item == Items.NETHERITE_SCRAP
 				|| item == Items.AMETHYST_SHARD || item == Items.PAPER;
 		};

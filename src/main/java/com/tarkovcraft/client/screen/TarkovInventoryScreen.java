@@ -30,6 +30,12 @@ import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 import net.minecraft.client.item.TooltipContext;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.ArmorItem;
+import net.minecraft.item.ArrowItem;
+import net.minecraft.item.BowItem;
+import net.minecraft.item.CrossbowItem;
+import net.minecraft.item.SwordItem;
+import net.minecraft.item.TridentItem;
 import net.minecraft.text.Text;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Quaternionf;
@@ -57,6 +63,54 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 	private static final int MAX_INSPECT_WINDOWS = 6;
 
 	private int activeTab = TAB_GEAR;
+	private StashFilter stashFilter = StashFilter.ALL;
+	private Text stashFilterTooltip;
+	private Rect healthMedStrip;
+	private int healthMedOffset;
+	private int healthMedMaxOffset;
+	private List<HealthMedSlot> availableHealthMeds = List.of();
+
+	private enum StashFilter {
+		ALL("*", "All"),
+		WEAPONS("W", "Weapons"),
+		AMMO("A", "Ammunition"),
+		ARMOR("V", "Armor"),
+		MEDICINE("+", "Medicine"),
+		CONTAINERS("#", "Containers"),
+		LOOT("$", "Loot and barter");
+
+		final String symbol;
+		final String fallback;
+
+		StashFilter(String symbol, String fallback) {
+			this.symbol = symbol;
+			this.fallback = fallback;
+		}
+
+		Text label() {
+			return lobbyLabel("filter_" + name().toLowerCase(Locale.ROOT), fallback);
+		}
+
+		boolean matches(ItemStack stack) {
+			var item = stack.getItem();
+			StashFilter actual;
+			if (AmmoTier.isTaczGunStack(stack) || item instanceof SwordItem || item instanceof BowItem
+				|| item instanceof CrossbowItem || item instanceof TridentItem || item instanceof com.tarkovcraft.item.TarkovMeleeItem) {
+				actual = WEAPONS;
+			} else if (AmmoTier.isTaczAmmoStack(stack) || item instanceof ArrowItem) {
+				actual = AMMO;
+			} else if (item instanceof TarkovArmorItem || item instanceof ArmorItem) {
+				actual = ARMOR;
+			} else if (item instanceof TarkovMedicalItem || item instanceof com.tarkovcraft.item.TarkovStimulatorItem) {
+				actual = MEDICINE;
+			} else if (ContainerItemHelper.isContainerItem(stack)) {
+				actual = CONTAINERS;
+			} else {
+				actual = LOOT;
+			}
+			return this == ALL || this == actual;
+		}
+	}
 	private final List<InteractiveRegion> regions = new ArrayList<>();
 	private final List<ActionButton> actionButtons = new ArrayList<>();
 	private final List<BodyHealthHudHelper.PartHitbox> healthPartHitboxes = new ArrayList<>();
@@ -253,18 +307,23 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		this.lastMouseY = mouseY;
 		regions.clear();
 		actionButtons.clear();
+		stashFilterTooltip = null;
+		healthMedStrip = null;
 
-		// Translucent EFT world overlay (preserves live world behind inventory)
-		context.fill(0, 0, this.width, this.height, TarkovUiTheme.BG_WORLD_OVERLAY);
+		boolean stash = isStash();
+		if (stash) TarkovUiTheme.drawLobbyBackground(context, width, height);
+		else context.fill(0, 0, width, height, TarkovUiTheme.BG_WORLD_OVERLAY);
 
 		PlayerLoadout loadout = ClientLoadoutCache.getLoadout();
 		TarkovNetworking.ScreenStateSnapshot snap = ClientLoadoutCache.getScreenState();
+		if (stash && snap != null && snap.mode() != TarkovScreenHandler.MODE_STASH) snap = null;
 		boolean hasExternal = handler.getMode() != TarkovScreenHandler.MODE_OWN_INVENTORY;
 
 		renderTopBar(context, mouseX, mouseY);
 
-		int bodyY = TarkovUiTheme.TOP_BAR_H + TarkovUiTheme.OUTER_PAD;
-		int bodyH = Math.max(140, this.height - bodyY - TarkovUiTheme.QUICK_BAR_H - TarkovUiTheme.OUTER_PAD - 6);
+		int bodyY = TarkovUiTheme.TOP_BAR_H + TarkovUiTheme.OUTER_PAD + (stash ? LobbyTopNavBar.HEIGHT : 0);
+		int bottom = stash ? TarkovUiTheme.OUTER_PAD : TarkovUiTheme.QUICK_BAR_H + TarkovUiTheme.OUTER_PAD + 6;
+		int bodyH = Math.max(stash ? 0 : 140, this.height - bodyY - bottom);
 
 		floatingLayouts.clear();
 		if (activeTab == TAB_HEALTH && client != null && client.player != null) {
@@ -278,7 +337,8 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 
 			int medStripH = 38;
 			int medStripY = bodyY + bodyH - TarkovUiTheme.STATS_BAR_H - medStripH - 4;
-			List<HealthMedSlot> collectedMeds = collectOwnMedicalItems(loadout, snap);
+			availableHealthMeds = collectOwnMedicalItems(loadout, snap);
+			List<HealthMedSlot> collectedMeds = availableHealthMeds;
 			ItemStack selectedMedStack = resolveSelectedMedStack(collectedMeds);
 			List<BodyHealthHudHelper.QuickHealMed> qMeds = new ArrayList<>(collectedMeds.size());
 			for (HealthMedSlot ms : collectedMeds) {
@@ -304,7 +364,13 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			if (leftW + centerW + rightW > availW) {
 				centerW = Math.max(140, availW - leftW - rightW);
 			}
-			cellSize = Math.max(18, Math.min(28, (centerW - 22) / 6));
+			if (stash) {
+				var columns = LobbyLayoutMetrics.characterColumns(availW);
+				rightW = columns.stash();
+				leftW = columns.equipment();
+				centerW = columns.storage();
+			}
+			cellSize = Math.max(stash ? 10 : 18, Math.min(28, (centerW - 22) / 6));
 
 			int leftX = TarkovUiTheme.OUTER_PAD;
 			int centerX = leftX + leftW + TarkovUiTheme.COL_GAP;
@@ -325,7 +391,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			drawMedUseStripIfActive(context, centerX + 6, bodyY + 3);
 		}
 
-		renderQuickUseBar(context, loadout, mouseX, mouseY);
+		if (!stash) renderQuickUseBar(context, loadout, mouseX, mouseY);
 
 		if (activeTab == TAB_GEAR && snap != null && !snap.openContainers().isEmpty()) {
 			renderFloatingContainerWindows(context, snap, mouseX, mouseY);
@@ -349,11 +415,60 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		} else if ((drag == null || !drag.active)
 			&& !isOverAnyInspectWindow(mouseX, mouseY)
 			&& (splitModal == null || !splitModal.contains(mouseX, mouseY))) {
-			renderHoverTooltip(context, mouseX, mouseY);
+			if (stashFilterTooltip != null) context.drawTooltip(textRenderer, stashFilterTooltip, mouseX, mouseY);
+			else renderHoverTooltip(context, mouseX, mouseY);
+		}
+	}
+
+	private boolean isStash() {
+		return handler.getMode() == TarkovScreenHandler.MODE_STASH;
+	}
+
+	private static Text lobbyLabel(String key, String fallback) {
+		return Text.translatableWithFallback("screen.tarkovcraft.lobby." + key, fallback);
+	}
+
+	private LobbyTopNavBar.Status lobbyStatus() {
+		int flags = handler.stashFlags();
+		BodyPartHealth health = ClientLoadoutCache.getBodyHealth();
+		return new LobbyTopNavBar.Status(client.player.getName().getString(), handler.stashRubles(),
+			Math.round(health.getTotalHp()), Math.round(health.getTotalEffectiveMaxHp()), health.needsTreatment(),
+			(flags & TarkovScreenHandler.STASH_SERVICE) != 0, handler.stashRaidSeconds(), handler.stashScavSeconds(),
+			(flags & TarkovScreenHandler.STASH_READY) != 0, (flags & TarkovScreenHandler.STASH_CAN_EDIT) != 0);
+	}
+
+	private void sendStashButton(int action) {
+		if (client != null && client.interactionManager != null) client.interactionManager.clickButton(handler.syncId, action);
+	}
+
+	@Override
+	public void close() {
+		if (isStash()) sendStashButton(TarkovScreenHandler.STASH_PLAY);
+		else super.close();
+	}
+
+	private void lobbyNavAction(LobbyTopNavBar.Action action) {
+		switch (action) {
+			case PLAY -> close();
+			case CHARACTER -> { }
+			case EDITOR -> sendStashButton(TarkovScreenHandler.STASH_EDITOR);
+			case SETTINGS -> client.setScreen(new LobbyPauseScreen(this));
+			case DISCONNECT -> LobbyPauseScreen.confirmDisconnect(this);
 		}
 	}
 
 	private void renderTopBar(DrawContext context, int mouseX, int mouseY) {
+		if (isStash() && client != null && client.player != null) {
+			LobbyTopNavBar.render(context, textRenderer, width, mouseX, mouseY, LobbyTopNavBar.Tab.CHARACTER, lobbyStatus());
+			int y = LobbyTopNavBar.HEIGHT;
+			context.fill(0, y, width, y + TarkovUiTheme.TOP_BAR_H, TarkovUiTheme.BG_TOP_BAR);
+			tabGearBtn = new Rect(8, y + 3, 86, TarkovUiTheme.TOP_BAR_H - 5);
+			tabHealthBtn = new Rect(98, y + 3, 86, TarkovUiTheme.TOP_BAR_H - 5);
+			closeBtn = null;
+			drawTopTab(context, tabGearBtn, Text.translatable("tab.tarkovcraft.gear").getString(), activeTab == TAB_GEAR, mouseX, mouseY);
+			drawTopTab(context, tabHealthBtn, Text.translatable("tab.tarkovcraft.health").getString(), activeTab == TAB_HEALTH, mouseX, mouseY);
+			return;
+		}
 		context.fill(0, 0, this.width, TarkovUiTheme.TOP_BAR_H, TarkovUiTheme.BG_TOP_BAR);
 		context.fill(0, TarkovUiTheme.TOP_BAR_H, this.width, TarkovUiTheme.TOP_BAR_H + 1, TarkovUiTheme.BORDER_PANEL);
 
@@ -396,7 +511,9 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		context.drawBorder(area.x, area.y, area.w, area.h, TarkovUiTheme.BORDER_PANEL);
 
 		int pad = 6;
-		int weaponZoneH = 98;
+		int weaponH = isStash() ? Math.max(16, Math.min(28, (area.h - 105) / 3)) : 28;
+		int weaponStep = weaponH + 3;
+		int weaponZoneH = weaponStep * 3 + 5;
 		int upperH = Math.max(74, area.h - TarkovUiTheme.STATS_BAR_H - weaponZoneH - pad * 2);
 
 		// Live 3D Player Model behind equipment slots
@@ -405,6 +522,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			int modelX = area.x + area.w / 2;
 			int modelY = area.y + Math.max(76, Math.round(upperH * 0.92f));
 
+			boolean invisible = client.player.isInvisible();
 			float savedBodyYaw = client.player.bodyYaw;
 			float savedYaw = client.player.getYaw();
 			float savedPitch = client.player.getPitch();
@@ -413,6 +531,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 
 			context.enableScissor(area.x + 1, area.y + 1, area.x + area.w - 1, area.y + area.h - TarkovUiTheme.STATS_BAR_H - 2);
 			try {
+				if (isStash()) client.player.setInvisible(false);
 				float previewYaw = 180.0f + playerPreviewYaw;
 				client.player.bodyYaw = previewYaw;
 				client.player.setYaw(previewYaw);
@@ -424,6 +543,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 					new Quaternionf().rotateZ((float) Math.PI), null, client.player
 				);
 			} finally {
+				if (isStash()) client.player.setInvisible(invisible);
 				client.player.bodyYaw = savedBodyYaw;
 				client.player.setYaw(savedYaw);
 				client.player.setPitch(savedPitch);
@@ -437,7 +557,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		context.getMatrices().push();
 		context.getMatrices().translate(0.0f, 0.0f, TarkovUiTheme.Z_SLOTS);
 
-		int sideW = Math.max(48, Math.min(68, (area.w - 18) / 3));
+		int sideW = Math.max(isStash() ? 20 : 48, Math.min(68, (area.w - 18) / 3));
 		int sqH = Math.max(32, Math.min(40, (upperH - 12) / 2));
 		int topY = area.y + pad;
 		int row2Y = topY + sqH + 4;
@@ -453,6 +573,10 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		int headsetWidth = rightColX - headsetX - 3;
 		drawEquipSlot(context, headsetX, topY, headsetWidth, sqH, EquipmentSlotType.HEADSET,
 			Text.translatable("ui.tarkovcraft.headset").getString(), null, loadout, false, null, mouseX, mouseY);
+		if (isStash()) {
+			drawEquipSlot(context, headsetX, row2Y, headsetWidth, sqH, EquipmentSlotType.BACKPACK,
+				Text.translatable("ui.tarkovcraft.backpack").getString(), null, loadout, false, null, mouseX, mouseY);
+		}
 		int fullW = area.w - pad * 2;
 		int halfW = (fullW - 4) / 2;
 		String k1 = client != null ? TarkovCraftClient.getShortKeyLabel(client.options.hotbarKeys[0]) : "1";
@@ -460,10 +584,10 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		String k3 = client != null ? TarkovCraftClient.getShortKeyLabel(client.options.hotbarKeys[2]) : "3";
 		String kM = TarkovCraftClient.getShortKeyLabel(TarkovCraftClient.toggleMeleeKey);
 
-		drawEquipSlot(context, area.x + pad, wY, fullW, 28, EquipmentSlotType.PRIMARY_1, "ON SLING", k1, loadout, false, null, mouseX, mouseY);
-		drawEquipSlot(context, area.x + pad, wY + 31, fullW, 28, EquipmentSlotType.PRIMARY_2, "ON BACK", k2, loadout, false, null, mouseX, mouseY);
-		drawEquipSlot(context, area.x + pad, wY + 62, halfW, 28, EquipmentSlotType.PISTOL, "HOLSTER", k3, loadout, false, null, mouseX, mouseY);
-		drawEquipSlot(context, area.x + pad + halfW + 4, wY + 62, fullW - halfW - 4, 28, EquipmentSlotType.MELEE, "SCABBARD", kM, loadout, false, null, mouseX, mouseY);
+		drawEquipSlot(context, area.x + pad, wY, fullW, weaponH, EquipmentSlotType.PRIMARY_1, "ON SLING", k1, loadout, false, null, mouseX, mouseY);
+		drawEquipSlot(context, area.x + pad, wY + weaponStep, fullW, weaponH, EquipmentSlotType.PRIMARY_2, "ON BACK", k2, loadout, false, null, mouseX, mouseY);
+		drawEquipSlot(context, area.x + pad, wY + weaponStep * 2, halfW, weaponH, EquipmentSlotType.PISTOL, "HOLSTER", k3, loadout, false, null, mouseX, mouseY);
+		drawEquipSlot(context, area.x + pad + halfW + 4, wY + weaponStep * 2, fullW - halfW - 4, weaponH, EquipmentSlotType.MELEE, "SCABBARD", kM, loadout, false, null, mouseX, mouseY);
 
 		drawBottomStatsStrip(context, loadout, area.x + 5, area.y + area.h - TarkovUiTheme.STATS_BAR_H - 3, area.w - 10);
 
@@ -638,14 +762,17 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		context.fill(area.x, area.y, area.x + area.w, area.y + area.h, TarkovUiTheme.BG_PANEL);
 		context.drawBorder(area.x, area.y, area.w, area.h, TarkovUiTheme.BORDER_PANEL);
 
+		boolean stash = isStash();
 		int pad = 6;
-		int headerH = 18;
+		int headerH = stash ? 36 : 18;
 		context.fill(area.x + 1, area.y + 1, area.x + area.w - 1, area.y + headerH, 0xDD13161A);
 		context.fill(area.x + 1, area.y + headerH, area.x + area.w - 1, area.y + headerH + 1, TarkovUiTheme.BORDER_PANEL);
 
-		String header = snap.externalTitle().isEmpty() ? "LOOT" : snap.externalTitle().toUpperCase();
-		UUID firstUnsearched = findFirstUnsearchedTarget(snap);
-		int btnW = firstUnsearched != null ? 54 : 0;
+		String header = stash ? lobbyLabel("stash", "Stash").getString()
+			: snap.externalTitle().isEmpty() ? "LOOT" : snap.externalTitle().toUpperCase(Locale.ROOT);
+		UUID firstUnsearched = stash ? null : findFirstUnsearchedTarget(snap);
+		if (stash) drawStashControls(context, area, mouseX, mouseY);
+		int btnW = stash ? area.w / 3 : firstUnsearched != null ? 54 : 0;
 		String trimmedHeader = textRenderer.trimToWidth(header, Math.round((area.w - pad * 2 - btnW - 8) / TarkovUiTheme.TEXT_SCALE_SMALL));
 		TarkovUiTheme.drawFlatText(context, textRenderer, trimmedHeader, area.x + pad, area.y + 6,
 			TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
@@ -672,7 +799,8 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 
 		int maxCols = snap.externalGridView() != null ? Math.max(6, snap.externalGridView().width()) : 6;
 		int minCell = maxCols > 6 ? 10 : 12;
-		int extCell = Math.max(minCell, Math.min(cellSize, (area.w - pad * 2 - 8) / maxCols));
+		int extCell = stash ? LobbyLayoutMetrics.stashCell(area.w, maxCols)
+			: Math.max(minCell, Math.min(cellSize, (area.w - pad * 2 - 8) / maxCols));
 
 		if (handler.getMode() == TarkovScreenHandler.MODE_CORPSE && snap.corpseLoadout() != null) {
 			PlayerLoadout corpseLo = snap.corpseLoadout();
@@ -739,6 +867,37 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		rightMaxScroll = Math.max(0, contentH - scrollClip.h + pad);
 		rightScrollY = Math.max(0, Math.min(rightScrollY, rightMaxScroll));
 		drawScrollbar(context, scrollClip, rightScrollY, rightMaxScroll);
+	}
+
+	private void drawStashControls(DrawContext context, Rect area, int mouseX, int mouseY) {
+		int actionWidth = (area.w - 16) / 3;
+		drawStashButton(context, new Rect(area.x + area.w - actionWidth * 2 - 8, area.y + 3, actionWidth, 13),
+			lobbyLabel("stash_store_all", "Store all"), false,
+			() -> sendStashButton(TarkovScreenHandler.STASH_STORE_ALL), mouseX, mouseY);
+		drawStashButton(context, new Rect(area.x + area.w - actionWidth - 5, area.y + 3, actionWidth, 13),
+			lobbyLabel("stash_sort", "Sort"), false,
+			() -> sendStashButton(TarkovScreenHandler.STASH_SORT), mouseX, mouseY);
+		int step = (area.w - 10) / StashFilter.values().length;
+		for (StashFilter filter : StashFilter.values()) {
+			Rect rect = new Rect(area.x + 5 + step * filter.ordinal(), area.y + 20, step - 2, 13);
+			drawStashButton(context, rect, Text.literal(filter.symbol), stashFilter == filter,
+				() -> stashFilter = filter, mouseX, mouseY);
+			if (rect.contains(mouseX, mouseY)) stashFilterTooltip = filter.label();
+		}
+	}
+
+	private void drawStashButton(DrawContext context, Rect rect, Text text, boolean selected,
+			Runnable action, int mouseX, int mouseY) {
+		boolean hover = rect.contains(mouseX, mouseY);
+		context.fill(rect.x, rect.y, rect.x + rect.w, rect.y + rect.h,
+			hover ? TarkovUiTheme.HOVER_MENU_BG : TarkovUiTheme.BG_SLOT);
+		context.drawBorder(rect.x, rect.y, rect.w, rect.h,
+			selected ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.BORDER_PANEL);
+		float scale = TarkovUiTheme.TEXT_SCALE_SMALL;
+		String label = TarkovUiTheme.trimWithEllipsis(textRenderer, text.getString(), rect.w - 4, scale);
+		TarkovUiTheme.drawCenteredFlatText(context, textRenderer, label, rect.x + rect.w / 2, rect.y + 3,
+			selected ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.TEXT_PRIMARY, scale);
+		actionButtons.add(new ActionButton(rect, null, action));
 	}
 
 	private int drawRigViewsBody(
@@ -983,6 +1142,12 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			int ew = entry.width() * gCell;
 			int eh = entry.height() * gCell;
 
+			if (isStash() && locType == TarkovNetworking.LOC_EXTERNAL_GRID && !stashFilter.matches(entry.stack())) {
+				context.fill(ex + 1, ey + 1, ex + ew - 1, ey + eh - 1, TarkovUiTheme.BG_CELL_SILHOUETTE);
+				context.drawBorder(ex + 1, ey + 1, ew - 2, eh - 2, TarkovUiTheme.BORDER_SLOT);
+				continue;
+			}
+
 			if (!entry.discovered()) {
 				context.fill(ex + 1, ey + 1, ex + ew - 1, ey + eh - 1, TarkovUiTheme.BG_CELL_SILHOUETTE);
 				// Dark tactical item silhouette block (Tarkov-style unrevealed item shape)
@@ -1199,6 +1364,10 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double amount) {
+		if (healthMedStrip != null && healthMedStrip.contains(mouseX, mouseY) && healthMedMaxOffset > 0) {
+			healthMedOffset = Math.max(0, Math.min(healthMedMaxOffset, healthMedOffset - (int) Math.signum(amount) * 3));
+			return true;
+		}
 		if (contextMenu != null) {
 			contextMenu = null;
 			return true;
@@ -1247,6 +1416,10 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			contextMenu = null;
 			return true;
 		}
+
+		if (isStash() && client != null && client.player != null
+			&& LobbyTopNavBar.mouseClicked(width, mouseX, mouseY, button,
+				LobbyTopNavBar.Tab.CHARACTER, lobbyStatus(), this::lobbyNavAction)) return true;
 
 		// 3. Inspect Windows (topmost first, brings clicked window to front)
 		for (int i = inspectWindows.size() - 1; i >= 0; i--) {
@@ -1733,7 +1906,8 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			int gx = (int) ((mx - region.rect.x) / region.regionCellSize);
 			int gy = (int) ((my - region.rect.y) / region.regionCellSize);
 			TarkovNetworking.ViewEntry entry = findEntryAt(region.view, gx, gy);
-			if (entry != null && entry.discovered() && !entry.stack().isEmpty()) {
+			if (entry != null && entry.discovered() && !entry.stack().isEmpty()
+				&& (!isStash() || region.locType != TarkovNetworking.LOC_EXTERNAL_GRID || stashFilter.matches(entry.stack()))) {
 				return new HoveredTarget(region.locType, region.containerIndex, entry.entryId(), entry.stack(), entry.rotated(), region.view);
 			}
 		}
@@ -1773,6 +1947,13 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 					if (e.discovered() && !e.stack().isEmpty() && e.stack().getItem() instanceof TarkovMedicalItem) {
 						out.add(new HealthMedSlot(TarkovNetworking.LOC_BACKPACK_GRID, 0, e.entryId(), e.stack(), new Rect(0, 0, 0, 0)));
 					}
+				}
+			}
+		}
+		if (isStash() && snap != null && snap.externalGridView() != null) {
+			for (TarkovNetworking.ViewEntry entry : snap.externalGridView().entries()) {
+				if (entry.discovered() && entry.stack().getItem() instanceof TarkovMedicalItem) {
+					out.add(new HealthMedSlot(TarkovNetworking.LOC_EXTERNAL_GRID, 0, entry.entryId(), entry.stack(), new Rect(0, 0, 0, 0)));
 				}
 			}
 		}
@@ -1817,7 +1998,11 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		int gap = 4;
 		int sx = x + 6;
 		int sy = y + 13;
-		for (HealthMedSlot raw : collectedMeds) {
+		int lastOffset = Math.max(0, collectedMeds.size() - (w - 6) / (slotSize + gap));
+		healthMedStrip = new Rect(x, y, w, h);
+		healthMedMaxOffset = isStash() ? lastOffset : 0;
+		healthMedOffset = Math.min(healthMedOffset, healthMedMaxOffset);
+		for (HealthMedSlot raw : collectedMeds.subList(healthMedOffset, collectedMeds.size())) {
 			if (sx + slotSize > x + w - 4) break;
 			Rect r = new Rect(sx, sy, slotSize, slotSize);
 			HealthMedSlot slot = new HealthMedSlot(raw.loc(), raw.idx(), raw.entryId(), raw.stack(), r);
@@ -1859,7 +2044,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		}
 
 		if (selectedHealthMed != null) {
-			ItemStack selStack = resolveSelectedMedStack(healthMedSlots);
+			ItemStack selStack = resolveSelectedMedStack(availableHealthMeds);
 			if (selStack != null) {
 				for (BodyHealthHudHelper.PartHitbox hit : healthPartHitboxes) {
 					if (hit.contains(mouseX, mouseY)) {

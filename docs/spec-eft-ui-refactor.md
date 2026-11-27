@@ -287,7 +287,7 @@
 
 ---
 
-## 6. Ключи локализации для `assets-worker` (`en_us.json` и `ru_ru.json`)
+## 6. Ключи локализации (`en_us.json` и `ru_ru.json`)
 
 Синхронно добавить в оба файла (UTF-8 без BOM, без дубликатов, существующие 91 ключ не ломать):
 
@@ -319,7 +319,7 @@
 
 ---
 
-## 7. План JUnit 5 тестов для `java-coder` (`src/test/java/**`)
+## 7. План JUnit 5 тестов (`src/test/java/**`)
 
 1. **`GridContainerTest.java`**:
    - `tryPlaceInFreeCellDoesNotMergeIntoExistingStack`: разместить стек 16 яблок -> вызвать `tryPlaceInFreeCell` для 8 яблок -> в контейнере **2** отдельных `GridEntry` (16 и 8), а не один стек 24.

@@ -4,7 +4,10 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.FloatArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.tarkovcraft.TarkovCraftMod;
 import com.tarkovcraft.airdrop.AirdropManager;
+import com.tarkovcraft.arena.ArenaEventCommands;
+import com.tarkovcraft.arena.RaidCommands;
 import com.tarkovcraft.block.SearchableLootBlock;
 import com.tarkovcraft.block.SearchableLootBlockEntity;
 import com.tarkovcraft.config.TarkovConfig;
@@ -24,12 +27,14 @@ import com.tarkovcraft.loot.TarkovLootPool;
 import com.tarkovcraft.registry.ModBlocks;
 import com.tarkovcraft.registry.ModEntities;
 import com.tarkovcraft.registry.ModItems;
+import com.tarkovcraft.screen.AdminMenuScreenHandler;
 import com.tarkovcraft.worldgen.TarkovStructureFeature;
 import com.tarkovcraft.worldgen.TarkovStructureRegistry;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.command.CommandSource;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.registry.Registries;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -37,12 +42,15 @@ import net.minecraft.text.ClickEvent;
 import net.minecraft.text.HoverEvent;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
+import java.util.stream.Stream;
 
 /**
  * Operator-only (/tarkov, permission level 2) testing utilities.
@@ -52,20 +60,32 @@ public final class TarkovCommand {
 	}
 
 	public static void register(CommandDispatcher<ServerCommandSource> dispatcher) {
+		RaidCommands.registerPlayerCommands(dispatcher);
 		List<String> zoneNames = Arrays.stream(HitZone.values()).map(HitZone::getId).toList();
 		List<String> partNames = Arrays.stream(BodyPart.values()).map(BodyPart::getId).toList();
 		List<String> limbNames = List.of("left_arm", "right_arm", "left_leg", "right_leg");
 		List<String> bleedTypes = List.of("light", "heavy");
-		List<String> structureNames = List.of("any", "roadblock", "med_tent", "military_camp", "forest_stash");
+		List<String> structureNames = Stream.concat(Stream.of("any"), Arrays.stream(TarkovStructureFeature.StructureKind.values())
+			.map(kind -> kind.name().toLowerCase(Locale.ROOT))).toList();
 		List<String> poolNames = TarkovLootPool.allIds();
-		List<String> crateBlockNames = List.of("default", "weapon_crate", "medbag", "technical_crate", "airdrop_crate");
+		List<String> crateBlockNames = Stream.concat(Stream.of("default"), Registries.BLOCK.stream()
+			.filter(SearchableLootBlock.class::isInstance).map(Registries.BLOCK::getId)
+			.map(id -> TarkovCraftMod.MOD_ID.equals(id.getNamespace()) ? id.getPath() : StringArgumentType.escapeIfRequired(id.toString())))
+			.toList();
 
 		dispatcher.register(CommandManager.literal("tarkov")
 			.requires(source -> source.hasPermissionLevel(2))
+			.then(ArenaEventCommands.commands())
+			.then(RaidCommands.admin())
+			.then(RaidCommands.lobby())
+			.then(CommandManager.literal("admin")
+				.executes(ctx -> AdminMenuScreenHandler.open(ctx.getSource().getPlayerOrThrow()) ? 1 : 0))
 			.then(CommandManager.literal("kit")
 				.executes(ctx -> giveStarterKit(ctx.getSource())))
 			.then(CommandManager.literal("meds")
 				.executes(ctx -> giveMedicalKit(ctx.getSource())))
+			.then(CommandManager.literal("clear_loadout")
+				.executes(ctx -> clearLoadout(ctx.getSource())))
 			.then(CommandManager.literal("loot")
 				.executes(ctx -> spawnLootCrate(ctx.getSource(), "military", "default"))
 				.then(CommandManager.argument("pool", StringArgumentType.word())
@@ -88,7 +108,7 @@ public final class TarkovCommand {
 							StringArgumentType.getString(ctx, "pool"),
 							"default", -1, -1
 						))
-						.then(CommandManager.argument("block", StringArgumentType.word())
+						.then(CommandManager.argument("block", StringArgumentType.string())
 							.suggests((ctx, builder) -> CommandSource.suggestMatching(crateBlockNames, builder))
 							.executes(ctx -> giveLootCrate(
 								ctx.getSource(),
@@ -117,7 +137,7 @@ public final class TarkovCommand {
 							StringArgumentType.getString(ctx, "pool"),
 							"default"
 						))
-						.then(CommandManager.argument("block", StringArgumentType.word())
+						.then(CommandManager.argument("block", StringArgumentType.string())
 							.suggests((ctx, builder) -> CommandSource.suggestMatching(crateBlockNames, builder))
 							.executes(ctx -> spawnLootCrate(
 								ctx.getSource(),
@@ -283,6 +303,17 @@ public final class TarkovCommand {
 		return 1;
 	}
 
+	private static int clearLoadout(ServerCommandSource source) {
+		ServerPlayerEntity player = source.getPlayer();
+		if (player == null || !(player instanceof PlayerLoadoutHolder holder)) return 0;
+		holder.tarkovcraft$getLoadout().clear();
+		player.getInventory().clear();
+		holder.tarkovcraft$syncLoadout();
+		player.playerScreenHandler.sendContentUpdates();
+		source.sendFeedback(() -> Text.literal("Инвентарь и снаряжение очищены."), false);
+		return 1;
+	}
+
 	private static int simulateHit(ServerCommandSource source, String zoneStr, float damage, int penetration) {
 		ServerPlayerEntity player = source.getPlayer();
 		if (player == null || !(player instanceof PlayerLoadoutHolder holder)) return 0;
@@ -405,12 +436,10 @@ public final class TarkovCommand {
 		if (blockName == null || blockName.isBlank() || "default".equalsIgnoreCase(blockName)) {
 			return SearchableLootBlock.defaultBlockForPool(pool);
 		}
-		return switch (blockName.toLowerCase(java.util.Locale.ROOT)) {
-			case "weapon_crate" -> ModBlocks.WEAPON_CRATE;
-			case "medbag" -> ModBlocks.MEDBAG;
-			case "airdrop_crate" -> ModBlocks.AIRDROP_CRATE;
-			default -> ModBlocks.TECHNICAL_CRATE;
-		};
+		String key = blockName.toLowerCase(Locale.ROOT);
+		Identifier id = Identifier.tryParse(key.contains(":") ? key : TarkovCraftMod.MOD_ID + ":" + key);
+		return id != null && Registries.BLOCK.get(id) instanceof SearchableLootBlock block
+			? block : ModBlocks.TECHNICAL_CRATE;
 	}
 
 	private static int listLootPools(ServerCommandSource source) {
@@ -747,20 +776,22 @@ public final class TarkovCommand {
 	}
 
 	private static int spawnAirdropNear(ServerCommandSource source) {
-		ServerPlayerEntity player = source.getPlayer();
-		if (player == null) {
-			return 0;
-		}
-		AirdropManager.spawnAirdropNear(player);
-		return 1;
+		return spawnAirdrop(source, false);
 	}
 
 	private static int spawnAirdropHere(ServerCommandSource source) {
+		return spawnAirdrop(source, true);
+	}
+
+	private static int spawnAirdrop(ServerCommandSource source, boolean here) {
 		ServerPlayerEntity player = source.getPlayer();
 		if (player == null) {
 			return 0;
 		}
-		AirdropManager.spawnAirdropAt(player.getServerWorld(), player.getBlockX(), player.getBlockZ(), true);
+		if (AirdropManager.spawnFromCommand(player, here) == null) {
+			source.sendError(Text.literal("Airdrop unavailable here. Check arena settings and landing points."));
+			return 0;
+		}
 		return 1;
 	}
 

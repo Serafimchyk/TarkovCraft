@@ -1,5 +1,7 @@
 package com.tarkovcraft.entity;
 
+import com.tarkovcraft.arena.RaidSession;
+
 import com.tarkovcraft.health.BodyPartHealth;
 import com.tarkovcraft.health.HitZone;
 import com.tarkovcraft.health.InjuryType;
@@ -192,6 +194,11 @@ public class TarkovGrenadeEntity extends ThrownItemEntity {
 		}
 	}
 
+	private static boolean canAffect(LivingEntity entity) {
+		return entity.isAlive() && !entity.isSpectator()
+			&& (!(entity instanceof ServerPlayerEntity player) || !RaidSession.isLobby(player));
+	}
+
 	private void detonateFrag(ServerWorld sw) {
 		sw.playSound(null, getX(), getY(), getZ(),
 			SoundEvents.ENTITY_GENERIC_EXPLODE, SoundCategory.PLAYERS, 3.0f, 0.9f);
@@ -207,7 +214,7 @@ public class TarkovGrenadeEntity extends ThrownItemEntity {
 		String weaponName = getStack().isEmpty() ? grenadeType.name() : getStack().getName().getString();
 
 		List<LivingEntity> targets = sw.getEntitiesByClass(LivingEntity.class, getBoundingBox().expand(radius),
-			e -> e.isAlive() && !e.isSpectator());
+			TarkovGrenadeEntity::canAffect);
 		for (LivingEntity target : targets) {
 			double dist = origin.distanceTo(target.getPos().add(0.0, target.getHeight() * 0.5, 0.0));
 			if (dist > radius) {
@@ -227,30 +234,8 @@ public class TarkovGrenadeEntity extends ThrownItemEntity {
 			if (target instanceof ServerPlayerEntity sp && !sp.isCreative() && !sp.isSpectator()
 				&& sp instanceof PlayerLoadoutHolder holder) {
 				BodyPartHealth health = holder.tarkovcraft$getBodyHealth();
-				float perZone = effectiveDmg / 4.0f;
-				for (int i = 0; i < 4; i++) {
-					HitZone zone = (i == 0) ? HitZone.THORAX : FRAG_ZONES[random.nextInt(FRAG_ZONES.length)];
-					health.applyHit(
-						holder.tarkovcraft$getLoadout(),
-						zone,
-						perZone,
-						grenadeType.getPenetrationPower(),
-						1.0f, false, false, 1.0f,
-						random.nextFloat(),
-						random.nextFloat(),
-						killerName,
-						weaponName,
-						"Shrapnel",
-						(float) dist
-					);
-				}
-
-				if (random.nextFloat() < grenadeType.getBleedChance() * falloff * exposure) {
-					HitZone bleedZone = FRAG_ZONES[random.nextInt(FRAG_ZONES.length)];
-					health.addInjury(bleedZone.getBodyPart(),
-						falloff > 0.6f ? InjuryType.HEAVY_BLEED : InjuryType.LIGHT_BLEED);
-				}
-
+				applyShrapnel(holder.tarkovcraft$getLoadout(), health, effectiveDmg,
+					falloff, exposure, killerName, weaponName, (float) dist);
 				holder.tarkovcraft$syncBodyHealth();
 				holder.tarkovcraft$syncLoadout();
 				if (health.isDead()) {
@@ -259,6 +244,10 @@ public class TarkovGrenadeEntity extends ThrownItemEntity {
 				} else {
 					sp.setHealth(Math.max(1.0f, health.getTotalRatio() * sp.getMaxHealth()));
 				}
+			} else if (target instanceof SleeperPlayerEntity sleeper) {
+				applyShrapnel(sleeper.getLoadout(), sleeper.getBodyHealth(), effectiveDmg,
+					falloff, exposure, killerName, weaponName, (float) dist);
+				sleeper.finishZonalDamage(source);
 			} else if (!(target instanceof PlayerEntity)) {
 				target.damage(source, Math.max(1.0f, effectiveDmg / 9.0f));
 			}
@@ -274,6 +263,21 @@ public class TarkovGrenadeEntity extends ThrownItemEntity {
 		discard();
 	}
 
+	private void applyShrapnel(PlayerLoadout loadout, BodyPartHealth health, float damage,
+			float falloff, float exposure, String killer, String weapon, float distance) {
+		for (int i = 0; i < 4; i++) {
+			HitZone zone = i == 0 ? HitZone.THORAX : FRAG_ZONES[random.nextInt(FRAG_ZONES.length)];
+			health.applyHit(loadout, zone, damage / 4.0f, grenadeType.getPenetrationPower(),
+				1.0f, false, false, 1.0f, random.nextFloat(), random.nextFloat(),
+				killer, weapon, "Shrapnel", distance);
+		}
+		if (random.nextFloat() < grenadeType.getBleedChance() * falloff * exposure) {
+			HitZone bleedZone = FRAG_ZONES[random.nextInt(FRAG_ZONES.length)];
+			health.addInjury(bleedZone.getBodyPart(),
+				falloff > 0.6f ? InjuryType.HEAVY_BLEED : InjuryType.LIGHT_BLEED);
+		}
+	}
+
 	private void detonateFlash(ServerWorld sw) {
 		sw.playSound(null, getX(), getY(), getZ(),
 			SoundEvents.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, SoundCategory.PLAYERS, 3.0f, 1.4f);
@@ -285,7 +289,7 @@ public class TarkovGrenadeEntity extends ThrownItemEntity {
 		float radius = grenadeType.getBlastRadius();
 		Vec3d origin = getPos().add(0.0, 0.25, 0.0);
 		List<LivingEntity> targets = sw.getEntitiesByClass(LivingEntity.class, getBoundingBox().expand(radius),
-			e -> e.isAlive() && !e.isSpectator());
+			TarkovGrenadeEntity::canAffect);
 		for (LivingEntity target : targets) {
 			double dist = origin.distanceTo(target.getEyePos());
 			if (dist > radius) {
@@ -350,7 +354,7 @@ public class TarkovGrenadeEntity extends ThrownItemEntity {
 			if (cloudRemaining % 8 == 0) {
 				Box box = getBoundingBox().expand(radius, 3.8, radius);
 				List<LivingEntity> targets = sw.getEntitiesByClass(LivingEntity.class, box,
-					e -> e.isAlive() && !e.isSpectator());
+					TarkovGrenadeEntity::canAffect);
 				Vec3d origin = getPos();
 				for (LivingEntity target : targets) {
 					double dx = target.getX() - origin.x;
@@ -378,7 +382,7 @@ public class TarkovGrenadeEntity extends ThrownItemEntity {
 			if (cloudRemaining % 10 == 0) {
 				Box box = getBoundingBox().expand(radius);
 				List<LivingEntity> targets = sw.getEntitiesByClass(LivingEntity.class, box,
-					e -> e.isAlive() && !e.isSpectator());
+					TarkovGrenadeEntity::canAffect);
 				Vec3d origin = getPos();
 				for (LivingEntity target : targets) {
 					if (target.getPos().distanceTo(origin) > radius) {
@@ -411,6 +415,9 @@ public class TarkovGrenadeEntity extends ThrownItemEntity {
 	}
 
 	public static boolean hasGasMaskProtection(LivingEntity entity) {
+		if (entity instanceof SleeperPlayerEntity sleeper) {
+			return hasGasMaskProtection(sleeper.getLoadout());
+		}
 		if (!(entity instanceof PlayerLoadoutHolder holder)) {
 			return false;
 		}

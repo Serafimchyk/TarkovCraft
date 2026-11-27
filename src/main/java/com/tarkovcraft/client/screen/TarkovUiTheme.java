@@ -92,6 +92,10 @@ public final class TarkovUiTheme {
 	private TarkovUiTheme() {
 	}
 
+	public static void drawLobbyBackground(DrawContext context, int width, int height) {
+		context.fillGradient(0, 0, width, height, 0xFF22282A, 0xFF0C0F12);
+	}
+
 	public static void clearDepthBuffer(DrawContext ctx) {
 		ctx.draw();
 		RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, MinecraftClient.IS_SYSTEM_MAC);

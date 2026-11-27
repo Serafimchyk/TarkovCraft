@@ -44,6 +44,9 @@ public abstract class PlayerEntityMixin implements PlayerLoadoutHolder {
 	private final PlayerLoadout tarkovcraft$loadout = new PlayerLoadout();
 
 	@Unique
+	private Long tarkovcraft$lastLoadoutSyncHash;
+
+	@Unique
 	private final BodyPartHealth tarkovcraft$bodyHealth = new BodyPartHealth();
 
 	@Override
@@ -55,7 +58,17 @@ public abstract class PlayerEntityMixin implements PlayerLoadoutHolder {
 	public void tarkovcraft$syncLoadout() {
 		PlayerEntity self = (PlayerEntity) (Object) this;
 		if (self instanceof ServerPlayerEntity serverPlayer) {
+			tarkovcraft$loadout.sanitizeEmptyStacks();
 			TarkovNetworking.sendLoadoutSync(serverPlayer, tarkovcraft$loadout);
+			tarkovcraft$lastLoadoutSyncHash = tarkovcraft$loadout.computeSyncHash();
+		}
+	}
+
+	@Override
+	public void tarkovcraft$syncLoadoutIfChanged() {
+		tarkovcraft$loadout.sanitizeEmptyStacks();
+		if (tarkovcraft$lastLoadoutSyncHash == null || tarkovcraft$lastLoadoutSyncHash != tarkovcraft$loadout.computeSyncHash()) {
+			tarkovcraft$syncLoadout();
 		}
 	}
 

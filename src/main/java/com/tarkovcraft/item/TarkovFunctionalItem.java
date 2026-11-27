@@ -14,13 +14,14 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Functional Tarkov item for tactical headsets, storage cases, and grenades.
+ * Catalog item with Tarkov grid size, weight and rarity.
  */
 public class TarkovFunctionalItem extends Item implements TarkovSizedItem {
 	private final String category;
 	private final ItemSize storedItemSize;
 	private final ItemRarityTier rarityTier;
 	private final float weightKg;
+	private final long basePrice;
 
 	public TarkovFunctionalItem(
 		Settings settings,
@@ -29,11 +30,19 @@ public class TarkovFunctionalItem extends Item implements TarkovSizedItem {
 		ItemRarityTier rarityTier,
 		float weightKg
 	) {
-		super("grenade".equalsIgnoreCase(category) ? settings.maxCount(4) : settings.maxCount(1));
+		this(settings, category, storedItemSize, rarityTier, weightKg, 0);
+	}
+
+	public TarkovFunctionalItem(
+		Settings settings, String category, ItemSize storedItemSize, ItemRarityTier rarityTier, float weightKg,
+		long basePrice
+	) {
+		super(settings.maxCount("barter".equals(category) ? 64 : "grenade".equalsIgnoreCase(category) ? 4 : 1));
 		this.category = category != null ? category : "gear";
 		this.storedItemSize = storedItemSize != null ? storedItemSize : ItemSize.ONE_BY_ONE;
 		this.rarityTier = rarityTier != null ? rarityTier : ItemRarityTier.UNCOMMON;
 		this.weightKg = Math.max(0.0f, weightKg);
+		this.basePrice = Math.max(0L, basePrice);
 	}
 
 	public String getCategory() {
@@ -42,6 +51,14 @@ public class TarkovFunctionalItem extends Item implements TarkovSizedItem {
 
 	public boolean isHeadset() {
 		return "headset".equals(category);
+	}
+
+	public boolean isValuable() {
+		return "valuable".equals(category);
+	}
+
+	public long getBasePrice() {
+		return basePrice;
 	}
 
 	@Override
@@ -66,6 +83,9 @@ public class TarkovFunctionalItem extends Item implements TarkovSizedItem {
 			storedItemSize.width(), storedItemSize.height()).formatted(Formatting.GRAY));
 		tooltip.add(Text.translatable("tooltip.tarkovcraft.med_weight",
 			String.format(Locale.ROOT, "%.2f", weightKg)).formatted(Formatting.DARK_GRAY));
+		if (basePrice > 0) {
+			tooltip.add(Text.translatable("tooltip.tarkovcraft.value_rubles", basePrice).formatted(Formatting.GOLD));
+		}
 	}
 
 	private static String formatCategory(String raw) {

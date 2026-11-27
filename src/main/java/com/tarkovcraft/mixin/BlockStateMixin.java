@@ -1,12 +1,9 @@
 package com.tarkovcraft.mixin;
 
+import com.tarkovcraft.block.WorldBlockInteraction;
 import com.tarkovcraft.container.VanillaContainerBridge;
-import com.tarkovcraft.item.HeldItemInteraction;
 import net.minecraft.block.AbstractBlock;
 import net.minecraft.block.Block;
-import net.minecraft.block.DoorBlock;
-import net.minecraft.block.FenceGateBlock;
-import net.minecraft.block.TrapdoorBlock;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
@@ -24,11 +21,12 @@ public abstract class BlockStateMixin {
 	public abstract Block getBlock();
 
 	@Inject(method = "onUse", at = @At("HEAD"), cancellable = true)
-	private void tarkovcraft$passToHeldItem(World world, PlayerEntity player, Hand hand, BlockHitResult hit,
+	private void tarkovcraft$reserveWorldInteraction(World world, PlayerEntity player, Hand hand, BlockHitResult hit,
 			CallbackInfoReturnable<ActionResult> result) {
 		Block block = getBlock();
-		if ((block instanceof DoorBlock || block instanceof TrapdoorBlock || block instanceof FenceGateBlock
-				|| VanillaContainerBridge.isSupportedBlock(block)) && HeldItemInteraction.takesPriority(player, hand)) {
+		if (!player.isCreative() && !player.isSpectator()
+			&& (WorldBlockInteraction.isOpenable(block) || VanillaContainerBridge.isSupportedBlock(block))) {
+			// Skip the block action while letting vanilla continue to the item in hand.
 			result.setReturnValue(ActionResult.PASS);
 		}
 	}

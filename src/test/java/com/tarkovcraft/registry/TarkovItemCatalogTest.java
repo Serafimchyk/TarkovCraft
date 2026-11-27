@@ -52,6 +52,7 @@ import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -74,7 +75,7 @@ class TarkovItemCatalogTest {
 		JsonObject root = loadCatalogRoot();
 		assertTrue(root.has("items") && root.get("items").isJsonArray(), "Catalog must contain items array");
 		JsonArray items = root.getAsJsonArray("items");
-		assertEquals(642, items.size(), "Catalog must contain 642 dynamic items");
+		assertEquals(654, items.size(), "Catalog must contain 654 dynamic items");
 
 		Set<String> seenIds = new HashSet<>();
 		Set<String> validMaterials = Set.of("COSMETIC", "ARAMID", "UHMWPE", "COMBINED", "TITANIUM", "STEEL");
@@ -174,8 +175,31 @@ class TarkovItemCatalogTest {
 				assertTrue(union.add(item), "Duplicate item across creative buckets: " + Registries.ITEM.getId(item));
 			}
 		}
-		assertEquals(642, sum);
-		assertEquals(642, union.size());
+		assertEquals(654, sum);
+		assertEquals(654, union.size());
+	}
+
+	@Test
+	void newCraftingComponentsStackAndTrophiesFitInSecureContainer() {
+		for (String id : List.of("gunpowder_hawk", "brass_casings", "kevlar_fabric",
+			"ceramic_plate_raw", "military_electronics", "weapon_parts")) {
+			var component = assertInstanceOf(TarkovFunctionalItem.class,
+				Registries.ITEM.get(new Identifier(TarkovCraftMod.MOD_ID, id)));
+			assertEquals("barter", component.getCategory());
+			assertEquals(64, component.getMaxCount());
+		}
+
+		var prices = Map.of("loot_gold_chain", 15_000L, "loot_rolex", 35_000L, "loot_intel_folder", 60_000L,
+			"loot_gpu", 95_000L, "loot_ledx", 140_000L, "loot_bitcoin", 180_000L);
+		prices.forEach((id, price) -> {
+			var trophy = assertInstanceOf(TarkovFunctionalItem.class,
+				Registries.ITEM.get(new Identifier(TarkovCraftMod.MOD_ID, id)));
+			assertTrue(trophy.isValuable());
+			assertEquals(price.longValue(), trophy.getBasePrice());
+			assertEquals(1, trophy.getMaxCount());
+			assertTrue(PlayerLoadout.canPlaceInSecureContainer(new ItemStack(trophy)));
+			assertNotNull(new GridContainer(2, 2).tryPlaceInFreeCell(new ItemStack(trophy)));
+		});
 	}
 
 	@Test

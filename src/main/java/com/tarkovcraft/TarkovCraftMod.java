@@ -1,12 +1,14 @@
 package com.tarkovcraft;
 
 import com.tarkovcraft.ammo.AmmoReloadTracker;
+import com.tarkovcraft.arena.ArenaBossSpawner;
+import com.tarkovcraft.arena.ArenaEvents;
+import com.tarkovcraft.arena.RaidSession;
 import com.tarkovcraft.command.TarkovCommand;
 import com.tarkovcraft.container.VanillaContainerBridge;
 import com.tarkovcraft.grid.ItemSizeRegistry;
 import com.tarkovcraft.health.BodyHealthTicker;
 import com.tarkovcraft.health.TaCZBulletHelper;
-import com.tarkovcraft.item.HeldItemInteraction;
 import com.tarkovcraft.loadout.PlayerLoadoutHolder;
 import com.tarkovcraft.item.TarkovArmorRepairItem;
 import com.tarkovcraft.network.AmmoSelectionNetworking;
@@ -34,7 +36,6 @@ import net.minecraft.resource.ResourceType;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.GameRules;
@@ -54,7 +55,10 @@ public class TarkovCraftMod implements ModInitializer {
 		ModScreenHandlers.init();
 		com.tarkovcraft.worldgen.ModWorldGen.init();
 		com.tarkovcraft.entity.MobGearSpawner.register();
+		ArenaBossSpawner.register();
+		RaidSession.register();
 		TarkovNetworking.registerServerReceivers();
+		com.tarkovcraft.network.AdminItemNetworking.register();
 		AmmoSelectionNetworking.register();
 		EquipmentAppearanceSync.register();
 		ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> TaCZBulletHelper.onEntityLoad(entity));
@@ -81,13 +85,17 @@ public class TarkovCraftMod implements ModInitializer {
 		// Tick open TarkovScreenHandlers + bleeding/injury penalties + TaCZ reload tracking + Airdrops + MedUse
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
 			com.tarkovcraft.airdrop.AirdropManager.tickServer(server);
+			ArenaEvents.tick(server);
 			for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
-				BodyHealthTicker.tickPlayer(player);
+				if (!RaidSession.isLobby(player)) BodyHealthTicker.tickPlayer(player);
 				com.tarkovcraft.health.MedicalUseManager.tickPlayer(player);
 				TarkovArmorRepairItem.tickPlayer(player);
 				AmmoReloadTracker.tickPlayer(player);
 				if (player.currentScreenHandler instanceof TarkovScreenHandler tsh) {
 					tsh.tickServer(player);
+				}
+				if (player instanceof PlayerLoadoutHolder holder) {
+					holder.tarkovcraft$syncLoadoutIfChanged();
 				}
 			}
 		});
@@ -135,8 +143,7 @@ public class TarkovCraftMod implements ModInitializer {
 			}
 		});
 
-		// Vanilla storage containers: track player-placed containers so hourly city auto-loot never overwrites personal storage,
-		// and intercept Survival/Adventure RMB into EFT search UI (respecting Shift+RMB, Creative, and TaCZ ADS)
+		// Mark player-placed vanilla containers so they do not generate loot.
 		java.util.Queue<java.util.Map.Entry<ServerWorld, BlockPos>> pendingPlayerPlaced = new java.util.concurrent.ConcurrentLinkedQueue<>();
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
 			java.util.Map.Entry<ServerWorld, BlockPos> placed;
@@ -155,24 +162,15 @@ public class TarkovCraftMod implements ModInitializer {
 				net.minecraft.item.ItemStack held = player.getStackInHand(hand);
 				if (held.getItem() instanceof net.minecraft.item.BlockItem bi
 					&& VanillaContainerBridge.isSupportedBlock(bi.getBlock())
-					&& (!VanillaContainerBridge.isSupportedBlock(state.getBlock()) || player.shouldCancelInteraction() || player.isCreative())) {
+					&& (!player.isCreative() || !VanillaContainerBridge.isSupportedBlock(state.getBlock())
+						|| player.shouldCancelInteraction())) {
 					BlockPos placePos = state.isReplaceable() ? pos : pos.offset(hitResult.getSide());
-					pendingPlayerPlaced.add(java.util.Map.entry(sw, placePos.toImmutable()));
+					if (sw.getBlockState(placePos).isReplaceable()) {
+						pendingPlayerPlaced.add(java.util.Map.entry(sw, placePos.toImmutable()));
+					}
 				}
 			}
-			if (!VanillaContainerBridge.isSupportedBlock(state.getBlock())) {
-				return ActionResult.PASS;
-			}
-			if (player.shouldCancelInteraction() || player.isCreative()) {
-				return ActionResult.PASS;
-			}
-			if (HeldItemInteraction.takesPriority(player, hand)) {
-				return ActionResult.PASS;
-			}
-			if (!world.isClient && hand == Hand.MAIN_HAND && player instanceof ServerPlayerEntity sp) {
-				VanillaContainerBridge.tryOpenForPlayer(sp, pos);
-			}
-			return ActionResult.SUCCESS;
+			return ActionResult.PASS;
 		});
 
 		PlayerBlockBreakEvents.AFTER.register((world, player, pos, state, blockEntity) -> {

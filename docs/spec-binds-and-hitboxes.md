@@ -1,9 +1,9 @@
 # Спецификация: Фикс конфликтов биндов (TaCZ / F), 3D OBB-хитбоксы попаданий и отладочный рендер (F3+B / F8)
 
-> **Статус:** Утверждённая архитектурная спецификация (`architect`, `gemini-4-neon-high`)  
+> **Статус:** Утверждённая архитектурная спецификация
 > **Стек:** Minecraft `1.20.1`, Fabric Loader `0.16.10`, Fabric API `0.92.12+1.20.1`, Yarn `1.20.1+build.10`, Java `17`  
 > **Среда (`fabric.mod.json`):** `environment: "*"` — строгая изоляция клиентских классов (`com.tarkovcraft.client.*` и клиентских миксинов).  
-> **Изменения Mixin-конфига:** `"KeyBindingMixin"` уже добавлен `architect` строго в секцию `"client"` файла `src/main/resources/tarkovcraft.mixins.json`. `fabric.mod.json` и `build.gradle` не меняются.
+> **Изменения Mixin-конфига:** `"KeyBindingMixin"` уже добавлен в секцию `"client"` файла `src/main/resources/tarkovcraft.mixins.json`. `fabric.mod.json` и `build.gradle` не меняются.
 
 ---
 
@@ -260,9 +260,9 @@ public record RayHit(HitZone zone, double distance, Vec3d hitPos) {}
 
 ---
 
-## 4. Локализация (`assets-worker`) и план тестов (`java-coder`)
+## 4. Локализация и план тестов
 
-### 4.1 Новые ключи локализации для `assets-worker` (`en_us.json` и `ru_ru.json`)
+### 4.1 Новые ключи локализации (`en_us.json` и `ru_ru.json`)
 
 | Ключ | EN (`en_us.json`) | RU (`ru_ru.json`) |
 | :--- | :--- | :--- |
@@ -299,10 +299,10 @@ public record RayHit(HitZone zone, double distance, Vec3d hitPos) {}
 
 ## 5. Границы файлов и критерии приёмки
 
-- **`architect` (уже выполнено):** `src/main/resources/tarkovcraft.mixins.json` (`"KeyBindingMixin"` в `"client"`), `docs/spec-binds-and-hitboxes.md`.
-- **`java-coder` (`src/main/java/**`, `src/test/java/**`):**
+- **Конфигурация и спецификация (уже выполнено):** `src/main/resources/tarkovcraft.mixins.json` (`"KeyBindingMixin"` в `"client"`), `docs/spec-binds-and-hitboxes.md`.
+- **Java-код и тесты (`src/main/java/**`, `src/test/java/**`):**
   - Новые: `src/main/java/com/tarkovcraft/mixin/KeyBindingMixin.java`, `src/main/java/com/tarkovcraft/health/HitZoneBoxes.java`, `src/main/java/com/tarkovcraft/client/renderer/HitZoneDebugRenderer.java`, `src/test/java/com/tarkovcraft/health/HitZoneBoxesTest.java`.
   - Изменяемые: `PlayerInventoryMixin.java` (`removeStack(int)` + `insertStack(int, ItemStack)`), `HitZoneResolver.java`, `TaCZBulletHelper.java`, `PlayerEntityMixin.java`, `TarkovCraftClient.java`.
-- **`assets-worker` (`src/main/resources/assets/tarkovcraft/lang/*.json`):**
+- **Ресурсы (`src/main/resources/assets/tarkovcraft/lang/*.json`):**
   - +3 синхронизированных ключа (`key.tarkovcraft.toggle_hitboxes`, `message.tarkovcraft.hitboxes_on`, `message.tarkovcraft.hitboxes_off`).
 - **Верификация:** `.\gradlew.bat build --no-daemon` (JDK 17) — компиляция, все 36 существующих + новые `HitZoneBoxesTest` зелёные, `remapJar` успешен, `HitZoneBoxes` без клиентских импортов, `KeyBindingMixin` строго в `"client"`.
