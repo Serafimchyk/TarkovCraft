@@ -1,6 +1,7 @@
 package com.tarkovcraft.lobby;
 
 import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.grid.ContainerItemHelper;
 import com.tarkovcraft.item.BackpackItem;
 import com.tarkovcraft.item.TacticalRigItem;
 import com.tarkovcraft.item.TarkovArmorItem;
@@ -14,6 +15,8 @@ public final class ItemPriceCalculator {
 
 	public static long basePrice(ItemStack stack) {
 		if (stack.isEmpty()) return 0;
+		var reference = TarkovDevPrices.forStack(stack);
+		if (reference != null) return reference.unitPrice();
 		int rarity = ItemRarityRegistry.getTier(stack).ordinal();
 		long price = switch (rarity) {
 			case 1 -> 1400;
@@ -40,12 +43,26 @@ public final class ItemPriceCalculator {
 		return price;
 	}
 
-	public static long buyPrice(ItemStack stack, double demand) {
-		return Math.max(1, Math.round(basePrice(stack) * stack.getCount() * durabilityRatio(stack) * demand));
+	public static long buyPrice(ItemStack stack) {
+		return Math.max(1, Math.round(basePrice(stack) * stack.getCount() * durabilityRatio(stack)));
+	}
+
+	public static TarkovDevPrices.Source priceSource(ItemStack stack) {
+		var reference = TarkovDevPrices.forStack(stack);
+		return reference == null ? TarkovDevPrices.Source.LOCAL : reference.source();
 	}
 
 	public static long sellPrice(ItemStack stack) {
-		return Math.round(basePrice(stack) * stack.getCount() * durabilityRatio(stack) * 0.52);
+		// The payout stays below the acquisition price even for low-priced third-party offers.
+		var reference = TarkovDevPrices.forStack(stack);
+		double cap = basePrice(stack) * 0.52;
+		double unitPrice = reference != null && reference.fencePrice() > 0 ? Math.min(cap, reference.fencePrice()) : cap;
+		return Math.round(unitPrice * stack.getCount() * durabilityRatio(stack));
+	}
+
+	public static boolean canSell(ItemStack stack) {
+		return !stack.isEmpty() && sellPrice(stack) > 0
+			&& ContainerItemHelper.readAllGrids(stack).stream().allMatch(com.tarkovcraft.grid.GridContainer::isEmpty);
 	}
 
 	private static double durabilityRatio(ItemStack stack) {

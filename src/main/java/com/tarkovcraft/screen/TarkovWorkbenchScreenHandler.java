@@ -44,12 +44,13 @@ public class TarkovWorkbenchScreenHandler extends ScreenHandler {
 	}
 
 	public static void openForPlayer(ServerPlayerEntity player, @Nullable BlockPos pos) {
-		if (pos == null && !LobbyTabNavigation.canUse(player)) return;
+		final BlockPos workshop = com.tarkovcraft.arena.RaidSession.isLobby(player) ? null : pos;
+		if (workshop == null && !LobbyTabNavigation.canUse(player)) return;
 		player.openHandledScreen(new ExtendedScreenHandlerFactory() {
 			@Override
 			public void writeScreenOpeningData(ServerPlayerEntity p, PacketByteBuf buf) {
-				buf.writeBoolean(pos == null);
-				if (pos != null) buf.writeBlockPos(pos);
+				buf.writeBoolean(workshop == null);
+				if (workshop != null) buf.writeBlockPos(workshop);
 			}
 
 			@Override
@@ -60,7 +61,7 @@ public class TarkovWorkbenchScreenHandler extends ScreenHandler {
 			@Nullable
 			@Override
 			public ScreenHandler createMenu(int syncId, PlayerInventory inv, PlayerEntity p) {
-				return new TarkovWorkbenchScreenHandler(syncId, inv, pos);
+				return new TarkovWorkbenchScreenHandler(syncId, inv, workshop);
 			}
 		});
 		if (player.currentScreenHandler instanceof TarkovWorkbenchScreenHandler wb) {

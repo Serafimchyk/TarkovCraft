@@ -48,6 +48,8 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 	private record ClickButton(Rect rect, Runnable action) {
 	}
 
+	private enum AmmoSort { CALIBER, GROUP, PEN_ASC, PEN_DESC }
+
 	private enum GearSortMode {
 		DEFAULT("ui.tarkovcraft.wb_sort_default"),
 		ARMOR_DESC("ui.tarkovcraft.wb_sort_armor_desc"),
@@ -78,7 +80,9 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 	private int contentHeight;
 
 	// Ammo tab state
-	private int selectedCaliberIndex = 0;
+	private String selectedCaliber = "tacz:9mm";
+	private AmmoSort ammoSort = AmmoSort.CALIBER;
+	private TextFieldWidget ammoSearch;
 	private AmmoTier selectedTier = AmmoTier.AP;
 	private boolean upgradeFromFmj = false;
 	private int ammoScrollY = 0;
@@ -119,6 +123,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		this.backgroundHeight = contentHeight;
 
 		String prevQuery = searchBox != null ? searchBox.getText() : "";
+		String prevAmmoQuery = ammoSearch != null ? ammoSearch.getText() : "";
 		int panelW = Math.min(620, contentWidth - 24);
 		int panelX = (contentWidth - panelW) / 2;
 		int bodyY = TarkovUiTheme.TOP_BAR_H + 8;
@@ -141,6 +146,15 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		});
 		searchBox.setVisible(activeTab == TAB_GEAR);
 		addDrawableChild(searchBox);
+
+		ammoSearch = new TextFieldWidget(textRenderer, panelX + 6, bodyY + 6,
+			Math.max(170, Math.round(panelW * 0.39f)) - 14, 15, Text.translatable("ui.tarkovcraft.wb_ammo_search"));
+		ammoSearch.setMaxLength(48);
+		ammoSearch.setPlaceholder(Text.translatable("ui.tarkovcraft.wb_ammo_search"));
+		ammoSearch.setText(prevAmmoQuery);
+		ammoSearch.setChangedListener(value -> ammoScrollY = 0);
+		ammoSearch.setVisible(activeTab == TAB_AMMO);
+		addDrawableChild(ammoSearch);
 	}
 
 	@Override
@@ -154,10 +168,12 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 	@Override
 	public void render(DrawContext context, int mouseX, int mouseY, float delta) {
 		buttons.clear();
-		context.fill(0, 0, this.width, this.height, TarkovUiTheme.BG_WORLD_OVERLAY);
+		TarkovUiTheme.drawLobbyBackground(context, width, height);
+		TarkovUiTheme.clearDepthBuffer(context);
 
 		if (searchBox != null) {
 			searchBox.setVisible(activeTab == TAB_GEAR);
+			ammoSearch.setVisible(activeTab == TAB_AMMO);
 		}
 
 		context.getMatrices().push();
@@ -177,7 +193,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		int panelX = (contentWidth - panelW) / 2;
 		int panelY = TarkovUiTheme.TOP_BAR_H + 8;
 
-		context.fill(panelX, panelY, panelX + panelW, panelY + panelH, TarkovUiTheme.BG_PANEL);
+		context.fill(panelX, panelY, panelX + panelW, panelY + panelH, TarkovUiTheme.opaque(TarkovUiTheme.BG_PANEL));
 		context.drawBorder(panelX, panelY, panelW, panelH, TarkovUiTheme.BORDER_PANEL);
 
 		if (activeTab == TAB_AMMO) {
@@ -203,7 +219,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 
 	private void renderTopBar(DrawContext context, int mouseX, int mouseY) {
 		int h = TarkovUiTheme.TOP_BAR_H;
-		context.fill(0, 0, contentWidth, h, TarkovUiTheme.BG_TOP_BAR);
+		context.fill(0, 0, contentWidth, h, TarkovUiTheme.opaque(TarkovUiTheme.BG_TOP_BAR));
 		context.fill(0, h, contentWidth, h + 1, TarkovUiTheme.BORDER_PANEL);
 
 		String title = Text.translatable("screen.tarkovcraft.workbench").getString().toUpperCase(Locale.ROOT);
@@ -220,8 +236,13 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		drawTopTab(context, new Rect(tabX, 4, ammoW, 18), ammoLabel, activeTab == TAB_AMMO, mouseX, mouseY, () -> {
 			activeTab = TAB_AMMO;
 			if (searchBox != null) searchBox.setFocused(false);
+			setFocused(null);
 		});
-		drawTopTab(context, new Rect(tabX + ammoW + 6, 4, gearW, 18), gearLabel, activeTab == TAB_GEAR, mouseX, mouseY, () -> activeTab = TAB_GEAR);
+		drawTopTab(context, new Rect(tabX + ammoW + 6, 4, gearW, 18), gearLabel, activeTab == TAB_GEAR, mouseX, mouseY, () -> {
+			activeTab = TAB_GEAR;
+			if (ammoSearch != null) ammoSearch.setFocused(false);
+			setFocused(null);
+		});
 
 		String backTxt = Text.translatable("ui.tarkovcraft.back_esc").getString();
 		int bw = Math.max(66, Math.round(textRenderer.getWidth(backTxt) * TarkovUiTheme.TEXT_SCALE_SMALL) + 14);
@@ -252,20 +273,31 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		int rightW = pw - leftW - 1;
 		context.fill(px + leftW, py + 1, px + leftW + 1, py + ph - 1, TarkovUiTheme.BORDER_PANEL);
 
-		List<TaCZCaliberCatalog.CaliberSpec> calibers = TaCZCaliberCatalog.getAllCalibersWithExtras(ClientWorkbenchCache.getExtraCalibers());
-		if (calibers.isEmpty()) return;
-		selectedCaliberIndex = Math.max(0, Math.min(selectedCaliberIndex, calibers.size() - 1));
-
-		ammoListClip = new Rect(px + 6, py + 6, leftW - 12, ph - 12);
-		scissor(context, ammoListClip.x, ammoListClip.y, ammoListClip.x + ammoListClip.w, ammoListClip.y + ammoListClip.h);
+		drawModeButton(context, new Rect(px + 6, py + 24, leftW - 14, 16),
+			Text.translatable("ui.tarkovcraft.wb_ammo_sort." + ammoSort.name().toLowerCase(Locale.ROOT)).getString(),
+			false, true, mouseX, mouseY, () -> {
+				AmmoSort[] modes = AmmoSort.values();
+				ammoSort = modes[(ammoSort.ordinal() + 1) % modes.length];
+				ammoScrollY = 0;
+			});
+		List<TaCZCaliberCatalog.CaliberSpec> calibers = sortedCalibers();
+		ammoListClip = new Rect(px + 6, py + 44, leftW - 12, ph - 50);
+		if (calibers.isEmpty()) {
+			ammoMaxScroll = 0;
+			TarkovUiTheme.drawFlatText(context, textRenderer, Text.translatable("ui.tarkovcraft.wb_ammo_empty").getString(),
+				px + 8, py + 49, TarkovUiTheme.TEXT_SECONDARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+			return;
+		}
+		var selected = calibers.stream().filter(spec -> spec.ammoId().equals(selectedCaliber)).findFirst().orElse(calibers.get(0));
+		TarkovUiTheme.scissorInGui(context, ammoListClip.x, ammoListClip.y, ammoListClip.x + ammoListClip.w, ammoListClip.y + ammoListClip.h);
 		int cy = ammoListClip.y - ammoScrollY;
 		for (int i = 0; i < calibers.size(); i++) {
 			TaCZCaliberCatalog.CaliberSpec spec = calibers.get(i);
 			Rect row = new Rect(ammoListClip.x, cy, ammoListClip.w - 6, ROW_H - 2);
-			boolean sel = i == selectedCaliberIndex;
+			boolean sel = spec.ammoId().equals(selected.ammoId());
 			boolean hov = row.contains(mouseX, mouseY) && ammoListClip.contains(mouseX, mouseY);
 			context.fill(row.x, row.y, row.x + row.w, row.y + row.h,
-				sel ? 0xCC28241C : (hov ? 0xCC1C2026 : TarkovUiTheme.BG_SLOT));
+				sel ? 0xFF28241C : (hov ? 0xFF1C2026 : TarkovUiTheme.opaque(TarkovUiTheme.BG_SLOT)));
 			context.drawBorder(row.x, row.y, row.w, row.h,
 				sel ? TarkovUiTheme.ACCENT_SAND : (hov ? TarkovUiTheme.BORDER_HOVER : TarkovUiTheme.BORDER_CELL));
 
@@ -275,14 +307,13 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 			String name = TarkovUiTheme.trimWithEllipsis(textRenderer, spec.displayName(), row.w - 62, TarkovUiTheme.TEXT_SCALE_SMALL);
 			TarkovUiTheme.drawFlatText(context, textRenderer, name, row.x + 24, row.y + 7,
 				sel ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
-			TarkovUiTheme.drawRightAlignedFlatText(context, textRenderer, "Pen " + spec.basePenetration(),
+			TarkovUiTheme.drawRightAlignedFlatText(context, textRenderer, Text.translatable("ui.tarkovcraft.wb_ammo_pen_short", penetration(spec)).getString(),
 				row.x + row.w - 5, row.y + 7, TarkovUiTheme.TEXT_MUTED, TarkovUiTheme.TEXT_SCALE_SMALL);
 
-			final int idx = i;
 			if (ammoListClip.contains(mouseX, mouseY)) {
 				buttons.add(new ClickButton(row, () -> {
-					selectedCaliberIndex = idx;
-					selectedTier = calibers.get(idx).clampTier(selectedTier);
+					selectedCaliber = spec.ammoId();
+					selectedTier = spec.clampTier(selectedTier);
 					if (selectedTier == AmmoTier.FMJ) {
 						upgradeFromFmj = false;
 					}
@@ -297,7 +328,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		drawScrollbar(context, ammoListClip, ammoScrollY, ammoMaxScroll);
 
 		// Right details column
-		TaCZCaliberCatalog.CaliberSpec spec = calibers.get(selectedCaliberIndex);
+		TaCZCaliberCatalog.CaliberSpec spec = selected;
 		selectedTier = spec.clampTier(selectedTier);
 		int rx = rightX + 12;
 		int rw = rightW - 24;
@@ -325,7 +356,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 			boolean allowed = spec.isTierAllowed(t);
 			boolean sel = allowed && t == selectedTier;
 			boolean hov = allowed && tr.contains(mouseX, mouseY);
-			int bgCol = !allowed ? 0x66101215 : (sel ? 0xFF23272D : (hov ? 0xFF1A1E24 : TarkovUiTheme.BG_SLOT));
+			int bgCol = !allowed ? 0xFF101215 : (sel ? 0xFF23272D : (hov ? 0xFF1A1E24 : TarkovUiTheme.opaque(TarkovUiTheme.BG_SLOT)));
 			int bdCol = !allowed ? 0xFF1D2024 : (sel ? t.getArgbColor() : (hov ? TarkovUiTheme.BORDER_HOVER : TarkovUiTheme.BORDER_CELL));
 			int txtCol = !allowed ? 0xFF4A4E55 : t.getArgbColor();
 			String label = allowed ? t.getBadge() : (t.getBadge() + " N/A");
@@ -362,7 +393,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 
 		// Ballistic stats box
 		int finalPen = TaCZBulletHelper.computePenetration(spec.ammoId(), selectedTier);
-		context.fill(rx, ry, rx + rw, ry + 34, TarkovUiTheme.BG_SLOT);
+		context.fill(rx, ry, rx + rw, ry + 34, TarkovUiTheme.opaque(TarkovUiTheme.BG_SLOT));
 		context.drawBorder(rx, ry, rw, 34, TarkovUiTheme.BORDER_CELL);
 		TarkovUiTheme.drawFlatText(context, textRenderer,
 			Text.translatable("tooltip.tarkovcraft.ammo_pen", finalPen, AmmoTier.formatArmorClassTarget(finalPen)).getString(),
@@ -396,6 +427,25 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		);
 	}
 
+	private List<TaCZCaliberCatalog.CaliberSpec> sortedCalibers() {
+		String query = ammoSearch.getText().trim().toLowerCase(Locale.ROOT);
+		Comparator<TaCZCaliberCatalog.CaliberSpec> name = Comparator.comparing(
+			TaCZCaliberCatalog.CaliberSpec::displayName, String.CASE_INSENSITIVE_ORDER);
+		Comparator<TaCZCaliberCatalog.CaliberSpec> order = switch (ammoSort) {
+			case CALIBER -> name;
+			case GROUP -> Comparator.comparing(TaCZCaliberCatalog.CaliberSpec::group).thenComparing(name);
+			case PEN_ASC -> Comparator.comparingInt(this::penetration).thenComparing(name);
+			case PEN_DESC -> Comparator.comparingInt(this::penetration).reversed().thenComparing(name);
+		};
+		return TaCZCaliberCatalog.getAllCalibersWithExtras(ClientWorkbenchCache.getExtraCalibers()).stream()
+			.filter(spec -> spec.displayName().toLowerCase(Locale.ROOT).contains(query) || spec.ammoId().contains(query))
+			.sorted(order).toList();
+	}
+
+	private int penetration(TaCZCaliberCatalog.CaliberSpec spec) {
+		return TaCZBulletHelper.computePenetration(spec.ammoId(), spec.clampTier(selectedTier));
+	}
+
 	private void renderGearTab(DrawContext context, int px, int py, int pw, int ph, int mouseX, int mouseY) {
 		int leftW = Math.max(185, Math.round(pw * 0.42f));
 		int rightX = px + leftW + 1;
@@ -411,7 +461,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 			Rect cr = new Rect(px + 8 + i * (catW + catGap), py + 6, catW, 14);
 			boolean sel = cat == gearCategory;
 			boolean hov = cr.contains(mouseX, mouseY);
-			context.fill(cr.x, cr.y, cr.x + cr.w, cr.y + cr.h, sel ? 0xFF28241C : (hov ? 0xFF1C2026 : TarkovUiTheme.BG_SLOT));
+			context.fill(cr.x, cr.y, cr.x + cr.w, cr.y + cr.h, sel ? 0xFF28241C : (hov ? 0xFF1C2026 : TarkovUiTheme.opaque(TarkovUiTheme.BG_SLOT)));
 			context.drawBorder(cr.x, cr.y, cr.w, cr.h, sel ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.BORDER_CELL);
 			String label = TarkovUiTheme.trimWithEllipsis(textRenderer,
 				Text.translatable(cat.getTranslationKey()).getString(), cr.w - 4, TarkovUiTheme.TEXT_SCALE_SMALL);
@@ -432,7 +482,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		Rect sortRect = new Rect(px + 8, py + 40, sortW, 14);
 		boolean sortHov = sortRect.contains(mouseX, mouseY);
 		context.fill(sortRect.x, sortRect.y, sortRect.x + sortRect.w, sortRect.y + sortRect.h,
-			sortHov ? 0xFF1C2026 : TarkovUiTheme.BG_SLOT);
+			sortHov ? 0xFF1C2026 : TarkovUiTheme.opaque(TarkovUiTheme.BG_SLOT));
 		context.drawBorder(sortRect.x, sortRect.y, sortRect.w, sortRect.h,
 			gearSortMode != GearSortMode.DEFAULT ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.BORDER_CELL);
 		String sortLabel = TarkovUiTheme.trimWithEllipsis(textRenderer,
@@ -448,7 +498,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		Rect availRect = new Rect(availX, py + 40, availW, 14);
 		boolean availHov = availRect.contains(mouseX, mouseY);
 		context.fill(availRect.x, availRect.y, availRect.x + availRect.w, availRect.y + availRect.h,
-			onlyAvailableGear ? 0xFF232C20 : (availHov ? 0xFF1C2026 : TarkovUiTheme.BG_SLOT));
+			onlyAvailableGear ? 0xFF232C20 : (availHov ? 0xFF1C2026 : TarkovUiTheme.opaque(TarkovUiTheme.BG_SLOT)));
 		context.drawBorder(availRect.x, availRect.y, availRect.w, availRect.h,
 			onlyAvailableGear ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.BORDER_CELL);
 		String availPrefix = onlyAvailableGear ? "[x] " : "[ ] ";
@@ -506,7 +556,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		List<TarkovWorkbenchRecipes.GearRecipe> filtered = cachedFilteredGear;
 
 		gearListClip = new Rect(px + 8, py + 58, leftW - 16, ph - 66);
-		scissor(context, gearListClip.x, gearListClip.y, gearListClip.x + gearListClip.w, gearListClip.y + gearListClip.h);
+		TarkovUiTheme.scissorInGui(context, gearListClip.x, gearListClip.y, gearListClip.x + gearListClip.w, gearListClip.y + gearListClip.h);
 		int cy = gearListClip.y - gearScrollY;
 		if (!filtered.isEmpty()) {
 			selectedGearIndex = Math.max(0, Math.min(selectedGearIndex, filtered.size() - 1));
@@ -516,7 +566,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 				boolean sel = i == selectedGearIndex;
 				boolean hov = row.contains(mouseX, mouseY) && gearListClip.contains(mouseX, mouseY);
 				context.fill(row.x, row.y, row.x + row.w, row.y + row.h,
-					sel ? 0xCC28241C : (hov ? 0xCC1C2026 : TarkovUiTheme.BG_SLOT));
+					sel ? 0xFF28241C : (hov ? 0xFF1C2026 : TarkovUiTheme.opaque(TarkovUiTheme.BG_SLOT)));
 				context.drawBorder(row.x, row.y, row.w, row.h,
 					sel ? TarkovUiTheme.ACCENT_SAND : (hov ? TarkovUiTheme.BORDER_HOVER : TarkovUiTheme.BORDER_CELL));
 
@@ -590,10 +640,10 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		y += 10;
 
 		int boxH = 66;
-		context.fill(x, y, x + w, y + boxH, 0xCC0A0C0E);
+		context.fill(x, y, x + w, y + boxH, 0xFF0A0C0E);
 		context.drawBorder(x, y, w, boxH, TarkovUiTheme.BORDER_CELL);
 
-		scissor(context, x + 1, y + 1, x + w - 1, y + boxH - 1);
+		TarkovUiTheme.scissorInGui(context, x + 1, y + 1, x + w - 1, y + boxH - 1);
 		try {
 			if (item instanceof BackpackItem bp) {
 				int gw = Math.max(1, bp.getGridWidth());
@@ -647,7 +697,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 					context.drawBorder(curX - 1, curY - 1, pw + 2, ph + 2, TarkovUiTheme.BORDER_OCCUPIED);
 					if (pw >= 12 && ph >= 8) {
 						TarkovUiTheme.drawCenteredFlatText(context, textRenderer, sz.width() + "x" + sz.height(),
-							curX + pw / 2, curY + Math.max(1, ph / 2 - 2), 0x88CFD6DF, 0.55f);
+							curX + pw / 2, curY + Math.max(1, ph / 2 - 2), 0xFFCFD6DF, 0.55f);
 					}
 					curX += pw + gap;
 					rowMaxH = Math.max(rowMaxH, ph);
@@ -774,7 +824,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		boolean ok,
 		boolean creative
 	) {
-		context.fill(x, y, x + w, y + h, TarkovUiTheme.BG_SLOT);
+		context.fill(x, y, x + w, y + h, TarkovUiTheme.opaque(TarkovUiTheme.BG_SLOT));
 		context.drawBorder(x, y, w, h, TarkovUiTheme.BORDER_CELL);
 		int iconSz = Math.max(11, h - 2);
 		TarkovUiTheme.drawScaledItem(context, icon, x + 2, y + 1, iconSz, iconSz);
@@ -800,7 +850,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		Runnable action
 	) {
 		boolean hov = enabled && r.contains(mouseX, mouseY);
-		int bg = !enabled ? 0xFF111316 : (selected ? 0xFF28241C : (hov ? 0xFF1C2026 : TarkovUiTheme.BG_SLOT));
+		int bg = !enabled ? 0xFF111316 : (selected ? 0xFF28241C : (hov ? 0xFF1C2026 : TarkovUiTheme.opaque(TarkovUiTheme.BG_SLOT)));
 		int border = !enabled ? 0xFF22252A : (selected ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.BORDER_CELL);
 		int textCol = !enabled ? TarkovUiTheme.TEXT_MUTED : (selected ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.TEXT_PRIMARY);
 		context.fill(r.x, r.y, r.x + r.w, r.y + r.h, bg);
@@ -856,11 +906,6 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 
 	private double localY(double y) { return (y - topBarOffset()) / contentScale; }
 
-	private void scissor(DrawContext context, int x1, int y1, int x2, int y2) {
-		int top = topBarOffset();
-		context.enableScissor(Math.round(x1 * contentScale), top + Math.round(y1 * contentScale),
-			Math.round(x2 * contentScale), top + Math.round(y2 * contentScale));
-	}
 
 	private void drawScrollbar(DrawContext context, Rect area, int scrollY, int maxScroll) {
 		if (maxScroll <= 0) return;
@@ -868,7 +913,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		int trackH = area.h - 2;
 		int thumbH = Math.max(18, Math.round(trackH * (area.h / (float) (area.h + maxScroll))));
 		int thumbY = area.y + 1 + Math.round((trackH - thumbH) * (scrollY / (float) maxScroll));
-		context.fill(barX, area.y + 1, barX + 3, area.y + 1 + trackH, 0x66101215);
+		context.fill(barX, area.y + 1, barX + 3, area.y + 1 + trackH, 0xFF101215);
 		context.fill(barX, thumbY, barX + 3, thumbY + thumbH, TarkovUiTheme.BORDER_HOVER);
 	}
 
@@ -918,14 +963,10 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-		if (activeTab == TAB_GEAR && searchBox != null && searchBox.isFocused()) {
-			if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
-				searchBox.setFocused(false);
-				return true;
-			}
-			if (searchBox.keyPressed(keyCode, scanCode, modifiers)) {
-				return true;
-			}
+		TextFieldWidget field = activeTab == TAB_GEAR ? searchBox : ammoSearch;
+		if (field != null && field.isFocused()) {
+			if (keyCode == GLFW.GLFW_KEY_ESCAPE) field.setFocused(false);
+			else field.keyPressed(keyCode, scanCode, modifiers);
 			return true;
 		}
 		if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
@@ -941,9 +982,8 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 
 	@Override
 	public boolean charTyped(char chr, int modifiers) {
-		if (activeTab == TAB_GEAR && searchBox != null && searchBox.isFocused()) {
-			return searchBox.charTyped(chr, modifiers);
-		}
+		TextFieldWidget field = activeTab == TAB_GEAR ? searchBox : ammoSearch;
+		if (field != null && field.isFocused()) return field.charTyped(chr, modifiers);
 		return super.charTyped(chr, modifiers);
 	}
 }

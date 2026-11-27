@@ -63,7 +63,7 @@ public final class LobbyPauseScreen extends Screen {
 		int panelWidth = Math.min(224, width - 12);
 		int x = (width - panelWidth) / 2;
 		int y = height / 2 - 72;
-		context.fill(x, y, x + panelWidth, y + 154, TarkovUiTheme.BG_PANEL);
+		context.fill(x, y, x + panelWidth, y + 154, TarkovUiTheme.opaque(TarkovUiTheme.BG_PANEL));
 		context.drawBorder(x, y, panelWidth, 154, TarkovUiTheme.BORDER_PANEL);
 		context.drawCenteredTextWithShadow(textRenderer, title, width / 2, y + 10, TarkovUiTheme.ACCENT_SAND);
 		super.render(context, mouseX, mouseY, delta);

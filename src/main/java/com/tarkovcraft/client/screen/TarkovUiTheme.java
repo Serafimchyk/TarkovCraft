@@ -4,6 +4,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.tarkovcraft.ammo.AmmoTier;
 import net.minecraft.client.MinecraftClient;
 import org.lwjgl.opengl.GL11;
+import org.joml.Vector3f;
 import com.tarkovcraft.grid.ItemSize;
 import com.tarkovcraft.grid.ItemSizeRegistry;
 import com.tarkovcraft.item.BackpackItem;
@@ -96,6 +97,17 @@ public final class TarkovUiTheme {
 		context.fillGradient(0, 0, width, height, 0xFF22282A, 0xFF0C0F12);
 	}
 
+	public static int opaque(int argb) { return argb | 0xFF000000; }
+
+	// In 1.20.1 DrawContext scissor rectangles use screen coordinates even inside a scaled matrix.
+	public static void scissorInGui(DrawContext context, int x1, int y1, int x2, int y2) {
+		var position = context.getMatrices().peek().getPositionMatrix();
+		var topLeft = position.transformPosition(new Vector3f(x1, y1, 0));
+		var bottomRight = position.transformPosition(new Vector3f(x2, y2, 0));
+		context.enableScissor((int) Math.floor(topLeft.x), (int) Math.floor(topLeft.y),
+			(int) Math.ceil(bottomRight.x), (int) Math.ceil(bottomRight.y));
+	}
+
 	public static void clearDepthBuffer(DrawContext ctx) {
 		ctx.draw();
 		RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, MinecraftClient.IS_SYSTEM_MAC);
@@ -179,7 +191,7 @@ public final class TarkovUiTheme {
 			targetPx = Math.min(38.0f, minDim * 0.82f);
 		}
 		float scale = targetPx / 16.0f;
-		ctx.enableScissor(x, y, x + w, y + h);
+		scissorInGui(ctx, x, y, x + w, y + h);
 		try {
 			ctx.getMatrices().push();
 			ctx.getMatrices().translate(x + w * 0.5f, y + h * 0.5f, 0.0f);

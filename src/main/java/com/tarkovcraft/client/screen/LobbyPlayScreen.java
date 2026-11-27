@@ -82,9 +82,9 @@ public final class LobbyPlayScreen extends HandledScreen<LobbyPlayScreenHandler>
 	}
 
 	private void panel(DrawContext context, LobbyLayoutMetrics.Rect rect, Text title) {
-		context.fill(rect.x(), rect.y(), rect.right(), rect.bottom(), BG_PANEL);
+		context.fill(rect.x(), rect.y(), rect.right(), rect.bottom(), opaque(BG_PANEL));
 		context.drawBorder(rect.x(), rect.y(), rect.width(), rect.height(), BORDER_PANEL);
-		context.fill(rect.x() + 1, rect.y() + 1, rect.right() - 1, rect.y() + 20, BG_MODAL_HEADER);
+		context.fill(rect.x() + 1, rect.y() + 1, rect.right() - 1, rect.y() + 20, opaque(BG_MODAL_HEADER));
 		line(context, textRenderer, title.getString(), rect.x() + INSET, rect.y() + 7,
 			rect.width() - INSET * 2, ACCENT_SAND, 0.9f);
 	}
@@ -103,7 +103,7 @@ public final class LobbyPlayScreen extends HandledScreen<LobbyPlayScreenHandler>
 		for (int index = 0; index < 4; index++) {
 			int rowY = box.y() + 49 + index * 23;
 			int x = box.x() + INSET;
-			context.fill(x, rowY, box.right() - INSET, rowY + 20, BG_SLOT);
+			context.fill(x, rowY, box.right() - INSET, rowY + 20, opaque(BG_SLOT));
 			if (index >= snapshot.party().size()) {
 				context.drawHorizontalLine(x + 6, x + 14, rowY + 10, BORDER_SLOT);
 				continue;
@@ -310,7 +310,7 @@ public final class LobbyPlayScreen extends HandledScreen<LobbyPlayScreenHandler>
 
 	private void drawInviteToast(DrawContext context, LobbyManager.Snapshot snapshot, int mouseX, int mouseY) {
 		var toast = inviteToast();
-		context.fill(toast.x(), toast.y(), toast.right(), toast.bottom(), BG_MODAL);
+		context.fill(toast.x(), toast.y(), toast.right(), toast.bottom(), opaque(BG_MODAL));
 		context.drawBorder(toast.x(), toast.y(), toast.width(), toast.height(), ACCENT_SAND);
 		boxLine(context, toast, label("squad.invited", "Invitation from %s", snapshot.inviter()), 7, TEXT_PRIMARY);
 		for (Target target : inviteActions(toast)) {
@@ -345,7 +345,7 @@ public final class LobbyPlayScreen extends HandledScreen<LobbyPlayScreenHandler>
 		var box = target.bounds();
 		boolean hover = box.contains(mouseX, mouseY);
 		int fill = target.primary() && target.enabled() ? hover ? 0xFFDCC28A : ACCENT_SAND
-			: target.enabled() && hover ? 0xFF332F27 : BG_SLOT;
+			: target.enabled() && hover ? 0xFF332F27 : opaque(BG_SLOT);
 		int color = target.primary() && target.enabled() ? HOVER_MENU_TEXT : target.enabled() ? TEXT_PRIMARY : TEXT_MUTED;
 		context.fill(box.x(), box.y(), box.right(), box.bottom(), fill);
 		context.drawBorder(box.x(), box.y(), box.width(), box.height(),

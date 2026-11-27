@@ -77,7 +77,7 @@ public final class LobbyServiceScreen extends LobbyCommerceScreen<LobbyServiceSc
 	}
 
 	private void drawRepair(DrawContext context, RepairRow row, int x, int y, int w, int h, int index) {
-		context.fill(x, y, x + w, y + h - 1, BG_SLOT);
+		context.fill(x, y, x + w, y + h - 1, opaque(BG_SLOT));
 		drawScaledItem(context, row.item(), x + 2, y + 2, 15, 15);
 		int buyW = Math.min(86, w * 43 / 100);
 		String location = row.equipped() ? label("service.equipped", "Equipped").getString() : label("trade.stash", "Stash").getString();

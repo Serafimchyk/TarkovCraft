@@ -74,7 +74,7 @@ public final class LobbyTopNavBar {
 
 	public static void render(DrawContext context, TextRenderer font, int width, int mouseX, int mouseY,
 			Tab active, Status status) {
-		context.fill(0, 0, width, HEIGHT, BG_TOP_BAR);
+		context.fill(0, 0, width, HEIGHT, opaque(BG_TOP_BAR));
 		context.fill(0, HEIGHT - 1, width, HEIGHT, BORDER_PANEL);
 		context.fill(INSET, TAB_TOP - 1, width - INSET, TAB_TOP, BORDER_PANEL);
 
@@ -112,7 +112,7 @@ public final class LobbyTopNavBar {
 			int right = tabBoundary(width, index + 1);
 			boolean hover = mouseX >= left && mouseX < right && mouseY >= TAB_TOP && mouseY < HEIGHT;
 			if (active == tab || hover && tab.action != null) {
-				context.fill(left, TAB_TOP, right, HEIGHT - 1, active == tab ? 0x303F392D : BG_SLOT);
+				context.fill(left, TAB_TOP, right, HEIGHT - 1, active == tab ? 0xFF3F392D : opaque(BG_SLOT));
 			}
 			if (active == tab) {
 				context.fill(left + 4, HEIGHT - 2, right - 4, HEIGHT, ACCENT_SAND);
@@ -165,7 +165,7 @@ public final class LobbyTopNavBar {
 	private static void icon(DrawContext context, TextRenderer font, int x, int mouseX, int mouseY,
 			String icon, Text tooltip) {
 		boolean hover = mouseX >= x && mouseX < x + ICON_WIDTH && mouseY >= 0 && mouseY < TAB_TOP;
-		if (hover) context.fill(x + 1, 2, x + ICON_WIDTH - 1, TAB_TOP - 1, BG_SLOT);
+		if (hover) context.fill(x + 1, 2, x + ICON_WIDTH - 1, TAB_TOP - 1, opaque(BG_SLOT));
 		drawCenteredFlatText(context, font, icon, x + ICON_WIDTH / 2, 7, hover ? ACCENT_SAND : TEXT_PRIMARY, 1.0f);
 		if (hover) context.drawTooltip(font, tooltip, mouseX, mouseY);
 	}

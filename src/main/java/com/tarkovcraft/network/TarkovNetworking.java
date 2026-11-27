@@ -63,6 +63,7 @@ public final class TarkovNetworking {
 
 	// C2S
 	public static final Identifier C2S_OPEN_OWN_INVENTORY = new Identifier(TarkovCraftMod.MOD_ID, "open_own_inventory");
+	public static final Identifier C2S_STASH_SELL = new Identifier(TarkovCraftMod.MOD_ID, "stash_sell");
 	public static final Identifier C2S_MOVE_ITEM = new Identifier(TarkovCraftMod.MOD_ID, "move_item");
 	public static final Identifier C2S_QUICK_TRANSFER = new Identifier(TarkovCraftMod.MOD_ID, "quick_transfer");
 	public static final Identifier C2S_QUICK_EQUIP = new Identifier(TarkovCraftMod.MOD_ID, "quick_equip");
@@ -320,6 +321,17 @@ public final class TarkovNetworking {
 		ServerPlayNetworking.registerGlobalReceiver(C2S_INTERACT, (server, player, handler, buf, responseSender) -> {
 			byte actionIndex = buf.readByte();
 			server.execute(() -> handleInteract(player, actionIndex));
+		});
+
+		ServerPlayNetworking.registerGlobalReceiver(C2S_STASH_SELL, (server, player, handler, buf, responseSender) -> {
+			int syncId = buf.readVarInt();
+			UUID entryId = buf.readUuid();
+			server.execute(() -> {
+				if (player.currentScreenHandler instanceof TarkovScreenHandler stash && stash.syncId == syncId
+					&& stash.getMode() == TarkovScreenHandler.MODE_STASH && stash.canUse(player)) {
+					com.tarkovcraft.screen.LobbyTraderScreenHandler.openForStashSale(player, entryId);
+				}
+			});
 		});
 
 		ServerPlayNetworking.registerGlobalReceiver(C2S_QUICK_TRANSFER, (server, player, handler, buf, responseSender) -> {

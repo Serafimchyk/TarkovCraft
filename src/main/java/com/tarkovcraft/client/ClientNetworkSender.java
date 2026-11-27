@@ -26,6 +26,13 @@ public final class ClientNetworkSender {
 	private ClientNetworkSender() {
 	}
 
+	public static void sendStashSale(int syncId, UUID entryId) {
+		PacketByteBuf buf = PacketByteBufs.create();
+		buf.writeVarInt(syncId);
+		buf.writeUuid(entryId);
+		ClientPlayNetworking.send(TarkovNetworking.C2S_STASH_SELL, buf);
+	}
+
 	public static void sendQuickEquip(byte srcLoc, int srcIdx, @Nullable UUID srcEntryId) {
 		ClientPlayNetworking.send(TarkovNetworking.C2S_QUICK_EQUIP, buildSourceBuf(srcLoc, srcIdx, srcEntryId));
 	}

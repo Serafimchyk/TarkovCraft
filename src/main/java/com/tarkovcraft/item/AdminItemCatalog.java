@@ -48,11 +48,11 @@ public final class AdminItemCatalog {
 		Gun("modern_kinetic_gun"), Ammo("ammo"), Attachment("attachment");
 
 		private final Identifier itemId;
-		private final Method list, find, builder, setId, build;
+		private final Method list, commonList, find, builder, setId, build;
 
 		TaCZKind(String path) {
 			itemId = new Identifier("tacz", path);
-			Method list = null, find = null, builder = null, setId = null, build = null;
+			Method list = null, commonList = null, find = null, builder = null, setId = null, build = null;
 			if (FabricLoader.getInstance().isModLoaded("tacz")) {
 				try {
 					Class<?> api = Class.forName("com.tacz.guns.api.TimelessAPI");
@@ -61,6 +61,7 @@ public final class AdminItemCatalog {
 					builder = type.getMethod("create");
 					setId = type.getMethod("setId", Identifier.class);
 					build = type.getMethod("build");
+					commonList = api.getMethod("getAllCommon" + name() + "Index");
 					if (FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT) {
 						list = api.getMethod("getAllClient" + name() + "Index");
 					}
@@ -69,6 +70,7 @@ public final class AdminItemCatalog {
 				}
 			}
 			this.list = list;
+			this.commonList = commonList;
 			this.find = find;
 			this.builder = builder;
 			this.setId = setId;
@@ -76,11 +78,20 @@ public final class AdminItemCatalog {
 		}
 
 		public List<Entry> clientEntries() {
-			if (list == null || build == null) return List.of();
+			return entries(list);
+		}
+
+		public List<Entry> commonEntries() {
+			return entries(commonList);
+		}
+
+		private List<Entry> entries(Method source) {
+			if (source == null || build == null) return List.of();
 			try {
-				Collection<?> indexes = (Collection<?>) list.invoke(null);
+				Collection<?> indexes = (Collection<?>) source.invoke(null);
 				return indexes.stream().map(Map.Entry.class::cast)
-					.map(index -> new Entry(itemId, (Identifier) index.getKey())).toList();
+					.map(index -> new Entry(itemId, (Identifier) index.getKey()))
+					.sorted(java.util.Comparator.comparing(Entry::variant)).toList();
 			} catch (ReflectiveOperationException | LinkageError ignored) {
 				return List.of();
 			}

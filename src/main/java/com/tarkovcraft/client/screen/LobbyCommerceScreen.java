@@ -36,6 +36,7 @@ abstract class LobbyCommerceScreen<T extends LobbyScreenHandler> extends Handled
 		pointerX = mouseX;
 		pointerY = mouseY;
 		drawLobbyBackground(context, width, height);
+		clearDepthBuffer(context);
 		drawContent(context);
 		LobbyTopNavBar.render(context, textRenderer, width, mouseX, mouseY, tab, status(client, handler.status()));
 		if (!hoveredItem.isEmpty()) context.drawItemTooltip(textRenderer, hoveredItem, mouseX, mouseY);
@@ -44,17 +45,17 @@ abstract class LobbyCommerceScreen<T extends LobbyScreenHandler> extends Handled
 	protected abstract void drawContent(DrawContext context);
 
 	protected void panel(DrawContext context, int x, int y, int w, int h) {
-		context.fill(x, y, x + w, y + h, BG_PANEL);
+		context.fill(x, y, x + w, y + h, opaque(BG_PANEL));
 		context.drawBorder(x, y, w, h, BORDER_PANEL);
 	}
 
 	protected void button(DrawContext context, Text text, int x, int y, int w, int h, int id, boolean enabled, boolean selected) {
 		boolean hover = hit(x, y, w, h);
-		context.fill(x, y, x + w, y + h, hover && enabled ? HOVER_MENU_BG : BG_SLOT);
+		context.fill(x, y, x + w, y + h, hover && enabled ? HOVER_MENU_BG : opaque(BG_SLOT));
 		context.drawBorder(x, y, w, h, selected ? ACCENT_SAND : BORDER_CELL);
 		String label = trimWithEllipsis(textRenderer, text.getString(), w - 6, 0.85f);
 		drawCenteredFlatText(context, textRenderer, label, x + w / 2, y + (h - 7) / 2,
-			selected ? ACCENT_SAND : enabled ? TEXT_PRIMARY : TEXT_MUTED, 0.85f);
+			hover && enabled ? HOVER_MENU_TEXT : selected ? ACCENT_SAND : enabled ? TEXT_PRIMARY : TEXT_MUTED, 0.85f);
 		if (enabled) clickArea(x, y, w, h, id);
 	}
 
@@ -89,7 +90,9 @@ abstract class LobbyCommerceScreen<T extends LobbyScreenHandler> extends Handled
 	}
 
 	@Override
-	public final void close() { send(LobbyTabNavigation.PLAY); }
+	public final void close() { send(closeAction()); }
+
+	protected int closeAction() { return LobbyTabNavigation.PLAY; }
 
 	private void send(int id) {
 		if (client.interactionManager != null) client.interactionManager.clickButton(handler.syncId, id);

@@ -332,7 +332,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 			healthMedSlots.clear();
 			int hx = TarkovUiTheme.OUTER_PAD;
 			int hw = this.width - TarkovUiTheme.OUTER_PAD * 2;
-			context.fill(hx, bodyY, hx + hw, bodyY + bodyH, TarkovUiTheme.BG_PANEL);
+			context.fill(hx, bodyY, hx + hw, bodyY + bodyH, inventoryColor(TarkovUiTheme.BG_PANEL));
 			context.drawBorder(hx, bodyY, hw, bodyH, TarkovUiTheme.BORDER_PANEL);
 
 			int medStripH = 38;
@@ -455,7 +455,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		if (isStash() && client != null && client.player != null) {
 			LobbyTopNavBar.render(context, textRenderer, width, mouseX, mouseY, LobbyTopNavBar.Tab.CHARACTER, lobbyStatus());
 			int y = LobbyTopNavBar.HEIGHT;
-			context.fill(0, y, width, y + TarkovUiTheme.TOP_BAR_H, TarkovUiTheme.BG_TOP_BAR);
+			context.fill(0, y, width, y + TarkovUiTheme.TOP_BAR_H, inventoryColor(TarkovUiTheme.BG_TOP_BAR));
 			tabGearBtn = new Rect(8, y + 3, 86, TarkovUiTheme.TOP_BAR_H - 5);
 			tabHealthBtn = new Rect(98, y + 3, 86, TarkovUiTheme.TOP_BAR_H - 5);
 			closeBtn = null;
@@ -501,7 +501,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 	}
 
 	private void renderEquipmentColumn(DrawContext context, Rect area, PlayerLoadout loadout, int mouseX, int mouseY) {
-		context.fill(area.x, area.y, area.x + area.w, area.y + area.h, TarkovUiTheme.BG_PANEL);
+		context.fill(area.x, area.y, area.x + area.w, area.y + area.h, inventoryColor(TarkovUiTheme.BG_PANEL));
 		context.drawBorder(area.x, area.y, area.w, area.h, TarkovUiTheme.BORDER_PANEL);
 
 		int pad = 6;
@@ -615,7 +615,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		DrawContext context, Rect area, PlayerLoadout loadout,
 		@Nullable TarkovNetworking.ScreenStateSnapshot snap, int mouseX, int mouseY
 	) {
-		context.fill(area.x, area.y, area.x + area.w, area.y + area.h, TarkovUiTheme.BG_PANEL);
+		context.fill(area.x, area.y, area.x + area.w, area.y + area.h, inventoryColor(TarkovUiTheme.BG_PANEL));
 		context.drawBorder(area.x, area.y, area.w, area.h, TarkovUiTheme.BORDER_PANEL);
 
 		context.enableScissor(area.x + 1, area.y + 1, area.x + area.w - 1, area.y + area.h - 1);
@@ -753,7 +753,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 	private void renderExternalColumn(
 		DrawContext context, Rect area, TarkovNetworking.ScreenStateSnapshot snap, int mouseX, int mouseY
 	) {
-		context.fill(area.x, area.y, area.x + area.w, area.y + area.h, TarkovUiTheme.BG_PANEL);
+		context.fill(area.x, area.y, area.x + area.w, area.y + area.h, inventoryColor(TarkovUiTheme.BG_PANEL));
 		context.drawBorder(area.x, area.y, area.w, area.h, TarkovUiTheme.BORDER_PANEL);
 
 		boolean stash = isStash();
@@ -1032,7 +1032,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		int borderCol = brokenArmor ? TarkovUiTheme.BORDER_BROKEN
 			: ((hovered || selected) ? TarkovUiTheme.BORDER_HOVER : TarkovUiTheme.BORDER_SLOT);
 
-		context.fill(x, y, x + w, y + h, TarkovUiTheme.BG_SLOT);
+		context.fill(x, y, x + w, y + h, inventoryColor(TarkovUiTheme.BG_SLOT));
 		context.drawBorder(x, y, w, h, borderCol);
 
 		if (label != null && !label.isEmpty()) {
@@ -1177,7 +1177,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 				boolean selected = selectedTarget != null && selectedTarget.matches(locType, containerIndex, entry.entryId());
 				boolean isDragSrc = drag != null && drag.isSource(locType, containerIndex, entry.entryId());
 
-				int fillCol = TarkovUiTheme.itemCategoryTint(entry.stack());
+				int fillCol = inventoryColor(TarkovUiTheme.itemCategoryTint(entry.stack()));
 				int borderCol = (hovered || selected) ? TarkovUiTheme.BORDER_HOVER : TarkovUiTheme.BORDER_OCCUPIED;
 
 				context.fill(ex + 1, ey + 1, ex + ew - 1, ey + eh - 1, fillCol);
@@ -1244,7 +1244,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 
 		context.getMatrices().push();
 		context.getMatrices().translate(0.0f, 0.0f, TarkovUiTheme.Z_POPUP);
-		context.fill(mx, my, mx + mw, my + mh, TarkovUiTheme.BG_CONTEXT_MENU);
+		context.fill(mx, my, mx + mw, my + mh, inventoryColor(TarkovUiTheme.BG_CONTEXT_MENU));
 		context.drawBorder(mx, my, mw, mh, TarkovUiTheme.BORDER_POPUP);
 
 		for (int i = 0; i < contextMenu.options.size(); i++) {
@@ -1688,9 +1688,17 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 		return super.keyPressed(keyCode, scanCode, modifiers);
 	}
 
+	private int inventoryColor(int argb) { return isStash() ? TarkovUiTheme.opaque(argb) : argb; }
+
 	private void openContextMenu(int mx, int my, HoveredTarget target) {
 		List<MenuOption> opts = new ArrayList<>();
 		ItemStack stack = target.stack();
+		if (isStash() && target.loc() == TarkovNetworking.LOC_EXTERNAL_GRID && target.entryId() != null
+				&& com.tarkovcraft.lobby.ItemPriceCalculator.canSell(stack)) {
+			long price = com.tarkovcraft.lobby.ItemPriceCalculator.sellPrice(stack);
+			opts.add(new MenuOption(Text.translatable("ctx.tarkovcraft.sell_fence", LobbyTopNavBar.rubles(price)).getString(),
+				() -> ClientNetworkSender.sendStashSale(handler.syncId, target.entryId())));
+		}
 
 		if (TarkovScreenHandler.isConsumableItem(stack)) {
 			opts.add(new MenuOption(Text.translatable("ctx.tarkovcraft.use").getString(), () ->
