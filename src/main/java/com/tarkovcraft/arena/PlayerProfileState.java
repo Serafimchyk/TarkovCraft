@@ -71,6 +71,11 @@ public final class PlayerProfileState extends PersistentState {
 		});
 	}
 
+	public void replaceStash(UUID player, GridContainer stash) {
+		stashes.put(player, stash);
+		markDirty();
+	}
+
 	public KitPreset preset(UUID player, int index) {
 		checkPresetIndex(index);
 		NbtList presets = stored(player).getList("KitPresets", NbtElement.COMPOUND_TYPE);

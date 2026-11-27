@@ -374,6 +374,7 @@ public class TarkovScreenHandler extends ScreenHandler {
 	public boolean onButtonClick(PlayerEntity player, int id) {
 		if (mode != MODE_STASH || !(player instanceof ServerPlayerEntity owner)
 			|| owner.currentScreenHandler != this || !canUse(owner)) return false;
+		if (LobbyTabNavigation.handle(owner, id)) return true;
 		switch (id) {
 			case STASH_PLAY -> RaidScreenHandler.openLobby(owner);
 			case STASH_EDITOR -> { return LobbyManager.toggleEditor(owner); }

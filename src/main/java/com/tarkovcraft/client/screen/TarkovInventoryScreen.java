@@ -448,13 +448,7 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 	}
 
 	private void lobbyNavAction(LobbyTopNavBar.Action action) {
-		switch (action) {
-			case PLAY -> close();
-			case CHARACTER -> { }
-			case EDITOR -> sendStashButton(TarkovScreenHandler.STASH_EDITOR);
-			case SETTINGS -> client.setScreen(new LobbyPauseScreen(this));
-			case DISCONNECT -> LobbyPauseScreen.confirmDisconnect(this);
-		}
+		LobbyTopNavBar.activate(client, this, handler.syncId, action);
 	}
 
 	private void renderTopBar(DrawContext context, int mouseX, int mouseY) {

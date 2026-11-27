@@ -73,6 +73,9 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 
 	private final List<ClickButton> buttons = new ArrayList<>();
 	private int activeTab = TAB_AMMO;
+	private float contentScale = 1;
+	private int contentWidth;
+	private int contentHeight;
 
 	// Ammo tab state
 	private int selectedCaliberIndex = 0;
@@ -108,12 +111,16 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		super.init();
 		this.x = 0;
 		this.y = 0;
-		this.backgroundWidth = this.width;
-		this.backgroundHeight = this.height;
+		int availableHeight = Math.max(1, height - topBarOffset());
+		contentScale = handler.isLobby() ? Math.min(1, Math.min(width / 440f, availableHeight / 345f)) : 1;
+		contentWidth = (int) (width / contentScale);
+		contentHeight = (int) (availableHeight / contentScale);
+		this.backgroundWidth = contentWidth;
+		this.backgroundHeight = contentHeight;
 
 		String prevQuery = searchBox != null ? searchBox.getText() : "";
-		int panelW = Math.min(620, this.width - 24);
-		int panelX = (this.width - panelW) / 2;
+		int panelW = Math.min(620, contentWidth - 24);
+		int panelX = (contentWidth - panelW) / 2;
 		int bodyY = TarkovUiTheme.TOP_BAR_H + 8;
 		int leftW = Math.max(170, Math.round(panelW * 0.40f));
 
@@ -153,11 +160,21 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 			searchBox.setVisible(activeTab == TAB_GEAR);
 		}
 
-		renderTopBar(context, mouseX, mouseY);
+		context.getMatrices().push();
+		context.getMatrices().translate(0, topBarOffset(), 0);
+		context.getMatrices().scale(contentScale, contentScale, 1);
+		renderWorkbench(context, (int) Math.floor(localX(mouseX)), (int) Math.floor(localY(mouseY)), delta);
+		context.getMatrices().pop();
+		if (handler.isLobby()) {
+			LobbyTopNavBar.render(context, textRenderer, width, mouseX, mouseY, LobbyTopNavBar.Tab.WORKBENCH, lobbyStatus());
+		}
+	}
 
-		int panelW = Math.min(620, this.width - 24);
-		int panelH = Math.max(180, this.height - TarkovUiTheme.TOP_BAR_H - 18);
-		int panelX = (this.width - panelW) / 2;
+	private void renderWorkbench(DrawContext context, int mouseX, int mouseY, float delta) {
+		renderTopBar(context, mouseX, mouseY);
+		int panelW = Math.min(620, contentWidth - 24);
+		int panelH = Math.max(180, contentHeight - TarkovUiTheme.TOP_BAR_H - 18);
+		int panelX = (contentWidth - panelW) / 2;
 		int panelY = TarkovUiTheme.TOP_BAR_H + 8;
 
 		context.fill(panelX, panelY, panelX + panelW, panelY + panelH, TarkovUiTheme.BG_PANEL);
@@ -172,10 +189,22 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		super.render(context, mouseX, mouseY, delta);
 	}
 
+	private int topBarOffset() { return handler.isLobby() ? LobbyTopNavBar.HEIGHT : 0; }
+
+	private LobbyTopNavBar.Status lobbyStatus() {
+		return LobbyTopNavBar.status(client, handler.lobbyStatus());
+	}
+
+	@Override
+	public void close() {
+		if (handler.isLobby()) LobbyTopNavBar.activate(client, this, handler.syncId, LobbyTopNavBar.Action.PLAY);
+		else super.close();
+	}
+
 	private void renderTopBar(DrawContext context, int mouseX, int mouseY) {
 		int h = TarkovUiTheme.TOP_BAR_H;
-		context.fill(0, 0, this.width, h, TarkovUiTheme.BG_TOP_BAR);
-		context.fill(0, h, this.width, h + 1, TarkovUiTheme.BORDER_PANEL);
+		context.fill(0, 0, contentWidth, h, TarkovUiTheme.BG_TOP_BAR);
+		context.fill(0, h, contentWidth, h + 1, TarkovUiTheme.BORDER_PANEL);
 
 		String title = Text.translatable("screen.tarkovcraft.workbench").getString().toUpperCase(Locale.ROOT);
 		TarkovUiTheme.drawFlatText(context, textRenderer, title, 10, 9,
@@ -186,7 +215,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		int ammoW = Math.max(66, Math.round(textRenderer.getWidth(ammoLabel) * TarkovUiTheme.TEXT_SCALE_HEADER) + 18);
 		int gearW = Math.max(96, Math.round(textRenderer.getWidth(gearLabel) * TarkovUiTheme.TEXT_SCALE_HEADER) + 18);
 		int totalTabsW = ammoW + 6 + gearW;
-		int tabX = Math.max(120, (this.width - totalTabsW) / 2);
+		int tabX = Math.max(120, (contentWidth - totalTabsW) / 2);
 
 		drawTopTab(context, new Rect(tabX, 4, ammoW, 18), ammoLabel, activeTab == TAB_AMMO, mouseX, mouseY, () -> {
 			activeTab = TAB_AMMO;
@@ -196,7 +225,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 
 		String backTxt = Text.translatable("ui.tarkovcraft.back_esc").getString();
 		int bw = Math.max(66, Math.round(textRenderer.getWidth(backTxt) * TarkovUiTheme.TEXT_SCALE_SMALL) + 14);
-		Rect backRect = new Rect(this.width - bw - 8, 5, bw, 16);
+		Rect backRect = new Rect(contentWidth - bw - 8, 5, bw, 16);
 		boolean bHov = backRect.contains(mouseX, mouseY);
 		context.fill(backRect.x, backRect.y, backRect.x + backRect.w, backRect.y + backRect.h,
 			bHov ? TarkovUiTheme.HOVER_MENU_BG : 0xFF1A1D22);
@@ -228,7 +257,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		selectedCaliberIndex = Math.max(0, Math.min(selectedCaliberIndex, calibers.size() - 1));
 
 		ammoListClip = new Rect(px + 6, py + 6, leftW - 12, ph - 12);
-		context.enableScissor(ammoListClip.x, ammoListClip.y, ammoListClip.x + ammoListClip.w, ammoListClip.y + ammoListClip.h);
+		scissor(context, ammoListClip.x, ammoListClip.y, ammoListClip.x + ammoListClip.w, ammoListClip.y + ammoListClip.h);
 		int cy = ammoListClip.y - ammoScrollY;
 		for (int i = 0; i < calibers.size(); i++) {
 			TaCZCaliberCatalog.CaliberSpec spec = calibers.get(i);
@@ -349,7 +378,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		TarkovWorkbenchRecipes.AmmoRecipe recipe = TarkovWorkbenchRecipes.getAmmoRecipe(
 			spec.ammoId(), selectedTier, upgradeFromFmj && selectedTier != AmmoTier.FMJ
 		);
-		boolean creative = client != null && client.player != null && client.player.isCreative();
+		boolean creative = !handler.isLobby() && client != null && client.player != null && client.player.isCreative();
 		boolean allEnough = renderIngredientsList(
 			context, rx, ry, rw,
 			recipe.materials(),
@@ -434,7 +463,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 			selectedGearIndex = 0;
 		}));
 
-		boolean creative = client != null && client.player != null && client.player.isCreative();
+		boolean creative = !handler.isLobby() && client != null && client.player != null && client.player.isCreative();
 
 		// Filter & sort recipes (cached until category, query, sortMode, onlyAvailable, creative, or sync revision changes)
 		String query = searchBox != null ? searchBox.getText().trim().toLowerCase(Locale.ROOT) : "";
@@ -477,7 +506,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		List<TarkovWorkbenchRecipes.GearRecipe> filtered = cachedFilteredGear;
 
 		gearListClip = new Rect(px + 8, py + 58, leftW - 16, ph - 66);
-		context.enableScissor(gearListClip.x, gearListClip.y, gearListClip.x + gearListClip.w, gearListClip.y + gearListClip.h);
+		scissor(context, gearListClip.x, gearListClip.y, gearListClip.x + gearListClip.w, gearListClip.y + gearListClip.h);
 		int cy = gearListClip.y - gearScrollY;
 		if (!filtered.isEmpty()) {
 			selectedGearIndex = Math.max(0, Math.min(selectedGearIndex, filtered.size() - 1));
@@ -564,7 +593,7 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		context.fill(x, y, x + w, y + boxH, 0xCC0A0C0E);
 		context.drawBorder(x, y, w, boxH, TarkovUiTheme.BORDER_CELL);
 
-		context.enableScissor(x + 1, y + 1, x + w - 1, y + boxH - 1);
+		scissor(context, x + 1, y + 1, x + w - 1, y + boxH - 1);
 		try {
 			if (item instanceof BackpackItem bp) {
 				int gw = Math.max(1, bp.getGridWidth());
@@ -823,6 +852,16 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 		return "";
 	}
 
+	private double localX(double x) { return x / contentScale; }
+
+	private double localY(double y) { return (y - topBarOffset()) / contentScale; }
+
+	private void scissor(DrawContext context, int x1, int y1, int x2, int y2) {
+		int top = topBarOffset();
+		context.enableScissor(Math.round(x1 * contentScale), top + Math.round(y1 * contentScale),
+			Math.round(x2 * contentScale), top + Math.round(y2 * contentScale));
+	}
+
 	private void drawScrollbar(DrawContext context, Rect area, int scrollY, int maxScroll) {
 		if (maxScroll <= 0) return;
 		int barX = area.x + area.w - 4;
@@ -835,6 +874,11 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		if (handler.isLobby() && LobbyTopNavBar.mouseClicked(width, mouseX, mouseY, button,
+				LobbyTopNavBar.Tab.WORKBENCH, lobbyStatus(),
+				action -> LobbyTopNavBar.activate(client, this, handler.syncId, action))) return true;
+		mouseX = localX(mouseX);
+		mouseY = localY(mouseY);
 		if (button == 0) {
 			for (ClickButton cb : buttons) {
 				if (cb.rect().contains(mouseX, mouseY)) {
@@ -847,7 +891,19 @@ public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHa
 	}
 
 	@Override
+	public boolean mouseReleased(double mouseX, double mouseY, int button) {
+		return super.mouseReleased(localX(mouseX), localY(mouseY), button);
+	}
+
+	@Override
+	public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+		return super.mouseDragged(localX(mouseX), localY(mouseY), button, localX(deltaX), deltaY / contentScale);
+	}
+
+	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double amount) {
+		mouseX = localX(mouseX);
+		mouseY = localY(mouseY);
 		int step = (int) Math.round(-amount * 20.0);
 		if (activeTab == TAB_AMMO && ammoListClip != null && ammoListClip.contains(mouseX, mouseY)) {
 			ammoScrollY = Math.max(0, Math.min(ammoMaxScroll, ammoScrollY + step));

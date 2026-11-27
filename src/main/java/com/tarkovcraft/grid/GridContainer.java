@@ -69,6 +69,21 @@ public final class GridContainer {
 		return cells[x][y];
 	}
 
+	public GridContainer copy() {
+		GridContainer copy = new GridContainer(width, height, containerId);
+		for (GridEntry entry : entries.values()) {
+			copy.entries.put(entry.getEntryId(), new GridEntry(entry.getEntryId(), entry.getStack().copy(),
+				entry.getX(), entry.getY(), entry.isRotated()));
+		}
+		for (int x = 0; x < width; x++) {
+			for (int y = 0; y < height; y++) {
+				GridEntry entry = cells[x][y];
+				if (entry != null) copy.cells[x][y] = copy.entries.get(entry.getEntryId());
+			}
+		}
+		return copy;
+	}
+
 	public boolean isEmpty() {
 		return entries.isEmpty();
 	}

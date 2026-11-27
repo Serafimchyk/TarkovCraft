@@ -12,6 +12,8 @@ import com.tarkovcraft.client.screen.AmmoRadialScreen;
 import com.tarkovcraft.client.screen.AdminMenuScreen;
 import com.tarkovcraft.client.screen.RaidScreen;
 import com.tarkovcraft.client.screen.LobbyPlayScreen;
+import com.tarkovcraft.client.screen.LobbyServiceScreen;
+import com.tarkovcraft.client.screen.LobbyTraderScreen;
 import com.tarkovcraft.client.screen.TarkovInventoryScreen;
 import com.tarkovcraft.client.screen.TarkovWorkbenchScreen;
 import com.tarkovcraft.health.TaCZBulletHelper;
@@ -53,6 +55,8 @@ public class TarkovCraftClient implements ClientModInitializer {
 		HandledScreens.register(ModScreenHandlers.TARKOV_SCREEN_HANDLER, TarkovInventoryScreen::new);
 		HandledScreens.register(ModScreenHandlers.TARKOV_WORKBENCH_SCREEN_HANDLER, TarkovWorkbenchScreen::new);
 		HandledScreens.register(ModScreenHandlers.LOBBY_PLAY_SCREEN_HANDLER, LobbyPlayScreen::new);
+		HandledScreens.register(ModScreenHandlers.LOBBY_TRADER_SCREEN_HANDLER, LobbyTraderScreen::new);
+		HandledScreens.register(ModScreenHandlers.LOBBY_SERVICE_SCREEN_HANDLER, LobbyServiceScreen::new);
 		HandledScreens.register(ModScreenHandlers.RAID_SCREEN_HANDLER, RaidScreen::new);
 		HandledScreens.register(ModScreenHandlers.ADMIN_MENU_SCREEN_HANDLER, AdminMenuScreen::new);
 		EntityRendererRegistry.register(ModEntities.CORPSE, CorpseEntityRenderer::new);

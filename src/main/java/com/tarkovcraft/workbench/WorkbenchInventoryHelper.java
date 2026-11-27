@@ -2,6 +2,7 @@ package com.tarkovcraft.workbench;
 
 import com.tarkovcraft.ammo.AmmoTier;
 import com.tarkovcraft.ammo.TaCZCaliberCatalog;
+import com.tarkovcraft.arena.PlayerProfileState;
 import com.tarkovcraft.grid.ContainerItemHelper;
 import com.tarkovcraft.grid.GridContainer;
 import com.tarkovcraft.grid.GridEntry;
@@ -43,10 +44,14 @@ public final class WorkbenchInventoryHelper {
 	}
 
 	public static SyncPayload collectSyncPayload(ServerPlayerEntity player) {
+		return collectSyncPayload(player, null);
+	}
+
+	public static SyncPayload collectSyncPayload(ServerPlayerEntity player, @Nullable GridContainer stash) {
 		if (player == null || !(player instanceof PlayerLoadoutHolder holder)) {
 			return new SyncPayload(Map.of(), Map.of(), List.of());
 		}
-		if (player.isCreative()) {
+		if (stash == null && player.isCreative()) {
 			// Scan creative vanilla inventory for any extra custom gunpack calibers
 			Set<String> extras = new LinkedHashSet<>();
 			for (ItemStack st : player.getInventory().main) {
@@ -57,10 +62,15 @@ public final class WorkbenchInventoryHelper {
 			}
 			return new SyncPayload(Map.of(), Map.of(), List.copyOf(extras));
 		}
-		return collectSyncPayload(holder.tarkovcraft$getLoadout(), player.getUuid());
+		return collectSyncPayload(holder.tarkovcraft$getLoadout(), player.getUuid(), stash);
 	}
 
 	public static SyncPayload collectSyncPayload(PlayerLoadout loadout, @Nullable UUID playerId) {
+		return collectSyncPayload(loadout, playerId, null);
+	}
+
+	private static SyncPayload collectSyncPayload(PlayerLoadout loadout, @Nullable UUID playerId,
+			@Nullable GridContainer stash) {
 		Map<Item, Integer> items = new LinkedHashMap<>();
 		Map<String, Integer> fmj = new LinkedHashMap<>();
 		Set<String> extras = new LinkedHashSet<>();
@@ -73,7 +83,7 @@ public final class WorkbenchInventoryHelper {
 		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem && isContainerAccessible(rig, playerId)) {
 			for (GridContainer g : ContainerItemHelper.readRigGrids(rig)) {
 				for (GridEntry entry : g.getEntries()) {
-					tallyStack(entry.getStack(), items, fmj, extras);
+					if (isEntryAccessible(rig, entry, playerId)) tallyStack(entry.getStack(), items, fmj, extras);
 				}
 			}
 		}
@@ -82,10 +92,14 @@ public final class WorkbenchInventoryHelper {
 		if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem && isContainerAccessible(bp, playerId)) {
 			GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
 			for (GridEntry entry : bpGrid.getEntries()) {
-				tallyStack(entry.getStack(), items, fmj, extras);
+				if (isEntryAccessible(bp, entry, playerId)) tallyStack(entry.getStack(), items, fmj, extras);
 			}
 		}
 
+		if (stash != null) {
+			for (GridEntry entry : loadout.getSecureContainer().getEntries()) tallyStack(entry.getStack(), items, fmj, extras);
+			for (GridEntry entry : stash.getEntries()) tallyStack(entry.getStack(), items, fmj, extras);
+		}
 		return new SyncPayload(items, fmj, List.copyOf(extras));
 	}
 
@@ -132,7 +146,11 @@ public final class WorkbenchInventoryHelper {
 		@Nullable String requiredFmjAmmoId,
 		int requiredFmjCount
 	) {
-		SyncPayload payload = collectSyncPayload(loadout, playerId);
+		return hasMaterials(collectSyncPayload(loadout, playerId), materials, requiredFmjAmmoId, requiredFmjCount);
+	}
+
+	private static boolean hasMaterials(SyncPayload payload, List<TarkovWorkbenchRecipes.Ingredient> materials,
+			@Nullable String requiredFmjAmmoId, int requiredFmjCount) {
 		for (TarkovWorkbenchRecipes.Ingredient ing : materials) {
 			if (payload.itemCounts().getOrDefault(ing.item(), 0) < ing.count()) {
 				return false;
@@ -153,15 +171,21 @@ public final class WorkbenchInventoryHelper {
 		@Nullable String requiredFmjAmmoId,
 		int requiredFmjCount
 	) {
-		if (!hasMaterials(loadout, playerId, materials, requiredFmjAmmoId, requiredFmjCount)) {
+		return consumeMaterials(loadout, playerId, materials, requiredFmjAmmoId, requiredFmjCount, null);
+	}
+
+	private static boolean consumeMaterials(PlayerLoadout loadout, @Nullable UUID playerId,
+			List<TarkovWorkbenchRecipes.Ingredient> materials, @Nullable String requiredFmjAmmoId,
+			int requiredFmjCount, @Nullable GridContainer stash) {
+		if (!hasMaterials(collectSyncPayload(loadout, playerId, stash), materials, requiredFmjAmmoId, requiredFmjCount)) {
 			return false;
 		}
 
 		for (TarkovWorkbenchRecipes.Ingredient ing : materials) {
-			consumeFromLoadout(loadout, playerId, ing.item(), null, ing.count());
+			consumeFromLoadout(loadout, playerId, ing.item(), null, ing.count(), stash);
 		}
 		if (requiredFmjCount > 0 && requiredFmjAmmoId != null) {
-			consumeFromLoadout(loadout, playerId, null, requiredFmjAmmoId, requiredFmjCount);
+			consumeFromLoadout(loadout, playerId, null, requiredFmjAmmoId, requiredFmjCount, stash);
 		}
 		return true;
 	}
@@ -171,7 +195,8 @@ public final class WorkbenchInventoryHelper {
 		@Nullable UUID playerId,
 		@Nullable Item targetItem,
 		@Nullable String targetFmjAmmoId,
-		int amount
+		int amount,
+		@Nullable GridContainer stash
 	) {
 		int remaining = amount;
 
@@ -198,6 +223,7 @@ public final class WorkbenchInventoryHelper {
 					List<GridEntry> entries = new ArrayList<>(g.getEntries());
 					for (GridEntry entry : entries) {
 						if (remaining <= 0) break;
+						if (!isEntryAccessible(rig, entry, playerId)) continue;
 						ItemStack st = entry.getStack();
 						if (matchesConsumptionTarget(st, targetItem, targetFmjAmmoId)) {
 							int take = Math.min(remaining, st.getCount());
@@ -226,6 +252,7 @@ public final class WorkbenchInventoryHelper {
 				List<GridEntry> entries = new ArrayList<>(bpGrid.getEntries());
 				for (GridEntry entry : entries) {
 					if (remaining <= 0) break;
+					if (!isEntryAccessible(bp, entry, playerId)) continue;
 					ItemStack st = entry.getStack();
 					if (matchesConsumptionTarget(st, targetItem, targetFmjAmmoId)) {
 						int take = Math.min(remaining, st.getCount());
@@ -245,6 +272,25 @@ public final class WorkbenchInventoryHelper {
 		if (remaining != amount) {
 			loadout.invalidateExposedCache();
 		}
+
+		if (stash != null && remaining > 0) {
+			remaining = consumeFromGrid(loadout.getSecureContainer(), targetItem, targetFmjAmmoId, remaining);
+			consumeFromGrid(stash, targetItem, targetFmjAmmoId, remaining);
+			loadout.invalidateExposedCache();
+		}
+	}
+
+	private static int consumeFromGrid(GridContainer grid, @Nullable Item item, @Nullable String fmjId, int remaining) {
+		for (GridEntry entry : grid.getEntries()) {
+			if (remaining == 0) break;
+			ItemStack stack = entry.getStack();
+			if (!matchesConsumptionTarget(stack, item, fmjId)) continue;
+			int take = Math.min(remaining, stack.getCount());
+			stack.decrement(take);
+			remaining -= take;
+			if (stack.isEmpty()) grid.remove(entry.getEntryId());
+		}
+		return remaining;
 	}
 
 	private static boolean matchesConsumptionTarget(
@@ -263,19 +309,28 @@ public final class WorkbenchInventoryHelper {
 		return targetItem != null && !AmmoTier.isTaczAmmoStack(stack) && stack.getItem() == targetItem;
 	}
 
+	private static boolean isEntryAccessible(ItemStack container, GridEntry entry, @Nullable UUID playerId) {
+		return !ContainerItemHelper.requiresSearch(container)
+			|| (playerId != null && ContainerItemHelper.getSearchMemory(container).isEntryDiscovered(playerId, entry.getEntryId()));
+	}
+
 	private static boolean isContainerAccessible(ItemStack container, @Nullable UUID playerId) {
 		return !ContainerItemHelper.requiresSearch(container)
 			|| (playerId != null && ContainerItemHelper.getSearchMemory(container).isGridRevealed(playerId));
 	}
 
 	public static boolean craftAmmo(ServerPlayerEntity player, String ammoId, AmmoTier tier, boolean upgradeFromFmj) {
+		return craftAmmo(player, ammoId, tier, upgradeFromFmj, false);
+	}
+
+	public static boolean craftAmmo(ServerPlayerEntity player, String ammoId, AmmoTier tier, boolean upgradeFromFmj, boolean lobby) {
 		if (!TaCZCaliberCatalog.isBallisticAmmoId(ammoId) || tier == null || !TaCZCaliberCatalog.isTierAllowed(ammoId, tier)) {
 			return false;
 		}
 		TarkovWorkbenchRecipes.AmmoRecipe recipe = TarkovWorkbenchRecipes.getAmmoRecipe(ammoId, tier, upgradeFromFmj);
 		ItemStack result = AmmoTier.createTaczAmmoStack(recipe.ammoId(), recipe.tier(), recipe.batchSize());
 
-		if (!executeCraftTransaction(player, recipe.materials(), recipe.upgradeFromFmj() ? recipe.ammoId() : null, recipe.requiredFmjCount(), result)) {
+		if (!executeCraftTransaction(player, recipe.materials(), recipe.upgradeFromFmj() ? recipe.ammoId() : null, recipe.requiredFmjCount(), result, lobby)) {
 			return false;
 		}
 
@@ -285,13 +340,17 @@ public final class WorkbenchInventoryHelper {
 	}
 
 	public static boolean craftGear(ServerPlayerEntity player, Item gearItem) {
+		return craftGear(player, gearItem, false);
+	}
+
+	public static boolean craftGear(ServerPlayerEntity player, Item gearItem, boolean lobby) {
 		if (!TarkovWorkbenchRecipes.isCraftableGear(gearItem)) {
 			return false;
 		}
 		List<TarkovWorkbenchRecipes.Ingredient> mats = TarkovWorkbenchRecipes.computeGearIngredients(gearItem);
 		ItemStack result = new ItemStack(gearItem);
 
-		if (!executeCraftTransaction(player, mats, null, 0, result)) {
+		if (!executeCraftTransaction(player, mats, null, 0, result, lobby)) {
 			return false;
 		}
 
@@ -310,14 +369,40 @@ public final class WorkbenchInventoryHelper {
 		return droppedAny;
 	}
 
+	private static boolean craftInLobby(ServerPlayerEntity player, PlayerLoadoutHolder holder, PlayerLoadout loadout,
+			List<TarkovWorkbenchRecipes.Ingredient> materials, @Nullable String fmjId, int fmjCount, ItemStack result) {
+		PlayerProfileState profiles = PlayerProfileState.get(player.getServer());
+		UUID playerId = player.getUuid();
+		GridContainer stash = profiles.stash(playerId).copy();
+		PlayerLoadout carried = loadout.copy();
+		if (!consumeMaterials(carried, playerId, materials, fmjId, fmjCount, stash)) {
+			player.sendMessage(Text.translatable("message.tarkovcraft.workbench_no_materials"), true);
+			return false;
+		}
+		ItemStack output = result.copy();
+		stash.tryAutoPlace(output);
+		if (!output.isEmpty()) carried.tryInsertItem(output, playerId);
+		if (!output.isEmpty()) {
+			player.sendMessage(Text.translatable("screen.tarkovcraft.lobby.inventory_full"), true);
+			return false;
+		}
+		profiles.replaceStash(playerId, stash);
+		loadout.readNbt(carried.writeNbt());
+		holder.tarkovcraft$syncLoadout();
+		player.sendMessage(Text.translatable("message.tarkovcraft.workbench_crafted", result.getName()), true);
+		return true;
+	}
+
 	private static boolean executeCraftTransaction(
 		ServerPlayerEntity player,
 		List<TarkovWorkbenchRecipes.Ingredient> materials,
 		@Nullable String requiredFmjAmmoId,
 		int requiredFmjCount,
-		ItemStack result
+		ItemStack result,
+		boolean lobby
 	) {
-		if (player.isCreative()) {
+		if (result.isEmpty()) return false;
+		if (!lobby && player.isCreative()) {
 			ItemStack creativeCopy = result.copy();
 			boolean inserted = player.getInventory().insertStack(creativeCopy) && creativeCopy.isEmpty();
 			if (!inserted && !creativeCopy.isEmpty()) {
@@ -338,6 +423,9 @@ public final class WorkbenchInventoryHelper {
 			return false;
 		}
 		PlayerLoadout loadout = holder.tarkovcraft$getLoadout();
+		if (lobby) {
+			return craftInLobby(player, holder, loadout, materials, requiredFmjAmmoId, requiredFmjCount, result);
+		}
 		if (!consumeMaterials(loadout, player.getUuid(), materials, requiredFmjAmmoId, requiredFmjCount)) {
 			player.sendMessage(Text.translatable("message.tarkovcraft.workbench_no_materials"), true);
 			return false;

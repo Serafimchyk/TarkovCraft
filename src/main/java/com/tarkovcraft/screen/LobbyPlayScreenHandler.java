@@ -243,6 +243,7 @@ public final class LobbyPlayScreenHandler extends ScreenHandler {
 	@Override
 	public boolean onButtonClick(PlayerEntity player, int id) {
 		if (!(player instanceof ServerPlayerEntity serverPlayer) || player.currentScreenHandler != this || !canUse(player)) return false;
+		if (LobbyTabNavigation.handle(serverPlayer, id)) return true;
 		boolean handled = switch (id) {
 			case CHARACTER -> { TarkovScreenHandler.openStash(serverPlayer); yield true; }
 			case EDITOR -> LobbyManager.toggleEditor(serverPlayer);

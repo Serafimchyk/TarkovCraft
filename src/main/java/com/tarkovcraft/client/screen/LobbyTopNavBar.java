@@ -1,6 +1,11 @@
 package com.tarkovcraft.client.screen;
 
+import com.tarkovcraft.client.ClientLoadoutCache;
+import com.tarkovcraft.screen.LobbyScreenStatus;
+import com.tarkovcraft.screen.LobbyTabNavigation;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
+import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.text.Text;
 
@@ -21,9 +26,9 @@ public final class LobbyTopNavBar {
 		PLAY("play", "Play", Action.PLAY, 0),
 		CHARACTER("character", "Character", Action.CHARACTER, 0),
 		LOADOUT("loadout", "Loadout", null, 8),
-		TRADERS("traders", "Traders", null, 7),
-		WORKBENCH("workbench", "Workbench", null, 7),
-		SERVICE("service", "Service", null, 7);
+		TRADERS("traders", "Traders", Action.TRADERS, 0),
+		WORKBENCH("workbench", "Workbench", Action.WORKBENCH, 0),
+		SERVICE("service", "Service", Action.SERVICE, 0);
 
 		private final Text title;
 		private final Action action;
@@ -37,13 +42,35 @@ public final class LobbyTopNavBar {
 	}
 
 	public enum Action {
-		PLAY, CHARACTER, EDITOR, SETTINGS, DISCONNECT
+		PLAY(LobbyTabNavigation.PLAY), CHARACTER(LobbyTabNavigation.CHARACTER),
+		TRADERS(LobbyTabNavigation.TRADERS), WORKBENCH(LobbyTabNavigation.WORKBENCH),
+		SERVICE(LobbyTabNavigation.SERVICE), EDITOR(LobbyTabNavigation.EDITOR), SETTINGS(-1), DISCONNECT(-1);
+
+		private final int button;
+		Action(int button) { this.button = button; }
 	}
 
 	public record Status(String name, long rubles, int health, int maxHealth, boolean wounded, boolean needsService,
 		int raidSeconds, int scavSeconds, boolean ready, boolean editorAllowed) { }
 
 	private LobbyTopNavBar() { }
+
+	static Status status(MinecraftClient client, LobbyScreenStatus status) {
+		var health = ClientLoadoutCache.getBodyHealth();
+		return new Status(client.player.getName().getString(), status.rubles(), Math.round(health.getTotalHp()),
+			Math.round(health.getTotalEffectiveMaxHp()), health.needsTreatment(), status.needsService(),
+			status.raidSeconds(), status.scavSeconds(), status.ready(), status.editorAllowed());
+	}
+
+	static void activate(MinecraftClient client, Screen screen, int syncId, Action action) {
+		switch (action) {
+			case SETTINGS -> client.setScreen(new LobbyPauseScreen(screen));
+			case DISCONNECT -> LobbyPauseScreen.confirmDisconnect(screen);
+			default -> {
+				if (client.interactionManager != null) client.interactionManager.clickButton(syncId, action.button);
+			}
+		}
+	}
 
 	public static void render(DrawContext context, TextRenderer font, int width, int mouseX, int mouseY,
 			Tab active, Status status) {

@@ -407,13 +407,7 @@ public final class LobbyPlayScreen extends HandledScreen<LobbyPlayScreenHandler>
 	}
 
 	private void navAction(Action action) {
-		switch (action) {
-			case CHARACTER -> send(CHARACTER);
-			case EDITOR -> send(EDITOR);
-			case SETTINGS -> client.setScreen(new LobbyPauseScreen(this));
-			case DISCONNECT -> LobbyPauseScreen.confirmDisconnect(this);
-			case PLAY -> { }
-		}
+		LobbyTopNavBar.activate(client, this, handler.syncId, action);
 	}
 
 	private void send(int action) {

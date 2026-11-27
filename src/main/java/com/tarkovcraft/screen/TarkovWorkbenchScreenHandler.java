@@ -2,6 +2,7 @@ package com.tarkovcraft.screen;
 
 import com.tarkovcraft.ammo.AmmoTier;
 import com.tarkovcraft.ammo.TaCZCaliberCatalog;
+import com.tarkovcraft.arena.PlayerProfileState;
 import com.tarkovcraft.block.TarkovWorkbenchBlock;
 import com.tarkovcraft.network.TarkovNetworking;
 import com.tarkovcraft.registry.ModScreenHandlers;
@@ -25,23 +26,30 @@ import org.jetbrains.annotations.Nullable;
  * Server-authoritative ScreenHandler for the Tarkov Armor & Ammo Workbench.
  */
 public class TarkovWorkbenchScreenHandler extends ScreenHandler {
-	private final BlockPos workbenchPos;
+	@Nullable private final BlockPos workbenchPos;
+	private final PlayerEntity owner;
+	@Nullable private final LobbyScreenStatus lobbyStatus;
 
-	public TarkovWorkbenchScreenHandler(int syncId, PlayerInventory inv, BlockPos workbenchPos) {
+	public TarkovWorkbenchScreenHandler(int syncId, PlayerInventory inv, @Nullable BlockPos workbenchPos) {
 		super(ModScreenHandlers.TARKOV_WORKBENCH_SCREEN_HANDLER, syncId);
 		this.workbenchPos = workbenchPos;
+		this.owner = inv.player;
+		this.lobbyStatus = isLobby() ? new LobbyScreenStatus(this::addProperty) : null;
+		if (lobbyStatus != null && owner instanceof ServerPlayerEntity player) lobbyStatus.refresh(player);
 	}
 
 	public static TarkovWorkbenchScreenHandler fromClientBuf(int syncId, PlayerInventory inv, PacketByteBuf buf) {
-		BlockPos pos = buf.readBlockPos();
+		BlockPos pos = buf.readBoolean() ? null : buf.readBlockPos();
 		return new TarkovWorkbenchScreenHandler(syncId, inv, pos);
 	}
 
-	public static void openForPlayer(ServerPlayerEntity player, BlockPos pos) {
+	public static void openForPlayer(ServerPlayerEntity player, @Nullable BlockPos pos) {
+		if (pos == null && !LobbyTabNavigation.canUse(player)) return;
 		player.openHandledScreen(new ExtendedScreenHandlerFactory() {
 			@Override
 			public void writeScreenOpeningData(ServerPlayerEntity p, PacketByteBuf buf) {
-				buf.writeBlockPos(pos);
+				buf.writeBoolean(pos == null);
+				if (pos != null) buf.writeBlockPos(pos);
 			}
 
 			@Override
@@ -60,8 +68,26 @@ public class TarkovWorkbenchScreenHandler extends ScreenHandler {
 		}
 	}
 
+	@Nullable
 	public BlockPos getWorkbenchPos() {
 		return workbenchPos;
+	}
+
+	public boolean isLobby() { return workbenchPos == null; }
+
+	@Nullable
+	public LobbyScreenStatus lobbyStatus() { return lobbyStatus; }
+
+	@Override
+	public boolean onButtonClick(PlayerEntity player, int id) {
+		return isLobby() && player instanceof ServerPlayerEntity serverPlayer
+			&& serverPlayer.currentScreenHandler == this && canUse(player) && LobbyTabNavigation.handle(serverPlayer, id);
+	}
+
+	@Override
+	public void sendContentUpdates() {
+		if (lobbyStatus != null && owner instanceof ServerPlayerEntity player) lobbyStatus.refresh(player);
+		super.sendContentUpdates();
 	}
 
 	@Override
@@ -71,12 +97,15 @@ public class TarkovWorkbenchScreenHandler extends ScreenHandler {
 
 	@Override
 	public boolean canUse(PlayerEntity player) {
+		if (player != owner) return false;
+		if (workbenchPos == null) return !(player instanceof ServerPlayerEntity serverPlayer) || LobbyTabNavigation.canUse(serverPlayer);
 		return player.getWorld().getBlockState(workbenchPos).getBlock() instanceof TarkovWorkbenchBlock
 			&& player.squaredDistanceTo(workbenchPos.toCenterPos()) <= 36.0;
 	}
 
 	public void syncResources(ServerPlayerEntity player) {
-		WorkbenchInventoryHelper.SyncPayload payload = WorkbenchInventoryHelper.collectSyncPayload(player);
+		WorkbenchInventoryHelper.SyncPayload payload = WorkbenchInventoryHelper.collectSyncPayload(player,
+			isLobby() ? PlayerProfileState.get(player.getServer()).stash(player.getUuid()) : null);
 		TarkovNetworking.sendWorkbenchSync(player, payload);
 	}
 
@@ -95,7 +124,7 @@ public class TarkovWorkbenchScreenHandler extends ScreenHandler {
 		if (!TaCZCaliberCatalog.isTierAllowed(ammoId, tier)) {
 			return;
 		}
-		WorkbenchInventoryHelper.craftAmmo(player, ammoId, tier, upgradeFromFmj);
+		WorkbenchInventoryHelper.craftAmmo(player, ammoId, tier, upgradeFromFmj, isLobby());
 		syncResources(player);
 	}
 
@@ -110,7 +139,7 @@ public class TarkovWorkbenchScreenHandler extends ScreenHandler {
 		if (!TarkovWorkbenchRecipes.isCraftableGear(item)) {
 			return;
 		}
-		WorkbenchInventoryHelper.craftGear(player, item);
+		WorkbenchInventoryHelper.craftGear(player, item, isLobby());
 		syncResources(player);
 	}
 }

@@ -94,6 +94,8 @@ public final class RaidScreenHandler extends ScreenHandler {
 	public static boolean isOpen(ServerPlayerEntity player) {
 		return player.currentScreenHandler instanceof RaidScreenHandler
 			|| player.currentScreenHandler instanceof LobbyPlayScreenHandler
+			|| player.currentScreenHandler instanceof LobbyScreenHandler
+			|| player.currentScreenHandler instanceof TarkovWorkbenchScreenHandler workbench && workbench.isLobby()
 			|| player.currentScreenHandler instanceof TarkovScreenHandler inventory && inventory.getMode() == TarkovScreenHandler.MODE_STASH;
 	}
 

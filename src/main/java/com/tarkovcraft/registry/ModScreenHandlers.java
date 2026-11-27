@@ -3,6 +3,8 @@ package com.tarkovcraft.registry;
 import com.tarkovcraft.TarkovCraftMod;
 import com.tarkovcraft.screen.AdminMenuScreenHandler;
 import com.tarkovcraft.screen.LobbyPlayScreenHandler;
+import com.tarkovcraft.screen.LobbyServiceScreenHandler;
+import com.tarkovcraft.screen.LobbyTraderScreenHandler;
 import com.tarkovcraft.screen.RaidScreenHandler;
 import com.tarkovcraft.screen.TarkovScreenHandler;
 import com.tarkovcraft.screen.TarkovWorkbenchScreenHandler;
@@ -29,6 +31,14 @@ public final class ModScreenHandlers {
 		Registries.SCREEN_HANDLER,
 		new Identifier(TarkovCraftMod.MOD_ID, "lobby_play"),
 		new ExtendedScreenHandlerType<>(LobbyPlayScreenHandler::fromClientBuf)
+	);
+	public static final ScreenHandlerType<LobbyTraderScreenHandler> LOBBY_TRADER_SCREEN_HANDLER = Registry.register(
+		Registries.SCREEN_HANDLER, new Identifier(TarkovCraftMod.MOD_ID, "lobby_trader"),
+		new ExtendedScreenHandlerType<>(LobbyTraderScreenHandler::fromClientBuf)
+	);
+	public static final ScreenHandlerType<LobbyServiceScreenHandler> LOBBY_SERVICE_SCREEN_HANDLER = Registry.register(
+		Registries.SCREEN_HANDLER, new Identifier(TarkovCraftMod.MOD_ID, "lobby_service"),
+		new ExtendedScreenHandlerType<>(LobbyServiceScreenHandler::fromClientBuf)
 	);
 	public static final ScreenHandlerType<RaidScreenHandler> RAID_SCREEN_HANDLER = Registry.register(
 		Registries.SCREEN_HANDLER,
