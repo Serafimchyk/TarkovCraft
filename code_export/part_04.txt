@@ -1,950 +1,3761 @@
 
-// ========== .\src\main\java\com\tarkovcraft\client\screen\TarkovInventoryScreen.java ==========
-package com.tarkovcraft.client.screen;
+// ========== .\src\main\java\com\tarkovcraft\client\TaCZGunInfoHelper.java ==========
+package com.tarkovcraft.client;
 
 import com.tarkovcraft.ammo.AmmoTier;
-import com.tarkovcraft.client.ClientLoadoutCache;
-import com.tarkovcraft.client.ClientNetworkSender;
-import com.tarkovcraft.client.TarkovCraftClient;
-import com.tarkovcraft.client.hud.BodyHealthHudHelper;
-import com.tarkovcraft.grid.ContainerItemHelper;
-import com.tarkovcraft.grid.ItemSize;
-import com.tarkovcraft.grid.ItemSizeRegistry;
-import com.tarkovcraft.health.BodyPart;
-import com.tarkovcraft.health.MedicalHelper;
-import com.tarkovcraft.item.BackpackItem;
-import com.tarkovcraft.item.MedicalType;
-import com.tarkovcraft.item.TacticalRigItem;
-import com.tarkovcraft.item.TarkovArmorItem;
-import com.tarkovcraft.item.TarkovCaseItem;
-import com.tarkovcraft.item.TarkovMedicalItem;
-import com.tarkovcraft.loadout.EquipmentSlotType;
-import com.tarkovcraft.loadout.PlayerLoadout;
-import com.tarkovcraft.network.TarkovNetworking;
-import com.tarkovcraft.screen.TarkovScreenHandler;
+import com.tarkovcraft.ammo.TaCZCaliberCatalog;
+import com.tarkovcraft.health.TaCZBulletHelper;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.client.gui.screen.ingame.InventoryScreen;
-import net.minecraft.client.item.TooltipContext;
-import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.util.Identifier;
+
+import java.lang.reflect.Method;
+import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Client-only zero-hard-dependency helper that inspects TaCZ firearms via TimelessAPI reflection
+ * and extracts caliber, fire mode, ammo count, barrel chamber state, loaded tier, and allowed tiers.
+ */
+@Environment(EnvType.CLIENT)
+public final class TaCZGunInfoHelper {
+	private record GunMeta(String ammoId, int baseMagCapacity, int rpm) {
+	}
+
+	public record GunSummary(
+		String caliberName,
+		String ammoId,
+		String fireMode,
+		int currentAmmo,
+		int maxMag,
+		boolean bulletInBarrel,
+		AmmoTier loadedTier,
+		int penetration,
+		List<AmmoTier> allowedTiers
+	) {
+	}
+
+	private static final ConcurrentHashMap<String, GunMeta> GUN_META_CACHE = new ConcurrentHashMap<>();
+	private static final GunMeta EMPTY_META = new GunMeta("", 0, 0);
+
+	private TaCZGunInfoHelper() {
+	}
+
+	public static GunSummary inspectGun(ItemStack stack) {
+		if (stack == null || stack.isEmpty()) {
+			return new GunSummary("Unknown", "", "", 0, 0, false, AmmoTier.FMJ, 22, List.of(AmmoTier.values()));
+		}
+		NbtCompound nbt = stack.getNbt();
+		String gunId = nbt != null ? nbt.getString("GunId") : "";
+		int curAmmo = nbt != null ? nbt.getInt("GunCurrentAmmoCount") : 0;
+		boolean barrel = nbt != null && nbt.getBoolean("HasBulletInBarrel");
+		String fireMode = nbt != null ? nbt.getString("GunFireMode").toUpperCase(Locale.ROOT) : "";
+		AmmoTier loadedTier = AmmoTier.getLoadedTierFromGun(stack);
+
+		GunMeta meta = resolveGunMeta(gunId);
+		String ammoId = meta.ammoId();
+		if (ammoId.isBlank() && nbt != null && nbt.contains("AmmoId")) {
+			ammoId = nbt.getString("AmmoId");
+		}
+
+		String caliberName;
+		List<AmmoTier> allowedTiers;
+		int pen;
+		if (!ammoId.isBlank()) {
+			TaCZCaliberCatalog.CaliberSpec spec = TaCZCaliberCatalog.getSpecOrDynamic(ammoId);
+			caliberName = spec.displayName();
+			allowedTiers = spec.getAllowedTiersList();
+			pen = TaCZBulletHelper.computePenetration(ammoId, loadedTier);
+		} else {
+			caliberName = "Ballistic";
+			allowedTiers = List.of(AmmoTier.values());
+			pen = TaCZBulletHelper.computePenetration("", loadedTier);
+		}
+
+		return new GunSummary(
+			caliberName,
+			ammoId,
+			fireMode,
+			Math.max(0, curAmmo),
+			Math.max(curAmmo, meta.baseMagCapacity()),
+			barrel,
+			loadedTier,
+			pen,
+			allowedTiers
+		);
+	}
+
+	private static GunMeta resolveGunMeta(String gunId) {
+		if (gunId == null || gunId.isBlank()) {
+			return EMPTY_META;
+		}
+		return GUN_META_CACHE.computeIfAbsent(gunId, TaCZGunInfoHelper::reflectGunMeta);
+	}
+
+	private static GunMeta reflectGunMeta(String gunId) {
+		try {
+			Identifier id = Identifier.tryParse(gunId);
+			if (id == null) {
+				return EMPTY_META;
+			}
+			Class<?> apiClass = Class.forName("com.tacz.guns.api.TimelessAPI");
+			Method getGunIndex = apiClass.getMethod("getCommonGunIndex", Identifier.class);
+			Object raw = getGunIndex.invoke(null, id);
+			Object gunIndex = (raw instanceof Optional<?> opt) ? opt.orElse(null) : raw;
+			if (gunIndex == null) {
+				return EMPTY_META;
+			}
+			Object gunData = gunIndex.getClass().getMethod("getGunData").invoke(gunIndex);
+			if (gunData == null) {
+				return EMPTY_META;
+			}
+
+			String ammoId = "";
+			try {
+				Object rawAmmo = gunData.getClass().getMethod("getAmmoId").invoke(gunData);
+				if (rawAmmo != null) {
+					ammoId = rawAmmo.toString();
+				}
+			} catch (Throwable ignored) {
+			}
+
+			int magCap = 0;
+			try {
+				Object rawAmt = gunData.getClass().getMethod("getAmmoAmount").invoke(gunData);
+				if (rawAmt instanceof Number n) {
+					magCap = n.intValue();
+				}
+			} catch (Throwable ignored) {
+			}
+
+			int rpm = 0;
+			try {
+				Method mRpm = gunData.getClass().getMethod("getRoundsPerMinute");
+				Object rawRpm = mRpm.invoke(gunData);
+				if (rawRpm instanceof Number n) {
+					rpm = n.intValue();
+				}
+			} catch (Throwable ignored) {
+			}
+
+			return new GunMeta(ammoId, Math.max(0, magCap), Math.max(0, rpm));
+		} catch (Throwable ignored) {
+			return EMPTY_META;
+		}
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\client\TarkovCraftClient.java ==========
+package com.tarkovcraft.client;
+
+import com.tarkovcraft.ammo.AmmoReloadTracker;
+import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.ammo.TaCZCaliberCatalog;
+import com.tarkovcraft.client.model.GearPalette;
+import com.tarkovcraft.client.renderer.CorpseEntityRenderer;
+import com.tarkovcraft.client.renderer.HitZoneDebugRenderer;
+import com.tarkovcraft.client.renderer.PlayerGearFeature;
+import com.tarkovcraft.client.screen.AmmoRadialScreen;
+import com.tarkovcraft.client.screen.TarkovInventoryScreen;
+import com.tarkovcraft.client.screen.TarkovWorkbenchScreen;
+import com.tarkovcraft.health.TaCZBulletHelper;
+import com.tarkovcraft.network.AmmoSelectionNetworking;
+import com.tarkovcraft.network.TarkovNetworking;
+import com.tarkovcraft.registry.ModEntities;
+import com.tarkovcraft.registry.ModScreenHandlers;
+import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
+import net.minecraft.client.gui.screen.ingame.HandledScreens;
+import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.render.entity.FlyingItemEntityRenderer;
+import net.minecraft.client.util.InputUtil;
+import net.minecraft.item.FoodComponent;
 import net.minecraft.item.ItemStack;
 import net.minecraft.text.Text;
-import org.jetbrains.annotations.Nullable;
-import org.joml.Quaternionf;
+import net.minecraft.util.Formatting;
 import org.lwjgl.glfw.GLFW;
+
+import java.util.Locale;
+
+public class TarkovCraftClient implements ClientModInitializer {
+	public static KeyBinding toggleMeleeKey;
+	public static KeyBinding interactKey;
+	public static KeyBinding toggleHitboxesKey;
+	private static KeyBinding ammoRadialKey;
+
+	@Override
+	public void onInitializeClient() {
+		TarkovNetworking.registerClientReceivers();
+		ClientNetworkSender.registerWorkbenchClientReceiver();
+		PlayerGearFeature.register();
+		GearPalette.register();
+		HandledScreens.register(ModScreenHandlers.TARKOV_SCREEN_HANDLER, TarkovInventoryScreen::new);
+		HandledScreens.register(ModScreenHandlers.TARKOV_WORKBENCH_SCREEN_HANDLER, TarkovWorkbenchScreen::new);
+		EntityRendererRegistry.register(ModEntities.CORPSE, CorpseEntityRenderer::new);
+		EntityRendererRegistry.register(ModEntities.GRENADE, FlyingItemEntityRenderer::new);
+		EntityRendererRegistry.register(ModEntities.AIRDROP, com.tarkovcraft.client.renderer.AirdropEntityRenderer::new);
+		WorldRenderEvents.AFTER_ENTITIES.register(HitZoneDebugRenderer::render);
+
+		ItemTooltipCallback.EVENT.register((stack, context, lines) -> {
+			if (stack == null || stack.isEmpty()) {
+				return;
+			}
+			if (AmmoTier.isTaczAmmoStack(stack)) {
+				AmmoTier tier = AmmoTier.getFromAmmoStack(stack);
+				if (!lines.isEmpty()) {
+					lines.set(0, lines.get(0).copy().append(" ")
+						.append(Text.literal("[" + tier.getBadge() + "]").formatted(tier.getColor())));
+				}
+				String ammoId = AmmoTier.getAmmoId(stack);
+				int pen = TaCZBulletHelper.computePenetration(ammoId, tier);
+				int idx = Math.min(1, lines.size());
+				lines.add(idx++, Text.translatable("tooltip.tarkovcraft.ammo_tier",
+					Text.translatable(tier.getTranslationKey())).formatted(tier.getColor()));
+				lines.add(idx++, Text.translatable("tooltip.tarkovcraft.ammo_pen",
+					pen, AmmoTier.formatArmorClassTarget(pen)).formatted(pen >= 35 ? Formatting.YELLOW : Formatting.GRAY));
+				lines.add(idx++, Text.translatable("tooltip.tarkovcraft.ammo_dmg_wear",
+					String.format(Locale.ROOT, "%.2f", tier.getDamageMultiplier()),
+					String.format(Locale.ROOT, "%.2f", tier.getArmorWearMultiplier())).formatted(Formatting.GRAY));
+				if (com.tarkovcraft.ammo.TaCZCaliberCatalog.isShotgunCaliber(ammoId)) {
+					if (tier == AmmoTier.HP) {
+						lines.add(idx++, Text.translatable("tooltip.tarkovcraft.ammo_shotgun_hp").formatted(Formatting.GREEN));
+					} else if (tier == AmmoTier.FMJ) {
+						lines.add(idx++, Text.translatable("tooltip.tarkovcraft.ammo_shotgun_fmj").formatted(Formatting.GRAY));
+					} else if (tier == AmmoTier.AP) {
+						lines.add(idx++, Text.translatable("tooltip.tarkovcraft.ammo_shotgun_ap").formatted(Formatting.GOLD));
+					}
+				}
+				if (tier == AmmoTier.FMJ) {
+					lines.add(idx, Text.translatable("tooltip.tarkovcraft.ammo_upgrade_hint").formatted(Formatting.DARK_GRAY));
+				}
+				return;
+			}
+			if (AmmoTier.isTaczGunStack(stack)) {
+				TaCZGunInfoHelper.GunSummary info = TaCZGunInfoHelper.inspectGun(stack);
+				int idx = Math.min(1, lines.size());
+				lines.add(idx++, Text.translatable("tooltip.tarkovcraft.gun_caliber", info.caliberName())
+					.formatted(Formatting.GOLD));
+				if (info.maxMag() > 0 || info.currentAmmo() > 0) {
+					if (info.bulletInBarrel()) {
+						lines.add(idx++, Text.translatable("tooltip.tarkovcraft.gun_ammo_count_chamber",
+							info.currentAmmo(), info.maxMag()).formatted(Formatting.WHITE));
+					} else {
+						lines.add(idx++, Text.translatable("tooltip.tarkovcraft.gun_ammo_count",
+							info.currentAmmo(), info.maxMag()).formatted(Formatting.WHITE));
+					}
+				}
+				if (!info.fireMode().isBlank()) {
+					lines.add(idx++, Text.translatable("tooltip.tarkovcraft.gun_fire_mode", info.fireMode())
+						.formatted(Formatting.GRAY));
+				}
+				lines.add(idx++, Text.translatable("tooltip.tarkovcraft.gun_loaded_tier_full",
+					info.loadedTier().getBadge(),
+					info.penetration(),
+					String.format(Locale.ROOT, "%.2f", info.loadedTier().getDamageMultiplier()))
+					.formatted(info.loadedTier().getColor()));
+				String allowedStr = String.join(", ", info.allowedTiers().stream().map(AmmoTier::getBadge).toList());
+				lines.add(idx, Text.translatable("tooltip.tarkovcraft.gun_allowed_tiers", allowedStr)
+					.formatted(Formatting.DARK_GRAY));
+				return;
+			}
+			if (!stack.isFood()) {
+				return;
+			}
+			FoodComponent fc = stack.getItem().getFoodComponent();
+			if (fc == null) {
+				return;
+			}
+			int energy = fc.getHunger() * 5;
+			int sat = Math.round(fc.getHunger() * fc.getSaturationModifier() * 10.0f);
+			int insertIdx = Math.min(1, lines.size());
+			lines.add(insertIdx, Text.translatable("tooltip.tarkovcraft.food_stats", energy, sat)
+				.formatted(Formatting.GREEN));
+		});
+
+		toggleMeleeKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+			"key.tarkovcraft.toggle_melee",
+			InputUtil.Type.KEYSYM,
+			GLFW.GLFW_KEY_GRAVE_ACCENT,
+			"category.tarkovcraft"
+		));
+
+		interactKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+			"key.tarkovcraft.interact",
+			InputUtil.Type.KEYSYM,
+			GLFW.GLFW_KEY_F,
+			"category.tarkovcraft"
+		));
+
+		toggleHitboxesKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+			"key.tarkovcraft.toggle_hitboxes",
+			InputUtil.Type.KEYSYM,
+			GLFW.GLFW_KEY_F8,
+			"category.tarkovcraft"
+		));
+
+		ammoRadialKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+			"key.tarkovcraft.ammo_radial",
+			InputUtil.Type.KEYSYM,
+			GLFW.GLFW_KEY_Y,
+			"category.tarkovcraft"
+		));
+
+		ClientTickEvents.END_CLIENT_TICK.register(client -> {
+			com.tarkovcraft.compat.voicechat.VoicechatAdapter.updateClientProfile(client.player == null
+				? com.tarkovcraft.audio.HearingProfile.DEFAULT
+				: com.tarkovcraft.audio.HearingProfile.forLoadout(ClientLoadoutCache.getLoadout()));
+			while (ammoRadialKey.wasPressed()) {
+				if (client.player != null && client.currentScreen == null && client.player.isAlive()
+						&& !client.player.isSpectator() && ClientPlayNetworking.canSend(AmmoSelectionNetworking.SELECT)) {
+					ItemStack gun = client.player.getMainHandStack();
+					String ammoId = AmmoReloadTracker.getGunAmmoId(gun);
+					if (gun.getNbt() != null && TaCZCaliberCatalog.isBallisticAmmoId(ammoId)) {
+						String gunId = gun.getNbt().getString("GunId");
+						if (!gunId.isEmpty() && gunId.length() <= AmmoSelectionNetworking.MAX_GUN_ID_LENGTH) {
+							client.setScreen(new AmmoRadialScreen(gunId, ammoId, AmmoReloadTracker.countAvailableAmmo(client.player, ammoId)));
+						}
+					}
+				}
+			}
+			while (toggleMeleeKey.wasPressed()) {
+				if (client.player != null && !client.player.isCreative()) {
+					TarkovNetworking.sendToggleMelee();
+				}
+			}
+			while (interactKey.wasPressed()) {
+				if (client.player != null && client.currentScreen == null) {
+					TarkovNetworking.sendInteract((byte) WorldInteractState.getSelectedAction());
+				}
+			}
+			while (toggleHitboxesKey.wasPressed()) {
+				boolean on = HitZoneDebugRenderer.toggle();
+				if (client.player != null) {
+					client.player.sendMessage(Text.translatable(
+						on ? "message.tarkovcraft.hitboxes_on" : "message.tarkovcraft.hitboxes_off"
+					), true);
+				}
+			}
+		});
+	}
+
+	public static String getShortKeyLabel(KeyBinding key) {
+		if (key == null || key.isUnbound()) {
+			return "-";
+		}
+		String raw = key.getBoundKeyLocalizedText().getString().trim();
+		String lower = raw.toLowerCase();
+		if (lower.contains("кнопка ") || lower.contains("button ")) {
+			String digits = raw.replaceAll("[^0-9]", "");
+			if (!digits.isEmpty()) {
+				return "M" + digits;
+			}
+		}
+		if (lower.equals("left button") || lower.equals("лкм")) return "LMB";
+		if (lower.equals("right button") || lower.equals("пкм")) return "RMB";
+		if (lower.equals("middle button") || lower.equals("скм")) return "MMB";
+		if (raw.length() > 4) {
+			return raw.substring(0, 3).toUpperCase();
+		}
+		return raw.toUpperCase();
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\client\WorldInteractState.java ==========
+package com.tarkovcraft.client;
+
+import com.tarkovcraft.item.BackpackItem;
+import com.tarkovcraft.item.TacticalRigItem;
+import com.tarkovcraft.item.TarkovCaseItem;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.ItemEntity;
+import org.jetbrains.annotations.Nullable;
+
+/**
+ * Tracks the currently targeted world interactable and the scroll-wheel selected action
+ * for multi-action items on the ground (Backpacks & Tactical Rigs):
+ *   0 = Search (default, top)
+ *   1 = Equip / Take (scroll down, bottom)
+ */
+public final class WorldInteractState {
+	public static final int ACTION_SEARCH = 0;
+	public static final int ACTION_EQUIP_OR_TAKE = 1;
+
+	private static int lastTargetEntityId = -1;
+	private static boolean multiActionActive = false;
+	private static int selectedAction = ACTION_SEARCH;
+
+	private WorldInteractState() {
+	}
+
+	public static void updateTarget(@Nullable Entity entity) {
+		if (entity instanceof ItemEntity ie
+			&& !ie.getStack().isEmpty()
+			&& (ie.getStack().getItem() instanceof BackpackItem
+			|| ie.getStack().getItem() instanceof TacticalRigItem
+			|| ie.getStack().getItem() instanceof TarkovCaseItem)) {
+			if (ie.getId() != lastTargetEntityId) {
+				lastTargetEntityId = ie.getId();
+				selectedAction = ACTION_SEARCH; // Default top option: Search
+			}
+			multiActionActive = true;
+		} else {
+			lastTargetEntityId = -1;
+			multiActionActive = false;
+			selectedAction = ACTION_SEARCH;
+		}
+	}
+
+	public static boolean hasMultiActionMenu() {
+		return multiActionActive;
+	}
+
+	public static int getSelectedAction() {
+		return multiActionActive ? selectedAction : ACTION_SEARCH;
+	}
+
+	public static void scrollAction(int delta) {
+		if (!multiActionActive) return;
+		selectedAction = Math.max(ACTION_SEARCH, Math.min(ACTION_EQUIP_OR_TAKE, selectedAction + delta));
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\command\TarkovCommand.java ==========
+package com.tarkovcraft.command;
+
+import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.FloatArgumentType;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.StringArgumentType;
+import com.tarkovcraft.airdrop.AirdropManager;
+import com.tarkovcraft.arena.ArenaEventCommands;
+import com.tarkovcraft.block.SearchableLootBlock;
+import com.tarkovcraft.block.SearchableLootBlockEntity;
+import com.tarkovcraft.config.TarkovConfig;
+import com.tarkovcraft.container.VanillaContainerBridge;
+import com.tarkovcraft.entity.CorpseEntity;
+import com.tarkovcraft.grid.ContainerItemHelper;
+import com.tarkovcraft.grid.GridContainer;
+import com.tarkovcraft.health.BodyPart;
+import com.tarkovcraft.health.BodyPartHealth;
+import com.tarkovcraft.health.HitZone;
+import com.tarkovcraft.health.InjuryType;
+import com.tarkovcraft.loadout.EquipmentSlotType;
+import com.tarkovcraft.loadout.PlayerLoadout;
+import com.tarkovcraft.loadout.PlayerLoadoutHolder;
+import com.tarkovcraft.loot.CityZoneClassifier;
+import com.tarkovcraft.loot.TarkovLootPool;
+import com.tarkovcraft.registry.ModBlocks;
+import com.tarkovcraft.registry.ModEntities;
+import com.tarkovcraft.registry.ModItems;
+import com.tarkovcraft.worldgen.TarkovStructureFeature;
+import com.tarkovcraft.worldgen.TarkovStructureRegistry;
+import net.minecraft.block.entity.BlockEntity;
+import net.minecraft.command.CommandSource;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.server.command.CommandManager;
+import net.minecraft.server.command.ServerCommandSource;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.ClickEvent;
+import net.minecraft.text.HoverEvent;
+import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.HitResult;
+import net.minecraft.util.math.BlockPos;
+
+import java.util.Arrays;
+import java.util.List;
+
+/**
+ * Operator-only (/tarkov, permission level 2) testing utilities.
+ */
+public final class TarkovCommand {
+	private TarkovCommand() {
+	}
+
+	public static void register(CommandDispatcher<ServerCommandSource> dispatcher) {
+		List<String> zoneNames = Arrays.stream(HitZone.values()).map(HitZone::getId).toList();
+		List<String> partNames = Arrays.stream(BodyPart.values()).map(BodyPart::getId).toList();
+		List<String> limbNames = List.of("left_arm", "right_arm", "left_leg", "right_leg");
+		List<String> bleedTypes = List.of("light", "heavy");
+		List<String> structureNames = List.of("any", "roadblock", "med_tent", "military_camp", "forest_stash");
+		List<String> poolNames = TarkovLootPool.allIds();
+		List<String> crateBlockNames = List.of("default", "weapon_crate", "medbag", "technical_crate", "airdrop_crate");
+
+		dispatcher.register(CommandManager.literal("tarkov")
+			.requires(source -> source.hasPermissionLevel(2))
+			.then(ArenaEventCommands.commands())
+			.then(CommandManager.literal("kit")
+				.executes(ctx -> giveStarterKit(ctx.getSource())))
+			.then(CommandManager.literal("meds")
+				.executes(ctx -> giveMedicalKit(ctx.getSource())))
+			.then(CommandManager.literal("loot")
+				.executes(ctx -> spawnLootCrate(ctx.getSource(), "military", "default"))
+				.then(CommandManager.argument("pool", StringArgumentType.word())
+					.suggests((ctx, builder) -> CommandSource.suggestMatching(poolNames, builder))
+					.executes(ctx -> spawnLootCrate(
+						ctx.getSource(),
+						StringArgumentType.getString(ctx, "pool"),
+						"default"
+					))
+				)
+			)
+			.then(CommandManager.literal("crate")
+				.then(CommandManager.literal("list")
+					.executes(ctx -> listLootPools(ctx.getSource())))
+				.then(CommandManager.literal("give")
+					.then(CommandManager.argument("pool", StringArgumentType.word())
+						.suggests((ctx, builder) -> CommandSource.suggestMatching(poolNames, builder))
+						.executes(ctx -> giveLootCrate(
+							ctx.getSource(),
+							StringArgumentType.getString(ctx, "pool"),
+							"default", -1, -1
+						))
+						.then(CommandManager.argument("block", StringArgumentType.word())
+							.suggests((ctx, builder) -> CommandSource.suggestMatching(crateBlockNames, builder))
+							.executes(ctx -> giveLootCrate(
+								ctx.getSource(),
+								StringArgumentType.getString(ctx, "pool"),
+								StringArgumentType.getString(ctx, "block"), -1, -1
+							))
+							.then(CommandManager.argument("width", IntegerArgumentType.integer(1, 10))
+								.then(CommandManager.argument("height", IntegerArgumentType.integer(1, 10))
+									.executes(ctx -> giveLootCrate(
+										ctx.getSource(),
+										StringArgumentType.getString(ctx, "pool"),
+										StringArgumentType.getString(ctx, "block"),
+										IntegerArgumentType.getInteger(ctx, "width"),
+										IntegerArgumentType.getInteger(ctx, "height")
+									))
+								)
+							)
+						)
+					)
+				)
+				.then(CommandManager.literal("spawn")
+					.then(CommandManager.argument("pool", StringArgumentType.word())
+						.suggests((ctx, builder) -> CommandSource.suggestMatching(poolNames, builder))
+						.executes(ctx -> spawnLootCrate(
+							ctx.getSource(),
+							StringArgumentType.getString(ctx, "pool"),
+							"default"
+						))
+						.then(CommandManager.argument("block", StringArgumentType.word())
+							.suggests((ctx, builder) -> CommandSource.suggestMatching(crateBlockNames, builder))
+							.executes(ctx -> spawnLootCrate(
+								ctx.getSource(),
+								StringArgumentType.getString(ctx, "pool"),
+								StringArgumentType.getString(ctx, "block")
+							))
+						)
+					)
+				)
+				.then(CommandManager.literal("set")
+					.then(CommandManager.argument("pool", StringArgumentType.word())
+						.suggests((ctx, builder) -> CommandSource.suggestMatching(poolNames, builder))
+						.executes(ctx -> setLookedCratePool(
+							ctx.getSource(),
+							StringArgumentType.getString(ctx, "pool")
+						))
+					)
+				)
+				.then(CommandManager.literal("refill")
+					.executes(ctx -> refillCratesInRadius(ctx.getSource(), 16))
+					.then(CommandManager.argument("radius", IntegerArgumentType.integer(1, 128))
+						.executes(ctx -> refillCratesInRadius(
+							ctx.getSource(),
+							IntegerArgumentType.getInteger(ctx, "radius")
+						))
+					)
+				)
+			)
+			.then(CommandManager.literal("city")
+				.then(CommandManager.literal("respawn")
+					.then(CommandManager.argument("minutes", IntegerArgumentType.integer(0, 10080))
+						.executes(ctx -> setLootRespawnMinutes(
+							ctx.getSource(),
+							IntegerArgumentType.getInteger(ctx, "minutes")
+						))
+					)
+				)
+				.then(CommandManager.literal("autoloot")
+					.then(CommandManager.literal("on")
+						.executes(ctx -> setCityAutoLoot(ctx.getSource(), true)))
+					.then(CommandManager.literal("off")
+						.executes(ctx -> setCityAutoLoot(ctx.getSource(), false)))
+				)
+				.then(CommandManager.literal("zone")
+					.then(CommandManager.argument("pool", StringArgumentType.word())
+						.suggests((ctx, builder) -> CommandSource.suggestMatching(poolNames, builder))
+						.then(CommandManager.argument("radius", IntegerArgumentType.integer(2, 128))
+							.executes(ctx -> assignCityZone(
+								ctx.getSource(),
+								StringArgumentType.getString(ctx, "pool"),
+								IntegerArgumentType.getInteger(ctx, "radius")
+							))
+						)
+					)
+				)
+				.then(CommandManager.literal("scatter")
+					.then(CommandManager.argument("radius", IntegerArgumentType.integer(8, 128))
+						.executes(ctx -> scatterCityCrates(
+							ctx.getSource(),
+							IntegerArgumentType.getInteger(ctx, "radius"),
+							"auto"
+						))
+						.then(CommandManager.argument("pool", StringArgumentType.word())
+							.suggests((ctx, builder) -> {
+								java.util.List<String> opts = new java.util.ArrayList<>();
+								opts.add("auto");
+								opts.addAll(poolNames);
+								return CommandSource.suggestMatching(opts, builder);
+							})
+							.executes(ctx -> scatterCityCrates(
+								ctx.getSource(),
+								IntegerArgumentType.getInteger(ctx, "radius"),
+								StringArgumentType.getString(ctx, "pool")
+							))
+						)
+					)
+				)
+			)
+			.then(CommandManager.literal("corpse")
+				.executes(ctx -> spawnTestCorpse(ctx.getSource())))
+			.then(CommandManager.literal("clear_corpses")
+				.executes(ctx -> clearCorpses(ctx.getSource())))
+			.then(CommandManager.literal("reload")
+				.executes(ctx -> reloadConfig(ctx.getSource())))
+			.then(CommandManager.literal("locate")
+				.executes(ctx -> locateStructure(ctx.getSource(), "any"))
+				.then(CommandManager.argument("structure", StringArgumentType.word())
+					.suggests((ctx, builder) -> CommandSource.suggestMatching(structureNames, builder))
+					.executes(ctx -> locateStructure(
+						ctx.getSource(),
+						StringArgumentType.getString(ctx, "structure")
+					))
+				)
+			)
+			.then(CommandManager.literal("airdrop")
+				.executes(ctx -> spawnAirdropNear(ctx.getSource()))
+				.then(CommandManager.literal("here")
+					.executes(ctx -> spawnAirdropHere(ctx.getSource())))
+				.then(CommandManager.literal("interval")
+					.then(CommandManager.argument("minutes", IntegerArgumentType.integer(1, 1440))
+						.executes(ctx -> setAirdropInterval(
+							ctx.getSource(),
+							IntegerArgumentType.getInteger(ctx, "minutes")
+						))
+					)
+				)
+			)
+			.then(CommandManager.literal("heal")
+				.executes(ctx -> healFull(ctx.getSource())))
+			.then(CommandManager.literal("bleed")
+				.then(CommandManager.argument("part", StringArgumentType.word())
+					.suggests((ctx, builder) -> CommandSource.suggestMatching(partNames, builder))
+					.then(CommandManager.argument("type", StringArgumentType.word())
+						.suggests((ctx, builder) -> CommandSource.suggestMatching(bleedTypes, builder))
+						.executes(ctx -> applyBleed(
+							ctx.getSource(),
+							StringArgumentType.getString(ctx, "part"),
+							StringArgumentType.getString(ctx, "type")
+						))
+					)
+				)
+			)
+			.then(CommandManager.literal("fracture")
+				.then(CommandManager.argument("part", StringArgumentType.word())
+					.suggests((ctx, builder) -> CommandSource.suggestMatching(limbNames, builder))
+					.executes(ctx -> applyFracture(
+						ctx.getSource(),
+						StringArgumentType.getString(ctx, "part")
+					))
+				)
+			)
+			.then(CommandManager.literal("hit")
+				.then(CommandManager.argument("zone", StringArgumentType.word())
+					.suggests((ctx, builder) -> CommandSource.suggestMatching(zoneNames, builder))
+					.then(CommandManager.argument("damage", FloatArgumentType.floatArg(1.0f, 500.0f))
+						.executes(ctx -> simulateHit(
+							ctx.getSource(),
+							StringArgumentType.getString(ctx, "zone"),
+							FloatArgumentType.getFloat(ctx, "damage"),
+							25
+						))
+						.then(CommandManager.argument("penetration", IntegerArgumentType.integer(0, 100))
+							.executes(ctx -> simulateHit(
+								ctx.getSource(),
+								StringArgumentType.getString(ctx, "zone"),
+								FloatArgumentType.getFloat(ctx, "damage"),
+								IntegerArgumentType.getInteger(ctx, "penetration")
+							))
+						)
+					)
+				)
+			)
+		);
+	}
+
+	private static int healFull(ServerCommandSource source) {
+		ServerPlayerEntity player = source.getPlayer();
+		if (player == null || !(player instanceof PlayerLoadoutHolder holder)) return 0;
+		holder.tarkovcraft$getBodyHealth().resetFull();
+		player.setHealth(player.getMaxHealth());
+		holder.tarkovcraft$syncBodyHealth();
+		source.sendFeedback(() -> Text.literal("[TarkovCraft] All body parts restored to 435/435 HP."), false);
+		return 1;
+	}
+
+	private static int simulateHit(ServerCommandSource source, String zoneStr, float damage, int penetration) {
+		ServerPlayerEntity player = source.getPlayer();
+		if (player == null || !(player instanceof PlayerLoadoutHolder holder)) return 0;
+
+		HitZone zone = HitZone.byId(zoneStr);
+		BodyPartHealth health = holder.tarkovcraft$getBodyHealth();
+		PlayerLoadout loadout = holder.tarkovcraft$getLoadout();
+
+		boolean killed = health.applyHit(
+			loadout, zone, damage, penetration, 1.0f, false, true,
+			player.getRandom().nextFloat(), player.getRandom().nextFloat(), player.getRandom().nextFloat(),
+			"Scav Sniper", "AK-74M", "5.45x39 PS", 32.5f
+		);
+		holder.tarkovcraft$syncBodyHealth();
+		holder.tarkovcraft$syncLoadout();
+
+		if (killed) {
+			player.setHealth(0.0f);
+			player.onDeath(player.getDamageSources().generic());
+		} else {
+			player.setHealth(Math.max(1.0f, health.getTotalRatio() * player.getMaxHealth()));
+			source.sendFeedback(() -> Text.literal(
+				"[TarkovCraft] Hit " + zone.getId() + " (" + damage + " raw, pen=" + penetration + ") -> "
+					+ zone.getBodyPart().getId() + "=" + Math.round(health.getHp(zone.getBodyPart()))
+					+ ", thorax=" + Math.round(health.getHp(com.tarkovcraft.health.BodyPart.THORAX))
+			), false);
+		}
+		return 1;
+	}
+
+	private static int giveStarterKit(ServerCommandSource source) {
+		ServerPlayerEntity player = source.getPlayer();
+		if (player == null || !(player instanceof PlayerLoadoutHolder holder)) {
+			return 0;
+		}
+		PlayerLoadout loadout = holder.tarkovcraft$getLoadout();
+		loadout.setEquipment(EquipmentSlotType.HELMET, new ItemStack(ModItems.SSH68_HELMET));
+		loadout.setEquipment(EquipmentSlotType.FACE_MASK, new ItemStack(ModItems.BALACLAVA_MASK));
+		loadout.setEquipment(EquipmentSlotType.BODY_ARMOR, new ItemStack(ModItems.PACA_ARMOR));
+		loadout.setEquipment(EquipmentSlotType.MELEE, new ItemStack(Items.IRON_SWORD));
+
+		ItemStack rig = new ItemStack(ModItems.TRITON_RIG);
+		loadout.setEquipment(EquipmentSlotType.RIG, rig);
+
+		ItemStack bp = new ItemStack(ModItems.BERKUT_BACKPACK);
+		GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
+		bpGrid.tryAutoPlace(new ItemStack(Items.COOKED_BEEF, 4));
+		bpGrid.tryAutoPlace(new ItemStack(Items.GOLDEN_APPLE, 1));
+		ContainerItemHelper.writeBackpackGrid(bp, bpGrid);
+		loadout.setEquipment(EquipmentSlotType.BACKPACK, bp);
+
+		loadout.setPocket(0, new ItemStack(Items.APPLE, 2));
+		loadout.setPocket(1, new ItemStack(Items.TORCH, 8));
+
+		holder.tarkovcraft$syncLoadout();
+		source.sendFeedback(() -> Text.literal("[TarkovCraft] Starter kit equipped."), false);
+		return 1;
+	}
+
+	private static int giveMedicalKit(ServerCommandSource source) {
+		ServerPlayerEntity player = source.getPlayer();
+		if (player == null || !(player instanceof PlayerLoadoutHolder holder)) {
+			return 0;
+		}
+		PlayerLoadout loadout = holder.tarkovcraft$getLoadout();
+		List<ItemStack> meds = List.of(
+			new ItemStack(ModItems.BANDAGE),
+			new ItemStack(ModItems.CAT_TOURNIQUET),
+			new ItemStack(ModItems.SPLINT),
+			new ItemStack(ModItems.ALU_SPLINT),
+			new ItemStack(ModItems.ANALGIN),
+			new ItemStack(ModItems.AI2_MEDKIT),
+			new ItemStack(ModItems.SALEWA_MEDKIT),
+			new ItemStack(ModItems.CMS_KIT),
+			new ItemStack(ModItems.SURV12_KIT)
+		);
+		for (ItemStack med : meds) {
+			ItemStack copy = med.copy();
+			if (!loadout.tryInsertItem(copy, player.getUuid()) || !copy.isEmpty()) {
+				if (!copy.isEmpty()) {
+					player.dropItem(copy, false);
+				}
+			}
+		}
+		holder.tarkovcraft$syncLoadout();
+		source.sendFeedback(() -> Text.literal("[TarkovCraft] Issued all 9 medical items."), false);
+		return 1;
+	}
+
+	private static int applyBleed(ServerCommandSource source, String partStr, String typeStr) {
+		ServerPlayerEntity player = source.getPlayer();
+		if (player == null || !(player instanceof PlayerLoadoutHolder holder)) {
+			return 0;
+		}
+		BodyPart part = BodyPart.byId(partStr);
+		InjuryType injury = "heavy".equalsIgnoreCase(typeStr) ? InjuryType.HEAVY_BLEED : InjuryType.LIGHT_BLEED;
+		holder.tarkovcraft$getBodyHealth().addInjury(part, injury);
+		holder.tarkovcraft$syncBodyHealth();
+		source.sendFeedback(() -> Text.literal("[TarkovCraft] Applied " + injury.getId() + " to " + part.getId() + "."), false);
+		return 1;
+	}
+
+	private static int applyFracture(ServerCommandSource source, String partStr) {
+		ServerPlayerEntity player = source.getPlayer();
+		if (player == null || !(player instanceof PlayerLoadoutHolder holder)) {
+			return 0;
+		}
+		BodyPart part = BodyPart.byId(partStr);
+		if (!BodyPartHealth.isLimb(part)) {
+			source.sendError(Text.literal("[TarkovCraft] Only limbs (left_arm, right_arm, left_leg, right_leg) can fracture."));
+			return 0;
+		}
+		holder.tarkovcraft$getBodyHealth().addInjury(part, InjuryType.FRACTURE);
+		holder.tarkovcraft$syncBodyHealth();
+		source.sendFeedback(() -> Text.literal("[TarkovCraft] Applied fracture to " + part.getId() + "."), false);
+		return 1;
+	}
+
+	private static SearchableLootBlock resolveCrateBlock(String blockName, TarkovLootPool pool) {
+		if (blockName == null || blockName.isBlank() || "default".equalsIgnoreCase(blockName)) {
+			return SearchableLootBlock.defaultBlockForPool(pool);
+		}
+		return switch (blockName.toLowerCase(java.util.Locale.ROOT)) {
+			case "weapon_crate" -> ModBlocks.WEAPON_CRATE;
+			case "medbag" -> ModBlocks.MEDBAG;
+			case "airdrop_crate" -> ModBlocks.AIRDROP_CRATE;
+			default -> ModBlocks.TECHNICAL_CRATE;
+		};
+	}
+
+	private static int listLootPools(ServerCommandSource source) {
+		source.sendFeedback(() -> Text.literal("[TarkovCraft] Available loot pools (" + TarkovLootPool.values().length + "):").formatted(Formatting.GOLD), false);
+		for (TarkovLootPool pool : TarkovLootPool.values()) {
+			String giveCmd = "/tarkov crate give " + pool.getId();
+			Text btn = Text.literal("[" + pool.getId() + "]")
+				.styled(s -> s
+					.withColor(pool.isCityZone() ? Formatting.AQUA : Formatting.GREEN)
+					.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, giveCmd))
+					.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal("Click to run: " + giveCmd)))
+				);
+			source.sendFeedback(() -> Text.literal(" - ")
+				.append(btn)
+				.append(Text.literal(" ").append(Text.translatable(pool.getTranslationKey())).formatted(Formatting.GRAY))
+				.append(Text.literal(" (" + pool.getDefaultGridWidth() + "x" + pool.getDefaultGridHeight() + ")").formatted(Formatting.DARK_GRAY)),
+				false);
+		}
+		return 1;
+	}
+
+	private static int giveLootCrate(ServerCommandSource source, String poolRaw, String blockName, int width, int height) {
+		ServerPlayerEntity player = source.getPlayer();
+		if (player == null) {
+			return 0;
+		}
+		TarkovLootPool pool = TarkovLootPool.byId(poolRaw);
+		if (pool == null) {
+			source.sendError(Text.literal("[TarkovCraft] Unknown loot pool: " + poolRaw + ". Use /tarkov crate list"));
+			return 0;
+		}
+		SearchableLootBlock block = resolveCrateBlock(blockName, pool);
+		int w = width > 0 ? width : pool.getDefaultGridWidth();
+		int h = height > 0 ? height : pool.getDefaultGridHeight();
+		ItemStack crateStack = SearchableLootBlock.createLootCrateStack(block, pool, w, h);
+
+		boolean inserted = player.getInventory().insertStack(crateStack);
+		if (!inserted && !crateStack.isEmpty()) {
+			if (player instanceof PlayerLoadoutHolder holder) {
+				holder.tarkovcraft$getLoadout().tryInsertItem(crateStack, player.getUuid());
+				holder.tarkovcraft$syncLoadout();
+			}
+			if (!crateStack.isEmpty()) {
+				player.dropItem(crateStack, false);
+			}
+		}
+		source.sendFeedback(() -> Text.literal("[TarkovCraft] Given loot crate: ")
+			.append(Text.translatable(pool.getTranslationKey()).formatted(Formatting.GOLD))
+			.append(Text.literal(" (" + w + "x" + h + ")").formatted(Formatting.GRAY)), false);
+		return 1;
+	}
+
+	private static int spawnLootCrate(ServerCommandSource source, String poolRaw, String blockName) {
+		ServerPlayerEntity player = source.getPlayer();
+		if (player == null) {
+			return 0;
+		}
+		TarkovLootPool pool = TarkovLootPool.byId(poolRaw);
+		if (pool == null) {
+			source.sendError(Text.literal("[TarkovCraft] Unknown loot pool: " + poolRaw + ". Use /tarkov crate list"));
+			return 0;
+		}
+		SearchableLootBlock block = resolveCrateBlock(blockName, pool);
+		BlockPos pos = player.getBlockPos().offset(player.getHorizontalFacing(), 2);
+		player.getWorld().setBlockState(pos, block.getDefaultState());
+		BlockEntity be = player.getWorld().getBlockEntity(pos);
+		if (be instanceof SearchableLootBlockEntity lootBe) {
+			lootBe.resizeGrid(pool.getDefaultGridWidth(), pool.getDefaultGridHeight());
+			lootBe.populateFromPool(pool, player.getWorld().getRandom());
+		}
+		source.sendFeedback(() -> Text.literal("[TarkovCraft] Spawned ")
+			.append(Text.translatable(pool.getTranslationKey()).formatted(Formatting.GOLD))
+			.append(Text.literal(" crate at " + pos.toShortString())), false);
+		return 1;
+	}
+
+	private static int setLookedCratePool(ServerCommandSource source, String poolRaw) {
+		ServerPlayerEntity player = source.getPlayer();
+		if (player == null) {
+			return 0;
+		}
+		TarkovLootPool pool = TarkovLootPool.byId(poolRaw);
+		if (pool == null) {
+			source.sendError(Text.literal("[TarkovCraft] Unknown loot pool: " + poolRaw + ". Use /tarkov crate list"));
+			return 0;
+		}
+		HitResult hit = player.raycast(8.0, 0.0f, false);
+		if (hit.getType() != HitResult.Type.BLOCK) {
+			source.sendError(Text.literal("[TarkovCraft] Look directly at a TarkovCraft loot crate (within 8 blocks)."));
+			return 0;
+		}
+		BlockPos pos = ((BlockHitResult) hit).getBlockPos();
+		BlockEntity be = player.getWorld().getBlockEntity(pos);
+		if (!(be instanceof SearchableLootBlockEntity lootBe)) {
+			source.sendError(Text.literal("[TarkovCraft] Target block at " + pos.toShortString() + " is not a TarkovCraft loot crate."));
+			return 0;
+		}
+		lootBe.populateFromPool(pool, player.getWorld().getRandom());
+		source.sendFeedback(() -> Text.literal("[TarkovCraft] Crate at " + pos.toShortString() + " set to ")
+			.append(Text.translatable(pool.getTranslationKey()).formatted(Formatting.GOLD))
+			.append(Text.literal(" and refilled.")), false);
+		return 1;
+	}
+
+	private static int refillCratesInRadius(ServerCommandSource source, int radius) {
+		BlockPos center = BlockPos.ofFloored(source.getPosition());
+		int count = 0;
+		int minChunkX = (center.getX() - radius) >> 4;
+		int maxChunkX = (center.getX() + radius) >> 4;
+		int minChunkZ = (center.getZ() - radius) >> 4;
+		int maxChunkZ = (center.getZ() + radius) >> 4;
+		int rSq = radius * radius;
+
+		for (int cx = minChunkX; cx <= maxChunkX; cx++) {
+			for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
+				if (!source.getWorld().isChunkLoaded(cx, cz)) {
+					continue;
+				}
+				var chunk = source.getWorld().getChunk(cx, cz);
+				for (BlockEntity be : chunk.getBlockEntities().values()) {
+					if (be instanceof SearchableLootBlockEntity lootBe
+						&& be.getPos().getSquaredDistance(center) <= rSq) {
+						lootBe.refillLoot(source.getWorld().getRandom());
+						count++;
+					}
+				}
+			}
+		}
+		int finalCount = count;
+		source.sendFeedback(() -> Text.literal("[TarkovCraft] Refilled " + finalCount + " loot crate(s) within " + radius + " blocks."), true);
+		return finalCount;
+	}
+
+	private static int setLootRespawnMinutes(ServerCommandSource source, int minutes) {
+		TarkovConfig cfg = TarkovConfig.get();
+		cfg.lootRespawnMinutes = minutes;
+		cfg.validateAndClamp();
+		TarkovConfig.save();
+		if (cfg.lootRespawnMinutes == 0) {
+			source.sendFeedback(() -> Text.literal("[TarkovCraft] Hourly loot auto-respawn DISABLED."), true);
+		} else {
+			source.sendFeedback(() -> Text.literal("[TarkovCraft] Loot auto-respawn set to " + cfg.lootRespawnMinutes + " min (real time)."), true);
+		}
+		return 1;
+	}
+
+	private static int setCityAutoLoot(ServerCommandSource source, boolean enabled) {
+		TarkovConfig cfg = TarkovConfig.get();
+		cfg.cityAutoLootVanillaContainers = enabled;
+		TarkovConfig.save();
+		source.sendFeedback(() -> Text.literal("[TarkovCraft] City vanilla container auto-loot: " + (enabled ? "ON" : "OFF")), true);
+		return 1;
+	}
+
+	private static int assignCityZone(ServerCommandSource source, String poolRaw, int radius) {
+		TarkovLootPool pool = TarkovLootPool.byId(poolRaw);
+		if (pool == null) {
+			source.sendError(Text.literal("[TarkovCraft] Unknown loot pool: " + poolRaw + ". Use /tarkov crate list"));
+			return 0;
+		}
+		var world = source.getWorld();
+		BlockPos center = BlockPos.ofFloored(source.getPosition());
+		int rSq = radius * radius;
+		int minChunkX = (center.getX() - radius) >> 4;
+		int maxChunkX = (center.getX() + radius) >> 4;
+		int minChunkZ = (center.getZ() - radius) >> 4;
+		int maxChunkZ = (center.getZ() + radius) >> 4;
+
+		int modCount = 0;
+		int vanillaCount = 0;
+		java.util.Set<String> handledVanilla = new java.util.HashSet<>();
+
+		for (int cx = minChunkX; cx <= maxChunkX; cx++) {
+			for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
+				if (!world.isChunkLoaded(cx, cz)) {
+					continue;
+				}
+				var chunk = world.getChunk(cx, cz);
+				for (BlockEntity be : chunk.getBlockEntities().values()) {
+					BlockPos p = be.getPos();
+					if (p.getSquaredDistance(center) > rSq) {
+						continue;
+					}
+					if (be instanceof SearchableLootBlockEntity lootBe) {
+						lootBe.populateFromPool(pool, world.getRandom());
+						modCount++;
+					} else {
+						var state = world.getBlockState(p);
+						if (VanillaContainerBridge.isSupportedBlock(state.getBlock())
+							&& !(state.getBlock() instanceof net.minecraft.block.EnderChestBlock)) {
+							String key = VanillaContainerBridge.resolveCanonicalKey(p, state, java.util.UUID.randomUUID());
+							if (handledVanilla.add(key) && VanillaContainerBridge.assignZoneAndRefill(world, p, pool)) {
+								vanillaCount++;
+							}
+						}
+					}
+				}
+			}
+		}
+
+		int fMod = modCount;
+		int fVan = vanillaCount;
+		source.sendFeedback(() -> Text.literal("[TarkovCraft] Zone ")
+			.append(Text.translatable(pool.getTranslationKey()).formatted(Formatting.GOLD))
+			.append(Text.literal(" applied within " + radius + "m: " + fVan + " vanilla containers + " + fMod + " Tarkov crates.")), true);
+		return fMod + fVan;
+	}
+
+	private static int scatterCityCrates(ServerCommandSource source, int radius, String poolRaw) {
+		TarkovLootPool fixedPool = "auto".equalsIgnoreCase(poolRaw) ? null : TarkovLootPool.byId(poolRaw);
+		if (!"auto".equalsIgnoreCase(poolRaw) && fixedPool == null) {
+			source.sendError(Text.literal("[TarkovCraft] Unknown loot pool: " + poolRaw + " (use 'auto' or /tarkov crate list)"));
+			return 0;
+		}
+		var world = source.getWorld();
+		var rng = world.getRandom();
+		BlockPos center = BlockPos.ofFloored(source.getPosition());
+		int minY = Math.max(world.getBottomY() + 2, center.getY() - 24);
+		int maxY = Math.min(world.getTopY() - 4, center.getY() + 24);
+
+		java.util.List<BlockPos> placed = new java.util.ArrayList<>();
+		int maxCrates = Math.min(80, Math.max(8, (radius * radius) / 220));
+		int attempts = maxCrates * 35;
+
+		for (int a = 0; a < attempts && placed.size() < maxCrates; a++) {
+			int dx = rng.nextInt(radius * 2 + 1) - radius;
+			int dz = rng.nextInt(radius * 2 + 1) - radius;
+			if (dx * dx + dz * dz > radius * radius) {
+				continue;
+			}
+			int x = center.getX() + dx;
+			int z = center.getZ() + dz;
+			if (!world.isChunkLoaded(x >> 4, z >> 4)) {
+				continue;
+			}
+			int y = minY + rng.nextInt(Math.max(1, maxY - minY + 1));
+			BlockPos pos = new BlockPos(x, y, z);
+
+			// Must be empty space on a solid floor, inside a building (roof overhead, not open sky), away from other crates
+			if (!world.getBlockState(pos).isAir() || !world.getBlockState(pos.up()).isAir()) {
+				continue;
+			}
+			BlockPos floorPos = pos.down();
+			var floorState = world.getBlockState(floorPos);
+			if (!floorState.isSolidBlock(world, floorPos) || floorState.getBlock() instanceof SearchableLootBlock) {
+				continue;
+			}
+			if (world.isSkyVisible(pos)) {
+				continue;
+			}
+			// Require at least 1 nearby wall within 2 blocks so crates sit naturally near walls/corners
+			boolean nearWall = false;
+			for (net.minecraft.util.math.Direction dir : net.minecraft.util.math.Direction.Type.HORIZONTAL) {
+				if (world.getBlockState(pos.offset(dir)).isSolidBlock(world, pos.offset(dir))) {
+					nearWall = true;
+					break;
+				}
+			}
+			if (!nearWall) {
+				continue;
+			}
+			boolean tooClose = false;
+			for (BlockPos prev : placed) {
+				if (prev.getSquaredDistance(pos) < 12 * 12) {
+					tooClose = true;
+					break;
+				}
+			}
+			if (tooClose) {
+				continue;
+			}
+
+			TarkovLootPool pool = fixedPool != null ? fixedPool : CityZoneClassifier.classify(world, pos, ModBlocks.TECHNICAL_CRATE);
+			SearchableLootBlock block = SearchableLootBlock.defaultBlockForPool(pool);
+			world.setBlockState(pos, block.getDefaultState());
+			BlockEntity be = world.getBlockEntity(pos);
+			if (be instanceof SearchableLootBlockEntity lootBe) {
+				lootBe.resizeGrid(pool.getDefaultGridWidth(), pool.getDefaultGridHeight());
+				lootBe.setLootPool(pool);
+				lootBe.setPendingLootGeneration(true);
+				lootBe.setAutoRespawn(true);
+				placed.add(pos);
+			}
+		}
+
+		int finalPlaced = placed.size();
+		source.sendFeedback(() -> Text.literal("[TarkovCraft] Scattered " + finalPlaced
+			+ " indoor loot crate(s) within " + radius + "m (auto-respawn: " + TarkovConfig.get().lootRespawnMinutes + "m)."), true);
+		return finalPlaced;
+	}
+
+	private static int reloadConfig(ServerCommandSource source) {
+		TarkovConfig.loadOrCreate();
+		AirdropManager.onConfigReloaded();
+		source.sendFeedback(() -> Text.translatable("message.tarkovcraft.config_reloaded"), true);
+		return 1;
+	}
+
+	private static int locateStructure(ServerCommandSource source, String typeRaw) {
+		TarkovStructureFeature.StructureKind filter = null;
+		if (typeRaw != null && !"any".equalsIgnoreCase(typeRaw)) {
+			try {
+				filter = TarkovStructureFeature.StructureKind.valueOf(typeRaw.toUpperCase(java.util.Locale.ROOT));
+			} catch (IllegalArgumentException e) {
+				source.sendError(Text.literal("[TarkovCraft] Unknown structure: " + typeRaw
+					+ " (use: any, roadblock, med_tent, military_camp, forest_stash)"));
+				return 0;
+			}
+		}
+
+		BlockPos origin = BlockPos.ofFloored(source.getPosition());
+		TarkovStructureRegistry registry = TarkovStructureRegistry.get(source.getWorld());
+		TarkovStructureRegistry.FoundStructure found = registry.findNearest(filter, origin);
+		if (found == null) {
+			source.sendError(Text.literal("[TarkovCraft] No generated structures recorded yet for '" + typeRaw
+				+ "'. Explore new chunks in Overworld to generate them."));
+			return 0;
+		}
+
+		BlockPos pos = found.pos();
+		int dist = (int) Math.round(Math.sqrt(pos.getSquaredDistance(origin)));
+		String tpCmd = "/tp @s " + pos.getX() + " " + (pos.getY() + 1) + " " + pos.getZ();
+		Text coords = Text.literal("[" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + "]")
+			.styled(style -> style
+				.withColor(Formatting.GREEN)
+				.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, tpCmd))
+				.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal("Click to teleport: " + tpCmd)))
+			);
+		source.sendFeedback(() -> Text.literal("[TarkovCraft] Nearest "
+			+ found.kind().name().toLowerCase(java.util.Locale.ROOT) + " is at ")
+			.append(coords)
+			.append(Text.literal(" (" + dist + " blocks away)")), false);
+		return 1;
+	}
+
+	private static int spawnAirdropNear(ServerCommandSource source) {
+		return spawnAirdrop(source, false);
+	}
+
+	private static int spawnAirdropHere(ServerCommandSource source) {
+		return spawnAirdrop(source, true);
+	}
+
+	private static int spawnAirdrop(ServerCommandSource source, boolean here) {
+		ServerPlayerEntity player = source.getPlayer();
+		if (player == null) {
+			return 0;
+		}
+		if (AirdropManager.spawnFromCommand(player, here) == null) {
+			source.sendError(Text.literal("Airdrop unavailable here. Check arena settings and landing points."));
+			return 0;
+		}
+		return 1;
+	}
+
+	private static int setAirdropInterval(ServerCommandSource source, int minutes) {
+		TarkovConfig cfg = TarkovConfig.get();
+		cfg.airdropIntervalMinutes = minutes;
+		cfg.validateAndClamp();
+		TarkovConfig.save();
+		AirdropManager.onConfigReloaded();
+		source.sendFeedback(() -> Text.literal("[TarkovCraft] Airdrop interval set to " + cfg.airdropIntervalMinutes + " min."), true);
+		return 1;
+	}
+
+	private static int spawnTestCorpse(ServerCommandSource source) {
+		ServerPlayerEntity player = source.getPlayer();
+		if (player == null) {
+			return 0;
+		}
+		CorpseEntity corpse = new CorpseEntity(ModEntities.CORPSE, player.getWorld());
+		BlockPos pos = player.getBlockPos().offset(player.getHorizontalFacing(), 2);
+		corpse.setPosition(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5);
+		corpse.setYaw(player.getYaw());
+		corpse.setOwnerName("Scav Raider");
+		corpse.populateScavLoot(player.getWorld().getRandom());
+		player.getWorld().spawnEntity(corpse);
+		source.sendFeedback(() -> Text.literal("[TarkovCraft] Spawned Scav Raider corpse (pockets + rig + backpack)."), false);
+		return 1;
+	}
+
+	private static int clearCorpses(ServerCommandSource source) {
+		List<? extends CorpseEntity> corpses = source.getWorld().getEntitiesByType(ModEntities.CORPSE, e -> true);
+		int count = corpses.size();
+		for (CorpseEntity c : corpses) {
+			c.discard();
+		}
+		source.sendFeedback(() -> Text.literal("[TarkovCraft] Removed " + count + " corpse(s)."), false);
+		return count;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\compat\voicechat\VoicechatAdapter.java ==========
+package com.tarkovcraft.compat.voicechat;
+
+import com.tarkovcraft.audio.HearingProfile;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.loader.api.FabricLoader;
+import net.fabricmc.loader.api.LanguageAdapter;
+import net.fabricmc.loader.api.LanguageAdapterException;
+import net.fabricmc.loader.api.ModContainer;
+import net.minecraft.server.network.ServerPlayerEntity;
+import org.slf4j.LoggerFactory;
+
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
+
+/** Creates the Simple Voice Chat entrypoint only when its API is available. */
+public final class VoicechatAdapter implements LanguageAdapter {
+	private static final String API = "de.maxhenkel.voicechat.api.";
+	private static final String SIMPLE_VOICE_CHAT = "voicechat";
+	private static final String VOICE_PHYSICS = "vc-audio-distance";
+	private static final Map<UUID, HearingProfile> SERVER_PROFILES = new ConcurrentHashMap<>();
+	private static final Map<UUID, Float> FILTER_STATE = new ConcurrentHashMap<>();
+	private static volatile HearingProfile clientProfile = HearingProfile.DEFAULT;
+
+	public static void updateServerProfile(UUID player, HearingProfile profile) {
+		if (FabricLoader.getInstance().isModLoaded(SIMPLE_VOICE_CHAT)
+			&& !FabricLoader.getInstance().isModLoaded(VOICE_PHYSICS)) SERVER_PROFILES.put(player, profile);
+	}
+
+	public static void removePlayer(UUID player) {
+		SERVER_PROFILES.remove(player);
+	}
+
+	public static void updateClientProfile(HearingProfile profile) {
+		if (!profile.muffled() && clientProfile.muffled()) FILTER_STATE.clear();
+		clientProfile = profile;
+	}
+
+	@Override
+	public <T> T create(ModContainer mod, String value, Class<T> type) throws LanguageAdapterException {
+		if (!FabricLoader.getInstance().isModLoaded(SIMPLE_VOICE_CHAT) || !type.getName().equals(API + "VoicechatPlugin")) {
+			throw new LanguageAdapterException("Simple Voice Chat API is unavailable");
+		}
+		Object proxy = Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type},
+			(instance, method, arguments) -> switch (method.getName()) {
+				case "getPluginId", "toString" -> "tarkovcraft";
+				case "hashCode" -> System.identityHashCode(instance);
+				case "equals" -> instance == arguments[0];
+				case "registerEvents" -> {
+					try {
+						registerEvents(arguments[0]);
+					} catch (ReflectiveOperationException exception) {
+						LoggerFactory.getLogger("TarkovCraft Voice").warn("Could not register the Simple Voice Chat integration", exception);
+					}
+					yield null;
+				}
+				default -> null;
+			});
+		return type.cast(proxy);
+	}
+
+	private static void registerEvents(Object registration) throws ReflectiveOperationException {
+		Method register = api("events.EventRegistration").getMethod("registerEvent", Class.class, Consumer.class, int.class);
+		// Voice Physics owns proximity routing when installed. Both plugins can still process client PCM.
+		if (!FabricLoader.getInstance().isModLoaded(VOICE_PHYSICS)) {
+			registerRangeEvents(register, registration);
+		}
+		if (FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT) {
+			registerClientEvents(register, registration);
+		}
+	}
+
+	private static void registerRangeEvents(Method register, Object registration) throws ReflectiveOperationException {
+		Class<?> distanceEvent = api("events.VoiceDistanceEvent");
+		Method getDistance = distanceEvent.getMethod("getDistance");
+		Method setDistance = distanceEvent.getMethod("setDistance", float.class);
+		Class<?> soundEvent = api("events.EntitySoundPacketEvent");
+		Method source = soundEvent.getMethod("getSource");
+		Method receiver = soundEvent.getMethod("getReceiverConnection");
+		Method packet = soundEvent.getMethod("getPacket");
+		Method voice = soundEvent.getMethod("getVoicechat");
+		Method cancel = soundEvent.getMethod("cancel");
+		Class<?> connection = api("VoicechatConnection");
+		Method apiPlayer = connection.getMethod("getPlayer");
+		Method nativePlayer = api("Player").getMethod("getPlayer");
+		Class<?> entityPacket = api("packets.EntitySoundPacket");
+		Method packetDistance = entityPacket.getMethod("getDistance");
+		Method builderMethod = entityPacket.getMethod("entitySoundPacketBuilder");
+		Class<?> builderType = api("packets.EntitySoundPacket$Builder");
+		Method builderDistance = builderType.getMethod("distance", float.class);
+		Method build = builderType.getMethod("build");
+		Method send = api("VoicechatServerApi").getMethod("sendEntitySoundPacketTo", connection, entityPacket);
+		register.invoke(registration, distanceEvent, guarded(event ->
+			setDistance.invoke(event, (float) getDistance.invoke(event) * HearingProfile.ACTIVE_RANGE)), -1000);
+		register.invoke(registration, soundEvent, guarded(event -> {
+			if (!"proximity".equals(source.invoke(event))) return;
+			Object target = receiver.invoke(event);
+			if (target == null) return;
+			Object player = nativePlayer.invoke(apiPlayer.invoke(target));
+			HearingProfile profile = player instanceof ServerPlayerEntity serverPlayer
+				? SERVER_PROFILES.getOrDefault(serverPlayer.getUuid(), HearingProfile.DEFAULT)
+				: HearingProfile.DEFAULT;
+			if (profile.range() == HearingProfile.ACTIVE_RANGE) return;
+			Object original = packet.invoke(event);
+			float range = (float) packetDistance.invoke(original) / HearingProfile.ACTIVE_RANGE * profile.range();
+			Object builder = builderMethod.invoke(original);
+			builderDistance.invoke(builder, range);
+			Object adjusted = build.invoke(builder);
+			if (Boolean.TRUE.equals(cancel.invoke(event))) send.invoke(voice.invoke(event), target, adjusted);
+		}), -1000);
+	}
+
+	private static void registerClientEvents(Method register, Object registration) throws ReflectiveOperationException {
+		Class<?> pcm = api("events.ClientReceiveSoundEvent");
+		Method read = pcm.getMethod("getRawAudio");
+		Method write = pcm.getMethod("setRawAudio", short[].class);
+		Method getId = pcm.getMethod("getId");
+		Consumer<Object> process = guarded(event -> {
+			HearingProfile profile = clientProfile;
+			if (profile == HearingProfile.DEFAULT) return;
+			short[] input = (short[]) read.invoke(event);
+			if (input == null || input.length == 0) return;
+			UUID id = (UUID) getId.invoke(event);
+			short[] output = new short[input.length];
+			float previous = id == null ? 0.0f : FILTER_STATE.getOrDefault(id, 0.0f);
+			for (int i = 0; i < output.length; i++) {
+				float sample = input[i];
+				if (profile.muffled()) {
+					previous += 0.16f * (sample - previous);
+					sample = previous * profile.ambientGain();
+				} else {
+					float gained = Math.abs(sample * profile.ambientGain());
+					float knee = 0.72f * Short.MAX_VALUE;
+					sample = Math.copySign(gained <= knee ? gained : knee + (gained - knee) * 0.25f, sample);
+				}
+				output[i] = (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, Math.round(sample)));
+			}
+			if (profile.muffled() && id != null) FILTER_STATE.put(id, previous);
+			write.invoke(event, (Object) output);
+		});
+		for (String subtype : new String[]{"EntitySound", "LocationalSound", "StaticSound"}) {
+			register.invoke(registration, api("events.ClientReceiveSoundEvent$" + subtype), process, -1000);
+		}
+		Class<?> icon = api("events.NameTagIconRenderEvent");
+		Method cancel = icon.getMethod("cancel");
+		register.invoke(registration, icon, guarded(event -> cancel.invoke(event)), 1000);
+		register.invoke(registration, api("events.ClientVoicechatConnectionEvent"),
+			(Consumer<Object>) event -> FILTER_STATE.clear(), 0);
+	}
+
+	private static Class<?> api(String name) throws ClassNotFoundException {
+		return Class.forName(API + name, false, VoicechatAdapter.class.getClassLoader());
+	}
+
+	@FunctionalInterface
+	private interface EventAction {
+		void run(Object event) throws ReflectiveOperationException;
+	}
+
+	private static Consumer<Object> guarded(EventAction action) {
+		return new Consumer<>() {
+			private boolean failed;
+
+			@Override
+			public void accept(Object event) {
+				if (failed) return;
+				try {
+					action.run(event);
+				} catch (ReflectiveOperationException exception) {
+					failed = true;
+					LoggerFactory.getLogger("TarkovCraft Voice").warn("Disabled an incompatible Simple Voice Chat event handler", exception);
+				}
+			}
+		};
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\config\TarkovConfig.java ==========
+package com.tarkovcraft.config;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import net.fabricmc.loader.api.FabricLoader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.Reader;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+/**
+ * Thread-safe, JUnit-safe Gson configuration stored in config/tarkovcraft.json.
+ */
+public final class TarkovConfig {
+	private static final Logger LOGGER = LoggerFactory.getLogger("TarkovCraft/Config");
+	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
+	private static volatile TarkovConfig instance = new TarkovConfig();
+
+	public boolean airdropEnabled = true;
+	public int airdropIntervalMinutes = 30;
+	public int airdropMinRadius = 48;
+	public int airdropMaxRadius = 120;
+	public int airdropSmokeSeconds = 180;
+	public boolean airdropAnnounceCoords = true;
+	public boolean worldgenStructuresEnabled = true;
+	public float lootDensityMultiplier = 1.0f;
+	public float mobGearSpawnChance = 0.08f;
+	public float mobBackpackChance = 0.35f;
+	public float corpseBaseLootChance = 0.25f;
+	public int corpseLifetimeSeconds = 600;
+	public float containerRevealSeconds = 1.0f;
+	public float searchTimeMultiplier = 1.0f;
+	public float grenadeDamageMultiplier = 1.0f;
+	public int lootRespawnMinutes = 60;
+	public boolean cityAutoLootVanillaContainers = true;
+	public float vanillaContainerLootChance = 0.72f;
+
+	public TarkovConfig() {
+	}
+
+	public static TarkovConfig get() {
+		return instance;
+	}
+
+	public static void setInstanceForTest(TarkovConfig config) {
+		if (config != null) {
+			config.validateAndClamp();
+			instance = config;
+		}
+	}
+
+	public static synchronized TarkovConfig loadOrCreate() {
+		try {
+			Path path = FabricLoader.getInstance().getConfigDir().resolve("tarkovcraft.json");
+			return loadFromPath(path);
+		} catch (Throwable t) {
+			LOGGER.warn("Could not resolve Fabric config dir ({}); using in-memory defaults.", t.getMessage());
+			TarkovConfig fallback = new TarkovConfig();
+			fallback.validateAndClamp();
+			instance = fallback;
+			return fallback;
+		}
+	}
+
+	public static synchronized void save() {
+		try {
+			Path path = FabricLoader.getInstance().getConfigDir().resolve("tarkovcraft.json");
+			saveToPath(path, instance);
+		} catch (Throwable t) {
+			LOGGER.warn("Failed to save config/tarkovcraft.json: {}", t.getMessage());
+		}
+	}
+
+	public static synchronized TarkovConfig loadFromPath(Path path) {
+		TarkovConfig loaded = null;
+		if (Files.exists(path)) {
+			try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+				loaded = GSON.fromJson(reader, TarkovConfig.class);
+			} catch (Exception e) {
+				LOGGER.warn("Failed to parse config {}: {}; restoring defaults.", path, e.getMessage());
+			}
+		}
+		if (loaded == null) {
+			loaded = new TarkovConfig();
+		}
+		loaded.validateAndClamp();
+		saveToPath(path, loaded);
+		instance = loaded;
+		return loaded;
+	}
+
+	public static synchronized void saveToPath(Path path, TarkovConfig cfg) {
+		try {
+			Path parent = path.getParent();
+			if (parent != null) {
+				Files.createDirectories(parent);
+			}
+			try (Writer writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
+				GSON.toJson(cfg, writer);
+			}
+		} catch (Exception e) {
+			LOGGER.warn("Failed to write config {}: {}", path, e.getMessage());
+		}
+	}
+
+	public void validateAndClamp() {
+		airdropIntervalMinutes = clampInt(airdropIntervalMinutes, 1, 1440);
+		airdropMinRadius = clampInt(airdropMinRadius, 8, 256);
+		airdropMaxRadius = clampInt(airdropMaxRadius, airdropMinRadius, 512);
+		airdropSmokeSeconds = clampInt(airdropSmokeSeconds, 0, 1800);
+		lootDensityMultiplier = clampFloat(lootDensityMultiplier, 0.1f, 5.0f, 1.0f);
+		mobGearSpawnChance = clampFloat(mobGearSpawnChance, 0.0f, 1.0f, 0.08f);
+		mobBackpackChance = clampFloat(mobBackpackChance, 0.0f, 1.0f, 0.35f);
+		corpseBaseLootChance = clampFloat(corpseBaseLootChance, 0.0f, 1.0f, 0.25f);
+		corpseLifetimeSeconds = clampInt(corpseLifetimeSeconds, 30, 7200);
+		containerRevealSeconds = clampFloat(containerRevealSeconds, 0.1f, 10.0f, 1.0f);
+		searchTimeMultiplier = clampFloat(searchTimeMultiplier, 0.1f, 5.0f, 1.0f);
+		grenadeDamageMultiplier = clampFloat(grenadeDamageMultiplier, 0.1f, 5.0f, 1.0f);
+		lootRespawnMinutes = clampInt(lootRespawnMinutes, 0, 10080);
+		vanillaContainerLootChance = clampFloat(vanillaContainerLootChance, 0.05f, 1.0f, 0.72f);
+	}
+
+	public long getLootRespawnMillis() {
+		return lootRespawnMinutes <= 0 ? 0L : (long) lootRespawnMinutes * 60_000L;
+	}
+
+	public int getAirdropIntervalTicks() {
+		return airdropIntervalMinutes * 60 * 20;
+	}
+
+	public int getContainerRevealTicks() {
+		return Math.max(2, Math.round(containerRevealSeconds * 20.0f));
+	}
+
+	public int getCorpseLifetimeTicks() {
+		return corpseLifetimeSeconds * 20;
+	}
+
+	private static int clampInt(int value, int min, int max) {
+		return Math.max(min, Math.min(max, value));
+	}
+
+	private static float clampFloat(float value, float min, float max, float fallback) {
+		if (Float.isNaN(value) || Float.isInfinite(value)) {
+			return fallback;
+		}
+		return Math.max(min, Math.min(max, value));
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\container\VanillaContainerBridge.java ==========
+package com.tarkovcraft.container;
+
+import com.tarkovcraft.block.SearchableLootBlockEntity;
+import com.tarkovcraft.config.TarkovConfig;
+import com.tarkovcraft.grid.GridContainer;
+import com.tarkovcraft.grid.GridEntry;
+import com.tarkovcraft.grid.ItemSize;
+import com.tarkovcraft.grid.ItemSizeRegistry;
+import com.tarkovcraft.loot.CityZoneClassifier;
+import com.tarkovcraft.loot.TarkovLootGenerator;
+import com.tarkovcraft.loot.TarkovLootPool;
+import com.tarkovcraft.screen.TarkovScreenHandler;
+import com.tarkovcraft.search.ContainerSearchMemory;
+import net.minecraft.block.BarrelBlock;
+import net.minecraft.block.Block;
+import net.minecraft.block.BlockState;
+import net.minecraft.block.ChestBlock;
+import net.minecraft.block.EnderChestBlock;
+import net.minecraft.block.ShulkerBoxBlock;
+import net.minecraft.block.entity.BlockEntity;
+import net.minecraft.block.entity.EnderChestBlockEntity;
+import net.minecraft.block.entity.LootableContainerBlockEntity;
+import net.minecraft.block.entity.ShulkerBoxBlockEntity;
+import net.minecraft.block.enums.ChestType;
+import net.minecraft.entity.mob.ShulkerEntity;
+import net.minecraft.inventory.Inventory;
+import net.minecraft.item.ItemStack;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.text.Text;
+import net.minecraft.util.Nameable;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Box;
+import net.minecraft.world.World;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Full-screen translucent Escape-from-Tarkov-style Inventory & Looting screen:
- * - 3-column layout (Left: 3D Player + Equipment, Center: Rig/Pockets/Backpack, Right: External Loot when open)
- * - Bottom Quick-Use bar (Melee, 1..3 weapons, 4..9 pockets)
- * - Hold-and-Drag (>4px threshold), click-to-select, R rotate, F transfer, Ctrl+F equip/unequip, Del discard
- * - Dynamic EFT RMB Context Menu, Draggable Inspect Window, and Split Stack Modal
+ * Bridge between vanilla storage containers (Chest, Trapped Chest, Barrel, Shulker Box, Ender Chest)
+ * and TarkovCraft's Tetris grid & §6 search pipeline.
  */
-@Environment(EnvType.CLIENT)
-public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
-	private static final int TAB_GEAR = 0;
-	private static final int TAB_HEALTH = 1;
+public final class VanillaContainerBridge {
+	public static final int SINGLE_WIDTH = 6;
+	public static final int SINGLE_HEIGHT = 5;
+	public static final int DOUBLE_WIDTH = 9;
+	public static final int DOUBLE_HEIGHT = 7;
+	public static final int MAX_AUTO_HEIGHT = 60;
 
-	private int activeTab = TAB_GEAR;
-	private final List<InteractiveRegion> regions = new ArrayList<>();
-	private final List<ActionButton> actionButtons = new ArrayList<>();
-	private final List<BodyHealthHudHelper.PartHitbox> healthPartHitboxes = new ArrayList<>();
-	private final List<HealthMedSlot> healthMedSlots = new ArrayList<>();
+	private VanillaContainerBridge() {
+	}
 
-	@Nullable
-	private SelectedMedRef selectedHealthMed;
+	/**
+	 * Returns true for the 5 supported vanilla storage block hierarchies
+	 * (ChestBlock covers both normal and TrappedChestBlock).
+	 */
+	public static boolean isSupportedBlock(Block block) {
+		return block instanceof ChestBlock
+			|| block instanceof BarrelBlock
+			|| block instanceof ShulkerBoxBlock
+			|| block instanceof EnderChestBlock;
+	}
 
-	@Nullable
-	private DragState drag;
-	@Nullable
-	private ContextMenu contextMenu;
-	@Nullable
-	private TarkovInspectWindow inspectWindow;
-	@Nullable
-	private TarkovSplitModal splitModal;
-	@Nullable
-	private SelectedTarget selectedTarget;
+	public static String canonicalBlockKey(BlockPos pos) {
+		return "block:" + pos.getX() + "," + pos.getY() + "," + pos.getZ();
+	}
 
-	private Rect tabGearBtn;
-	private Rect tabHealthBtn;
-	private Rect closeBtn;
-	private Rect leftColumnArea;
-	@Nullable
-	private Rect centerScrollArea;
-	@Nullable
-	private Rect rightScrollArea;
+	public static String canonicalDoubleKey(BlockPos a, BlockPos b) {
+		boolean aLess = a.getX() != b.getX()
+			? a.getX() < b.getX()
+			: (a.getY() != b.getY() ? a.getY() < b.getY() : a.getZ() <= b.getZ());
+		return canonicalBlockKey(aLess ? a : b);
+	}
 
-	private int cellSize = 22;
-	private int centerScrollY = 0;
-	private int centerMaxScroll = 0;
-	private int rightScrollY = 0;
-	private int rightMaxScroll = 0;
-	private int rigSectionOffsetY = 0;
-	private int backpackSectionOffsetY = 0;
+	public static String canonicalEnderKey(UUID playerId) {
+		return "ender:" + playerId;
+	}
 
-	private boolean rigCollapsed = false;
-	private boolean backpackCollapsed = false;
+	public static String resolveCanonicalKey(BlockPos pos, BlockState state, UUID playerId) {
+		Block block = state.getBlock();
+		if (block instanceof EnderChestBlock) {
+			return canonicalEnderKey(playerId);
+		}
+		if (block instanceof ChestBlock
+			&& state.contains(ChestBlock.CHEST_TYPE)
+			&& state.get(ChestBlock.CHEST_TYPE) != ChestType.SINGLE) {
+			BlockPos otherPos = pos.offset(ChestBlock.getFacing(state));
+			return canonicalDoubleKey(pos, otherPos);
+		}
+		return canonicalBlockKey(pos);
+	}
 
-	private float playerPreviewYaw = 18.0f;
-	private boolean rotatingPlayerModel = false;
-	private double lastMouseX, lastMouseY;
-
-	private record Rect(int x, int y, int w, int h) {
-		boolean contains(double mx, double my) {
-			return mx >= x && mx < x + w && my >= y && my < y + h;
+	public static void removeForBrokenBlock(ServerWorld world, BlockPos pos, BlockState state) {
+		Block block = state.getBlock();
+		if (block instanceof EnderChestBlock || !isSupportedBlock(block)) {
+			return;
+		}
+		VanillaContainerState vcState = VanillaContainerState.get(world);
+		vcState.removeEntry(canonicalBlockKey(pos));
+		if (block instanceof ChestBlock
+			&& state.contains(ChestBlock.CHEST_TYPE)
+			&& state.get(ChestBlock.CHEST_TYPE) != ChestType.SINGLE) {
+			BlockPos otherPos = pos.offset(ChestBlock.getFacing(state));
+			vcState.removeEntry(canonicalDoubleKey(pos, otherPos));
 		}
 	}
 
-	private record ActionButton(Rect rect, @Nullable Rect clip, Runnable action) {
-		boolean hits(double mx, double my) {
-			return rect.contains(mx, my) && (clip == null || clip.contains(mx, my));
+	public static boolean isContainerBlocked(World world, BlockPos pos, BlockState state) {
+		Block block = state.getBlock();
+		if (block instanceof ChestBlock) {
+			if (ChestBlock.isChestBlocked(world, pos)) {
+				return true;
+			}
+			if (state.contains(ChestBlock.CHEST_TYPE) && state.get(ChestBlock.CHEST_TYPE) != ChestType.SINGLE) {
+				BlockPos otherPos = pos.offset(ChestBlock.getFacing(state));
+				return ChestBlock.isChestBlocked(world, otherPos);
+			}
+			return false;
 		}
-	}
-
-	private record InteractiveRegion(
-		Rect rect,
-		@Nullable Rect clipBounds,
-		byte locType,
-		int containerIndex,
-		int gridWidth,
-		int gridHeight,
-		int regionCellSize,
-		@Nullable TarkovNetworking.GridView view
-	) {
-		boolean hits(double mx, double my) {
-			if (!rect.contains(mx, my)) return false;
-			return clipBounds == null || clipBounds.contains(mx, my);
+		if (block instanceof EnderChestBlock) {
+			BlockPos above = pos.up();
+			return world.getBlockState(above).isSolidBlock(world, above);
 		}
-	}
-
-	private record HoveredTarget(
-		byte loc,
-		int idx,
-		@Nullable UUID entryId,
-		ItemStack stack,
-		boolean rotated,
-		@Nullable TarkovNetworking.GridView parentView
-	) {
-	}
-
-	private record SelectedTarget(byte loc, int idx, @Nullable UUID entryId) {
-		boolean matches(byte l, int i, @Nullable UUID e) {
-			return loc == l && idx == i && Objects.equals(entryId, e);
+		if (block instanceof ShulkerBoxBlock) {
+			BlockEntity be = world.getBlockEntity(pos);
+			if (be instanceof ShulkerBoxBlockEntity shulkerBe
+				&& shulkerBe.getAnimationStage() == ShulkerBoxBlockEntity.AnimationStage.CLOSED) {
+				Box box = ShulkerEntity.calculateBoundingBox(state.get(ShulkerBoxBlock.FACING), 0.0f, 0.5f)
+					.offset(pos)
+					.contract(1.0E-6);
+				return !world.isSpaceEmpty(box);
+			}
+			return false;
 		}
+		return false;
 	}
 
-	private record HealthMedSlot(byte loc, int idx, @Nullable UUID entryId, ItemStack stack, Rect rect) {
-	}
-
-	private record SelectedMedRef(byte loc, int idx, @Nullable UUID entryId) {
-		boolean matches(HealthMedSlot slot) {
-			return loc == slot.loc && idx == slot.idx && Objects.equals(entryId, slot.entryId);
+	/**
+	 * Attempts to open a vanilla container at {@code pos} inside TarkovScreenHandler.
+	 * Returns true if {@code pos} is a supported vanilla container (even if blocked).
+	 */
+	public static boolean tryOpenForPlayer(ServerPlayerEntity player, BlockPos pos) {
+		if (!(player.getWorld() instanceof ServerWorld world)) {
+			return false;
 		}
-	}
-
-	private static final class DragState {
-		final byte srcLoc;
-		final int srcIdx;
-		@Nullable
-		final UUID srcEntryId;
-		final ItemStack stack;
-		final int moveCount;
-		final double startX;
-		final double startY;
-		boolean rotated;
-		boolean active;
-
-		DragState(
-			byte srcLoc, int srcIdx, @Nullable UUID srcEntryId,
-			ItemStack stack, boolean rotated, int moveCount,
-			double startX, double startY
-		) {
-			this.srcLoc = srcLoc;
-			this.srcIdx = srcIdx;
-			this.srcEntryId = srcEntryId;
-			this.stack = stack;
-			this.rotated = rotated;
-			this.moveCount = moveCount;
-			this.startX = startX;
-			this.startY = startY;
-			this.active = false;
+		BlockState state = world.getBlockState(pos);
+		Block block = state.getBlock();
+		if (!isSupportedBlock(block)) {
+			return false;
 		}
 
-		boolean isSource(byte loc, int idx, @Nullable UUID entryId) {
-			return active && srcLoc == loc && srcIdx == idx && Objects.equals(srcEntryId, entryId);
-		}
-	}
-
-	private record MenuOption(String label, Runnable action) {
-	}
-
-	private static final class ContextMenu {
-		final int x;
-		final int y;
-		final int width;
-		final int rowH = 17;
-		final List<MenuOption> options;
-
-		ContextMenu(int x, int y, int width, List<MenuOption> options) {
-			this.x = x;
-			this.y = y;
-			this.width = width;
-			this.options = options;
+		if (isContainerBlocked(world, pos, state)) {
+			player.sendMessage(Text.translatable("message.tarkovcraft.container_blocked"), true);
+			return true;
 		}
 
-		int height() {
-			return options.size() * rowH + 2;
-		}
+		EnderChestBlockEntity enderChestBe = null;
+		Inventory liveInv;
+		Text title = block.getName();
 
-		boolean contains(double mx, double my) {
-			return mx >= x && mx < x + width && my >= y && my < y + height();
-		}
-	}
-
-	public TarkovInventoryScreen(TarkovScreenHandler handler, PlayerInventory inventory, Text title) {
-		super(handler, inventory, title);
-	}
-
-	@Override
-	protected void init() {
-		super.init();
-		this.x = 0;
-		this.y = 0;
-		this.backgroundWidth = this.width;
-		this.backgroundHeight = this.height;
-	}
-
-	@Override
-	protected void drawBackground(DrawContext context, float delta, int mouseX, int mouseY) {
-	}
-
-	@Override
-	protected void drawForeground(DrawContext context, int mouseX, int mouseY) {
-	}
-
-	@Override
-	public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-		this.lastMouseX = mouseX;
-		this.lastMouseY = mouseY;
-		regions.clear();
-		actionButtons.clear();
-
-		// Translucent EFT world overlay (preserves live world behind inventory)
-		context.fill(0, 0, this.width, this.height, TarkovUiTheme.BG_WORLD_OVERLAY);
-
-		PlayerLoadout loadout = ClientLoadoutCache.getLoadout();
-		TarkovNetworking.ScreenStateSnapshot snap = ClientLoadoutCache.getScreenState();
-		boolean hasExternal = handler.getMode() != TarkovScreenHandler.MODE_OWN_INVENTORY
-			|| (snap != null && snap.externalGridView() != null);
-
-		renderTopBar(context, mouseX, mouseY);
-
-		int bodyY = TarkovUiTheme.TOP_BAR_H + TarkovUiTheme.OUTER_PAD;
-		int bodyH = Math.max(140, this.height - bodyY - TarkovUiTheme.QUICK_BAR_H - TarkovUiTheme.OUTER_PAD - 6);
-
-		if (activeTab == TAB_HEALTH && client != null && client.player != null) {
-			healthPartHitboxes.clear();
-			healthMedSlots.clear();
-			int hx = TarkovUiTheme.OUTER_PAD;
-			int hw = this.width - TarkovUiTheme.OUTER_PAD * 2;
-			context.fill(hx, bodyY, hx + hw, bodyY + bodyH, TarkovUiTheme.BG_PANEL);
-			context.drawBorder(hx, bodyY, hw, bodyH, TarkovUiTheme.BORDER_PANEL);
-
-			int medStripH = 38;
-			int medStripY = bodyY + bodyH - TarkovUiTheme.STATS_BAR_H - medStripH - 4;
-			List<HealthMedSlot> collectedMeds = collectOwnMedicalItems(loadout, snap);
-			ItemStack selectedMedStack = resolveSelectedMedStack(collectedMeds);
-
-			BodyHealthHudHelper.drawDetailedHealthTab(
-				context, textRenderer, client.player,
-				hx, bodyY, hw, medStripY - bodyY - 2,
-				selectedMedStack, healthPartHitboxes, mouseX, mouseY
-			);
-			drawHealthMedicalStrip(context, hx + 6, medStripY, hw - 12, medStripH, collectedMeds, mouseX, mouseY);
-			drawBottomStatsStrip(context, loadout, hx + 6, bodyY + bodyH - TarkovUiTheme.STATS_BAR_H - 2, hw - 12);
-			leftColumnArea = null;
-			centerScrollArea = null;
-			rightScrollArea = null;
+		if (block instanceof EnderChestBlock) {
+			BlockEntity be = world.getBlockEntity(pos);
+			if (!(be instanceof EnderChestBlockEntity ecBe)) {
+				return false;
+			}
+			enderChestBe = ecBe;
+			liveInv = player.getEnderChestInventory();
+		} else if (block instanceof ChestBlock chestBlock) {
+			BlockEntity be1 = world.getBlockEntity(pos);
+			if (be1 instanceof LootableContainerBlockEntity loot1) {
+				loot1.checkLootInteraction(player);
+			}
+			if (state.contains(ChestBlock.CHEST_TYPE) && state.get(ChestBlock.CHEST_TYPE) != ChestType.SINGLE) {
+				BlockPos otherPos = pos.offset(ChestBlock.getFacing(state));
+				BlockEntity be2 = world.getBlockEntity(otherPos);
+				if (be2 instanceof LootableContainerBlockEntity loot2) {
+					loot2.checkLootInteraction(player);
+				}
+			}
+			liveInv = ChestBlock.getInventory(chestBlock, state, world, pos, true);
+			if (liveInv instanceof Nameable named) {
+				title = named.getDisplayName();
+			} else if (be1 instanceof Nameable named && named.hasCustomName()) {
+				title = named.getDisplayName();
+			}
 		} else {
-			int availW = this.width - TarkovUiTheme.OUTER_PAD * 2 - TarkovUiTheme.COL_GAP * 2;
-			int leftW = Math.max(142, Math.round(availW * 0.31f));
-			int centerW = Math.max(150, Math.round(availW * 0.36f));
-			int rightW = Math.max(120, availW - leftW - centerW);
-			if (leftW + centerW + rightW > availW) {
-				centerW = Math.max(140, availW - leftW - rightW);
+			BlockEntity be = world.getBlockEntity(pos);
+			if (be instanceof LootableContainerBlockEntity lootBe) {
+				lootBe.checkLootInteraction(player);
 			}
-			cellSize = Math.max(18, Math.min(28, (centerW - 22) / 6));
-
-			int leftX = TarkovUiTheme.OUTER_PAD;
-			int centerX = leftX + leftW + TarkovUiTheme.COL_GAP;
-			int rightX = centerX + centerW + TarkovUiTheme.COL_GAP;
-
-			leftColumnArea = new Rect(leftX, bodyY, leftW, bodyH);
-			renderEquipmentColumn(context, leftColumnArea, loadout, mouseX, mouseY);
-
-			centerScrollArea = new Rect(centerX, bodyY, centerW, bodyH);
-			renderStorageColumn(context, centerScrollArea, loadout, snap, mouseX, mouseY);
-
-			if (hasExternal && snap != null) {
-				rightScrollArea = new Rect(rightX, bodyY, rightW, bodyH);
-				renderExternalColumn(context, rightScrollArea, snap, mouseX, mouseY);
-			} else {
-				rightScrollArea = null;
+			liveInv = be instanceof Inventory inv ? inv : null;
+			if (be instanceof Nameable named && named.hasCustomName()) {
+				title = named.getDisplayName();
 			}
 		}
 
-		renderQuickUseBar(context, loadout, mouseX, mouseY);
-
-		// Floating layers (drag ghost z=320, modals z=420, context menu & tooltip z=500)
-		if (drag != null && drag.active) {
-			renderDragPreview(context, mouseX, mouseY);
-		}
-		if (inspectWindow != null) {
-			inspectWindow.render(context, textRenderer, mouseX, mouseY, this.width, this.height);
-		}
-		if (splitModal != null) {
-			splitModal.render(context, textRenderer, mouseX, mouseY);
-		}
-		if (contextMenu != null) {
-			renderContextMenu(context, mouseX, mouseY);
-		} else if ((drag == null || !drag.active)
-			&& (inspectWindow == null || !inspectWindow.contains(mouseX, mouseY))
-			&& (splitModal == null || !splitModal.contains(mouseX, mouseY))) {
-			renderHoverTooltip(context, mouseX, mouseY);
-		}
-	}
-
-	private void renderTopBar(DrawContext context, int mouseX, int mouseY) {
-		context.fill(0, 0, this.width, TarkovUiTheme.TOP_BAR_H, TarkovUiTheme.BG_TOP_BAR);
-		context.fill(0, TarkovUiTheme.TOP_BAR_H, this.width, TarkovUiTheme.TOP_BAR_H + 1, TarkovUiTheme.BORDER_PANEL);
-
-		tabGearBtn = new Rect(8, 3, 86, TarkovUiTheme.TOP_BAR_H - 5);
-		tabHealthBtn = new Rect(98, 3, 86, TarkovUiTheme.TOP_BAR_H - 5);
-		String backTxt = Text.translatable("ui.tarkovcraft.back_esc").getString();
-		int backW = Math.max(66, Math.round(textRenderer.getWidth(backTxt) * TarkovUiTheme.TEXT_SCALE_HEADER) + 14);
-		closeBtn = new Rect(this.width - backW - 8, 3, backW, TarkovUiTheme.TOP_BAR_H - 5);
-
-		drawTopTab(context, tabGearBtn, Text.translatable("tab.tarkovcraft.gear").getString(), activeTab == TAB_GEAR, mouseX, mouseY);
-		drawTopTab(context, tabHealthBtn, Text.translatable("tab.tarkovcraft.health").getString(), activeTab == TAB_HEALTH, mouseX, mouseY);
-		drawTopTab(context, closeBtn, backTxt, false, mouseX, mouseY);
-
-		if (this.width >= 520) {
-			String interactLbl = TarkovCraftClient.getShortKeyLabel(TarkovCraftClient.interactKey);
-			String hint = (drag != null && drag.active)
-				? "[R] Rotate  |  Drop on valid cell"
-				: "[" + interactLbl + "] Quick  |  Ctrl+" + interactLbl + " Equip  |  RMB Menu  |  Del Drop";
-			TarkovUiTheme.drawCenteredFlatText(context, textRenderer, hint, this.width / 2, 9,
-				(drag != null && drag.active) ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.TEXT_MUTED,
-				TarkovUiTheme.TEXT_SCALE_SMALL);
-		}
-	}
-
-	private void drawTopTab(DrawContext context, Rect r, String label, boolean active, int mouseX, int mouseY) {
-		boolean hov = r.contains(mouseX, mouseY);
-		int bg = active ? 0xDD22262C : (hov ? 0xCC1B1F24 : 0x00000000);
-		int textCol = active ? TarkovUiTheme.ACCENT_SAND : (hov ? TarkovUiTheme.TEXT_PRIMARY : TarkovUiTheme.TEXT_SECONDARY);
-		if (bg != 0) {
-			context.fill(r.x, r.y, r.x + r.w, r.y + r.h, bg);
-		}
-		if (active) {
-			context.fill(r.x, r.y + r.h - 2, r.x + r.w, r.y + r.h, TarkovUiTheme.ACCENT_SAND);
-		}
-		TarkovUiTheme.drawCenteredFlatText(context, textRenderer, label, r.x + r.w / 2, r.y + 6, textCol, TarkovUiTheme.TEXT_SCALE_HEADER);
-	}
-
-	private void renderEquipmentColumn(DrawContext context, Rect area, PlayerLoadout loadout, int mouseX, int mouseY) {
-		context.fill(area.x, area.y, area.x + area.w, area.y + area.h, TarkovUiTheme.BG_PANEL);
-		context.drawBorder(area.x, area.y, area.w, area.h, TarkovUiTheme.BORDER_PANEL);
-
-		int pad = 6;
-		int weaponZoneH = 98;
-		int upperH = Math.max(74, area.h - TarkovUiTheme.STATS_BAR_H - weaponZoneH - pad * 2);
-
-		// Live 3D Player Model behind equipment slots
-		if (client != null && client.player != null) {
-			int modelSize = Math.max(28, Math.min(64, Math.round(upperH * 0.40f)));
-			int modelX = area.x + area.w / 2;
-			int modelY = area.y + Math.max(76, Math.round(upperH * 0.92f));
-
-			float savedBodyYaw = client.player.bodyYaw;
-			float savedYaw = client.player.getYaw();
-			float savedPitch = client.player.getPitch();
-			float savedPrevHeadYaw = client.player.prevHeadYaw;
-			float savedHeadYaw = client.player.headYaw;
-
-			context.enableScissor(area.x + 1, area.y + 1, area.x + area.w - 1, area.y + area.h - TarkovUiTheme.STATS_BAR_H - 2);
-			try {
-				float previewYaw = 180.0f + playerPreviewYaw;
-				client.player.bodyYaw = previewYaw;
-				client.player.setYaw(previewYaw);
-				client.player.setPitch(0.0f);
-				client.player.prevHeadYaw = previewYaw;
-				client.player.headYaw = previewYaw;
-				InventoryScreen.drawEntity(
-					context, modelX, modelY, modelSize,
-					new Quaternionf().rotateZ((float) Math.PI), null, client.player
-				);
-			} finally {
-				client.player.bodyYaw = savedBodyYaw;
-				client.player.setYaw(savedYaw);
-				client.player.setPitch(savedPitch);
-				client.player.prevHeadYaw = savedPrevHeadYaw;
-				client.player.headYaw = savedHeadYaw;
-				context.disableScissor();
-			}
+		if (liveInv == null) {
+			return false;
 		}
 
-		// Render all equipment slots cleanly above the 3D player model
-		context.getMatrices().push();
-		context.getMatrices().translate(0.0f, 0.0f, TarkovUiTheme.Z_SLOTS);
+		boolean isDouble = liveInv.size() > 27;
+		int baseW = isDouble ? DOUBLE_WIDTH : SINGLE_WIDTH;
+		int baseH = isDouble ? DOUBLE_HEIGHT : SINGLE_HEIGHT;
 
-		int sideW = Math.max(48, Math.min(68, (area.w - 18) / 3));
-		int sqH = Math.max(32, Math.min(40, (upperH - 12) / 2));
-		int topY = area.y + pad;
-		int row2Y = topY + sqH + 4;
-		int rightColX = area.x + area.w - pad - sideW;
+		String key = resolveCanonicalKey(pos, state, player.getUuid());
+		VanillaContainerState vcState = VanillaContainerState.get(world);
+		VanillaContainerState.StoredVanillaContainer stored = vcState.getOrCreateEntry(key, baseW, baseH);
+		boolean isShulker = block instanceof ShulkerBoxBlock;
 
-		drawEquipSlot(context, area.x + pad, topY, sideW, sqH, EquipmentSlotType.HELMET, "HEADWEAR", null, loadout, false, null, mouseX, mouseY);
-		drawEquipSlot(context, rightColX, topY, sideW, sqH, EquipmentSlotType.FACE_MASK, "FACE COVER", null, loadout, false, null, mouseX, mouseY);
-		drawEquipSlot(context, area.x + pad, row2Y, sideW, sqH, EquipmentSlotType.BODY_ARMOR, "BODY ARMOR", null, loadout, false, null, mouseX, mouseY);
-		drawEquipSlot(context, rightColX, row2Y, sideW, sqH, EquipmentSlotType.RIG, "TACTICAL RIG", null, loadout, false, null, mouseX, mouseY);
-
-		int wY = area.y + pad + upperH + 4;
-		int fullW = area.w - pad * 2;
-		int halfW = (fullW - 4) / 2;
-		String k1 = client != null ? TarkovCraftClient.getShortKeyLabel(client.options.hotbarKeys[0]) : "1";
-		String k2 = client != null ? TarkovCraftClient.getShortKeyLabel(client.options.hotbarKeys[1]) : "2";
-		String k3 = client != null ? TarkovCraftClient.getShortKeyLabel(client.options.hotbarKeys[2]) : "3";
-		String kM = TarkovCraftClient.getShortKeyLabel(TarkovCraftClient.toggleMeleeKey);
-
-		drawEquipSlot(context, area.x + pad, wY, fullW, 28, EquipmentSlotType.PRIMARY_1, "ON SLING", k1, loadout, false, null, mouseX, mouseY);
-		drawEquipSlot(context, area.x + pad, wY + 31, fullW, 28, EquipmentSlotType.PRIMARY_2, "ON BACK", k2, loadout, false, null, mouseX, mouseY);
-		drawEquipSlot(context, area.x + pad, wY + 62, halfW, 28, EquipmentSlotType.PISTOL, "HOLSTER", k3, loadout, false, null, mouseX, mouseY);
-		drawEquipSlot(context, area.x + pad + halfW + 4, wY + 62, fullW - halfW - 4, 28, EquipmentSlotType.MELEE, "SCABBARD", kM, loadout, false, null, mouseX, mouseY);
-
-		drawBottomStatsStrip(context, loadout, area.x + 5, area.y + area.h - TarkovUiTheme.STATS_BAR_H - 3, area.w - 10);
-
-		context.getMatrices().pop();
-	}
-
-	private void drawBottomStatsStrip(DrawContext context, PlayerLoadout loadout, int x, int y, int w) {
-		context.fill(x, y, x + w, y + TarkovUiTheme.STATS_BAR_H, 0xCC0A0C0E);
-		context.drawBorder(x, y, w, TarkovUiTheme.STATS_BAR_H, TarkovUiTheme.BORDER_PANEL);
-		if (client == null || client.player == null) return;
-
-		var bodyHealth = ClientLoadoutCache.getBodyHealth();
-		int hpVal = Math.round(bodyHealth.getTotalHp());
-		int food = client.player.getHungerManager().getFoodLevel() * 5;
-		int sat = Math.round(client.player.getHungerManager().getSaturationLevel() * 5.0f);
-		String weight = String.format(Locale.ROOT, "%.1fkg", ClientLoadoutCache.getCachedWeightKg());
-
-		int ty = y + 6;
-		TarkovUiTheme.drawFlatText(context, textRenderer, weight, x + 4, ty, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
-		TarkovUiTheme.drawFlatText(context, textRenderer, "+" + hpVal, x + Math.max(38, w / 4), ty,
-			BodyHealthHudHelper.hpToColor(bodyHealth.getTotalRatio()), TarkovUiTheme.TEXT_SCALE_SMALL);
-		TarkovUiTheme.drawFlatText(context, textRenderer, "E:" + food, x + Math.max(74, w / 2 + 4), ty,
-			0xFF63B3ED, TarkovUiTheme.TEXT_SCALE_SMALL);
-		if (w >= 132) {
-			TarkovUiTheme.drawRightAlignedFlatText(context, textRenderer, "S:" + sat, x + w - 4, ty,
-				0xFF9AE6B4, TarkovUiTheme.TEXT_SCALE_SMALL);
-		}
-	}
-
-	private void renderStorageColumn(
-		DrawContext context, Rect area, PlayerLoadout loadout,
-		@Nullable TarkovNetworking.ScreenStateSnapshot snap, int mouseX, int mouseY
-	) {
-		context.fill(area.x, area.y, area.x + area.w, area.y + area.h, TarkovUiTheme.BG_PANEL);
-		context.drawBorder(area.x, area.y, area.w, area.h, TarkovUiTheme.BORDER_PANEL);
-
-		context.enableScissor(area.x + 1, area.y + 1, area.x + area.w - 1, area.y + area.h - 1);
-
-		int pad = 6;
-		int curY = area.y + pad - centerScrollY;
-		int startY = curY;
-
-		// 1. TACTICAL RIG SECTION
-		ItemStack rigStack = loadout.getEquipment(EquipmentSlotType.RIG);
-		if (!rigStack.isEmpty() && snap != null && !snap.ownRigViews().isEmpty()) {
-			rigSectionOffsetY = curY - startY;
-			String rigTitle = Text.translatable("ui.tarkovcraft.rig").getString() + " // " + rigStack.getName().getString().toUpperCase();
-			curY = drawCollapsibleSectionHeader(
-				context, area, pad, curY, rigTitle, rigCollapsed,
-				() -> rigCollapsed = !rigCollapsed,
-				() -> ClientNetworkSender.sendQuickEquip(TarkovNetworking.LOC_EQUIPMENT, EquipmentSlotType.RIG.ordinal(), null),
-				mouseX, mouseY
-			);
-			if (!rigCollapsed) {
-				curY = drawRigViewsBody(context, area, pad, curY, TarkovNetworking.LOC_RIG_GRID, snap.ownRigViews(), snap, mouseX, mouseY);
-			} else {
-				curY += 4;
-			}
-		}
-
-		// 2. POCKETS SECTION
-		TarkovUiTheme.drawFlatText(context, textRenderer, Text.translatable("ui.tarkovcraft.pockets").getString(),
-			area.x + pad, curY + 1, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
-		curY += 11;
-		int pCell = Math.min(cellSize, Math.max(18, (area.w - pad * 2 - 18) / PlayerLoadout.POCKET_COUNT));
-		for (int i = 0; i < PlayerLoadout.POCKET_COUNT; i++) {
-			int px = area.x + pad + i * (pCell + 3);
-			Rect r = new Rect(px, curY, pCell, pCell);
-			regions.add(new InteractiveRegion(r, area, TarkovNetworking.LOC_POCKET, i, 1, 1, pCell, null));
-			String keyBadge = client != null ? TarkovCraftClient.getShortKeyLabel(client.options.hotbarKeys[i + 3]) : String.valueOf(i + 4);
-			drawSingleCellSlot(context, r, TarkovNetworking.LOC_POCKET, i, loadout.getPocket(i), keyBadge, mouseX, mouseY);
-		}
-		curY += pCell + 10;
-
-		// 3. BACKPACK SECTION
-		ItemStack bpStack = loadout.getEquipment(EquipmentSlotType.BACKPACK);
-		backpackSectionOffsetY = curY - startY;
-		if (!bpStack.isEmpty()) {
-			String bpTitle = Text.translatable("ui.tarkovcraft.backpack").getString() + " // " + bpStack.getName().getString().toUpperCase();
-			curY = drawCollapsibleSectionHeader(
-				context, area, pad, curY, bpTitle, backpackCollapsed,
-				() -> backpackCollapsed = !backpackCollapsed,
-				() -> ClientNetworkSender.sendQuickEquip(TarkovNetworking.LOC_EQUIPMENT, EquipmentSlotType.BACKPACK.ordinal(), null),
-				mouseX, mouseY
-			);
-		} else {
-			TarkovUiTheme.drawFlatText(context, textRenderer, Text.translatable("ui.tarkovcraft.backpack").getString(),
-				area.x + pad, curY + 1, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
-			curY += 11;
-		}
-
-		if (bpStack.isEmpty() || !backpackCollapsed) {
-			int bpSlotSize = Math.max(32, Math.min(40, cellSize + 12));
-			drawEquipSlot(context, area.x + pad, curY, bpSlotSize, bpSlotSize, EquipmentSlotType.BACKPACK, "", null, loadout, false, area, mouseX, mouseY);
-
-			if (!bpStack.isEmpty() && snap != null && snap.ownBackpackView() != null) {
-				TarkovNetworking.GridView bpView = snap.ownBackpackView();
-				int gridX = area.x + pad + bpSlotSize + 6;
-				if (gridX + bpView.width() * cellSize > area.x + area.w - pad - 4) {
-					curY += bpSlotSize + 5;
-					drawGridView(context, area.x + pad, curY, area, TarkovNetworking.LOC_BACKPACK_GRID, 0, cellSize, bpView, snap, false, mouseX, mouseY);
-					curY += bpView.height() * cellSize + 10;
+		boolean changed = false;
+		if (!(block instanceof EnderChestBlock) && !stored.isPlayerPlaced() && TarkovConfig.get().cityAutoLootVanillaContainers) {
+			if (stored.getLastLootEpochMs() == 0L) {
+				if (!liveInv.isEmpty()) {
+					// Already contains player-placed items before auto-loot ever touched it -> protect it
+					stored.setPlayerPlaced(true);
+					changed = true;
 				} else {
-					drawGridView(context, gridX, curY, area, TarkovNetworking.LOC_BACKPACK_GRID, 0, cellSize, bpView, snap, false, mouseX, mouseY);
-					curY += Math.max(bpSlotSize, bpView.height() * cellSize) + 10;
+					TarkovLootPool pool = stored.getAssignedPool() != null
+						? stored.getAssignedPool()
+						: CityZoneClassifier.classify(world, pos, block);
+					stored.setAssignedPool(pool);
+					populateAndSyncVanillaLoot(stored, liveInv, baseW, baseH, pool, isShulker, isDouble, world.getRandom());
+					changed = true;
 				}
-			} else {
-				curY += bpSlotSize + 10;
+			} else if (SearchableLootBlockEntity.isRespawnDue(stored.getLastLootEpochMs())) {
+				TarkovLootPool pool = stored.getAssignedPool() != null
+					? stored.getAssignedPool()
+					: CityZoneClassifier.classify(world, pos, block);
+				stored.setAssignedPool(pool);
+				populateAndSyncVanillaLoot(stored, liveInv, baseW, baseH, pool, isShulker, isDouble, world.getRandom());
+				changed = true;
 			}
+		}
+
+		if (reconcile(stored, liveInv, baseW, baseH)) {
+			changed = true;
+		}
+		if (stored.getGrid().isEmpty()) {
+			stored.getSearchMemory().markGridRevealed(player.getUuid());
+			changed = true;
+		}
+		if (changed) {
+			vcState.markDirty();
+		}
+
+		if (!(block instanceof EnderChestBlock) && !stored.isPlayerPlaced() && stored.getAssignedPool() != null) {
+			title = title.copy()
+				.append(Text.literal(" ("))
+				.append(Text.translatable(stored.getAssignedPool().getTranslationKey()))
+				.append(Text.literal(")"));
+		}
+
+		TarkovScreenHandler.openVanillaContainer(
+			player, pos, title, liveInv, stored, vcState, isShulker, enderChestBe
+		);
+		return true;
+	}
+
+	private static void populateAndSyncVanillaLoot(
+		VanillaContainerState.StoredVanillaContainer stored,
+		Inventory liveInv,
+		int baseW,
+		int baseH,
+		TarkovLootPool pool,
+		boolean isShulker,
+		boolean isDouble,
+		net.minecraft.util.math.random.Random random
+	) {
+		GridContainer freshGrid = new GridContainer(baseW, baseH);
+		float chance = isShulker ? 1.0f : TarkovConfig.get().vanillaContainerLootChance;
+		if (random.nextFloat() <= chance) {
+			TarkovLootGenerator.populateVanillaContainerGrid(freshGrid, pool, isShulker, isDouble, random);
+		}
+		stored.setGrid(freshGrid);
+		stored.setSearchMemory(new ContainerSearchMemory());
+		stored.setLastLootEpochMs(System.currentTimeMillis());
+		syncGridToInventory(freshGrid, liveInv);
+	}
+
+	/**
+	 * Marks a vanilla container position as player-placed so city auto-loot & hourly respawn never overwrite it.
+	 */
+	public static void markPlayerPlaced(ServerWorld world, BlockPos pos) {
+		BlockState state = world.getBlockState(pos);
+		Block block = state.getBlock();
+		if (!isSupportedBlock(block) || block instanceof EnderChestBlock) {
+			return;
+		}
+		String key = resolveCanonicalKey(pos, state, UUID.randomUUID());
+		VanillaContainerState vcState = VanillaContainerState.get(world);
+		VanillaContainerState.StoredVanillaContainer stored = vcState.getOrCreateEntry(key, SINGLE_WIDTH, SINGLE_HEIGHT);
+		stored.setPlayerPlaced(true);
+		vcState.markDirty();
+	}
+
+	/**
+	 * Assigns a specific city loot pool to a vanilla container and forces an immediate refill.
+	 */
+	public static boolean assignZoneAndRefill(ServerWorld world, BlockPos pos, TarkovLootPool pool) {
+		BlockState state = world.getBlockState(pos);
+		Block block = state.getBlock();
+		if (!isSupportedBlock(block) || block instanceof EnderChestBlock) {
+			return false;
+		}
+		Inventory liveInv;
+		if (block instanceof ChestBlock chestBlock) {
+			liveInv = ChestBlock.getInventory(chestBlock, state, world, pos, true);
 		} else {
-			curY += 4;
+			BlockEntity be = world.getBlockEntity(pos);
+			liveInv = be instanceof Inventory inv ? inv : null;
 		}
-
-		context.disableScissor();
-
-		int contentH = curY - startY;
-		centerMaxScroll = Math.max(0, contentH - area.h + pad);
-		centerScrollY = Math.max(0, Math.min(centerScrollY, centerMaxScroll));
-		drawScrollbar(context, area, centerScrollY, centerMaxScroll);
+		if (liveInv == null) {
+			return false;
+		}
+		boolean isDouble = liveInv.size() > 27;
+		boolean isShulker = block instanceof ShulkerBoxBlock;
+		int baseW = isDouble ? DOUBLE_WIDTH : SINGLE_WIDTH;
+		int baseH = isDouble ? DOUBLE_HEIGHT : SINGLE_HEIGHT;
+		String key = resolveCanonicalKey(pos, state, UUID.randomUUID());
+		VanillaContainerState vcState = VanillaContainerState.get(world);
+		VanillaContainerState.StoredVanillaContainer stored = vcState.getOrCreateEntry(key, baseW, baseH);
+		stored.setPlayerPlaced(false);
+		stored.setAssignedPool(pool);
+		populateAndSyncVanillaLoot(stored, liveInv, baseW, baseH, pool, isShulker, isDouble, world.getRandom());
+		vcState.markDirty();
+		return true;
 	}
 
-	private int drawCollapsibleSectionHeader(
-		DrawContext context, Rect area, int pad, int curY,
-		String title, boolean collapsed, Runnable onToggle, Runnable onUnequip,
-		int mouseX, int mouseY
-	) {
-		int headerW = area.w - pad * 2 - 4;
-		context.fill(area.x + pad, curY, area.x + pad + headerW, curY + 13, 0xCC14171B);
-		context.drawBorder(area.x + pad, curY, headerW, 13, TarkovUiTheme.BORDER_PANEL);
-
-		String trimmed = textRenderer.trimToWidth(title, Math.round((headerW - 36) / TarkovUiTheme.TEXT_SCALE_SMALL));
-		TarkovUiTheme.drawFlatText(context, textRenderer, trimmed, area.x + pad + 4, curY + 3,
-			TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
-
-		// [-] / [+] toggle button
-		Rect toggleRect = new Rect(area.x + pad + headerW - 28, curY + 1, 13, 11);
-		boolean tHov = toggleRect.contains(mouseX, mouseY) && area.contains(mouseX, mouseY);
-		context.fill(toggleRect.x, toggleRect.y, toggleRect.x + toggleRect.w, toggleRect.y + toggleRect.h,
-			tHov ? TarkovUiTheme.HOVER_MENU_BG : 0xFF1B1F24);
-		TarkovUiTheme.drawCenteredFlatText(context, textRenderer, collapsed ? "+" : "-", toggleRect.x + 6, toggleRect.y + 2,
-			tHov ? TarkovUiTheme.HOVER_MENU_TEXT : TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
-		actionButtons.add(new ActionButton(toggleRect, area, onToggle));
-
-		// [X] unequip button
-		Rect unequipRect = new Rect(area.x + pad + headerW - 14, curY + 1, 13, 11);
-		boolean uHov = unequipRect.contains(mouseX, mouseY) && area.contains(mouseX, mouseY);
-		context.fill(unequipRect.x, unequipRect.y, unequipRect.x + unequipRect.w, unequipRect.y + unequipRect.h,
-			uHov ? TarkovUiTheme.HOVER_MENU_BG : 0xFF281A1A);
-		TarkovUiTheme.drawCenteredFlatText(context, textRenderer, "X", unequipRect.x + 6, unequipRect.y + 2,
-			uHov ? TarkovUiTheme.HOVER_MENU_TEXT : 0xFFE57373, TarkovUiTheme.TEXT_SCALE_SMALL);
-		actionButtons.add(new ActionButton(unequipRect, area, onUnequip));
-
-		return curY + 15;
+	public static boolean refillArenaContainer(ServerWorld world, BlockPos pos) {
+		BlockState state = world.getBlockState(pos);
+		Block block = state.getBlock();
+		if (!isSupportedBlock(block) || block instanceof EnderChestBlock) return false;
+		String key = resolveCanonicalKey(pos, state, new UUID(0L, 0L));
+		var stored = VanillaContainerState.get(world).getEntry(key);
+		if (stored != null && stored.isPlayerPlaced()) return false;
+		TarkovLootPool pool = stored != null ? stored.getAssignedPool() : null;
+		return assignZoneAndRefill(world, pos, pool != null ? pool : CityZoneClassifier.classify(world, pos, block));
 	}
 
-	private void renderExternalColumn(
-		DrawContext context, Rect area, TarkovNetworking.ScreenStateSnapshot snap, int mouseX, int mouseY
+	/**
+	 * Reconciles persisted Tetris GridContainer against the live vanilla Inventory.
+	 * - Fast-path: 100% multiset match -> preserves exact coordinates, rotations, UUIDs, and search memory.
+	 * - Delta-path: keeps matching entries untouched, removes missing entries, and places newly
+	 *   arrived items (e.g. from hoppers) with auto-grow height so zero items are ever lost.
+	 *
+	 * @return true if stored grid was modified
+	 */
+	public static boolean reconcile(
+		VanillaContainerState.StoredVanillaContainer stored,
+		Inventory liveInv,
+		int baseW,
+		int baseH
 	) {
-		context.fill(area.x, area.y, area.x + area.w, area.y + area.h, TarkovUiTheme.BG_PANEL);
-		context.drawBorder(area.x, area.y, area.w, area.h, TarkovUiTheme.BORDER_PANEL);
-
-		int pad = 6;
-		int headerH = 18;
-		context.fill(area.x + 1, area.y + 1, area.x + area.w - 1, area.y + headerH, 0xDD13161A);
-		context.fill(area.x + 1, area.y + headerH, area.x + area.w - 1, area.y + headerH + 1, TarkovUiTheme.BORDER_PANEL);
-
-		String header = snap.externalTitle().isEmpty() ? "LOOT" : snap.externalTitle().toUpperCase();
-		UUID firstUnsearched = findFirstUnsearchedTarget(snap);
-		boolean ownOpenCase = handler.getMode() == TarkovScreenHandler.MODE_OWN_INVENTORY && snap.externalGridView() != null;
-		int btnW = firstUnsearched != null ? 54 : (ownOpenCase ? 18 : 0);
-		String trimmedHeader = textRenderer.trimToWidth(header, Math.round((area.w - pad * 2 - btnW - 8) / TarkovUiTheme.TEXT_SCALE_SMALL));
-		TarkovUiTheme.drawFlatText(context, textRenderer, trimmedHeader, area.x + pad, area.y + 6,
-			TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
-
-		if (firstUnsearched != null) {
-			String btnTxt = Text.translatable("ui.tarkovcraft.search_btn").getString();
-			int bw = Math.max(48, Math.round(textRenderer.getWidth(btnTxt) * TarkovUiTheme.TEXT_SCALE_SMALL) + 8);
-			Rect searchBtn = new Rect(area.x + area.w - bw - 5, area.y + 3, bw, 12);
-			boolean sHov = searchBtn.contains(mouseX, mouseY);
-			context.fill(searchBtn.x, searchBtn.y, searchBtn.x + searchBtn.w, searchBtn.y + searchBtn.h,
-				sHov ? TarkovUiTheme.HOVER_MENU_BG : 0xFF283226);
-			context.drawBorder(searchBtn.x, searchBtn.y, searchBtn.w, searchBtn.h,
-				sHov ? TarkovUiTheme.BORDER_HOVER : TarkovUiTheme.ACCENT_SAND);
-			TarkovUiTheme.drawCenteredFlatText(context, textRenderer, btnTxt, searchBtn.x + searchBtn.w / 2, searchBtn.y + 3,
-				sHov ? TarkovUiTheme.HOVER_MENU_TEXT : TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
-			actionButtons.add(new ActionButton(searchBtn, area, () -> ClientNetworkSender.sendRequestSearch(firstUnsearched)));
-		} else if (ownOpenCase) {
-			Rect closeBtn = new Rect(area.x + area.w - 17, area.y + 3, 13, 11);
-			boolean cHov = closeBtn.contains(mouseX, mouseY);
-			context.fill(closeBtn.x, closeBtn.y, closeBtn.x + closeBtn.w, closeBtn.y + closeBtn.h,
-				cHov ? TarkovUiTheme.HOVER_MENU_BG : 0xFF281A1A);
-			TarkovUiTheme.drawCenteredFlatText(context, textRenderer, "X", closeBtn.x + 6, closeBtn.y + 2,
-				cHov ? TarkovUiTheme.HOVER_MENU_TEXT : 0xFFE57373, TarkovUiTheme.TEXT_SCALE_SMALL);
-			actionButtons.add(new ActionButton(closeBtn, area, ClientNetworkSender::sendCloseCase));
+		List<ItemStack> liveStacks = new ArrayList<>();
+		for (int i = 0; i < liveInv.size(); i++) {
+			ItemStack st = liveInv.getStack(i);
+			if (!st.isEmpty()) {
+				liveStacks.add(st.copy());
+			}
 		}
 
-		Rect scrollClip = new Rect(area.x, area.y + headerH + 1, area.w, area.h - headerH - 1);
-		context.enableScissor(scrollClip.x + 1, scrollClip.y, scrollClip.x + scrollClip.w - 1, scrollClip.y + scrollClip.h - 1);
+		GridContainer grid = stored.getGrid();
+		List<GridEntry> currentEntries = grid.getEntries();
 
-		int curY = scrollClip.y + pad - rightScrollY;
-		int startY = curY;
+		boolean[] liveMatched = new boolean[liveStacks.size()];
+		List<GridEntry> keptEntries = new ArrayList<>();
+		List<GridEntry> removedEntries = new ArrayList<>();
 
-		int maxCols = snap.externalGridView() != null ? Math.max(6, snap.externalGridView().width()) : 6;
-		int extCell = Math.max(12, Math.min(cellSize, (area.w - pad * 2 - 8) / maxCols));
-
-		if (handler.getMode() == TarkovScreenHandler.MODE_CORPSE && snap.corpseLoadout() != null) {
-			PlayerLoadout corpseLo = snap.corpseLoadout();
-			int halfW = (area.w - pad * 2 - 8) / 2;
-
-			drawEquipSlot(context, area.x + pad, curY, halfW, 26, EquipmentSlotType.HELMET, "HELM", null, corpseLo, true, scrollClip, mouseX, mouseY);
-			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 26, EquipmentSlotType.FACE_MASK, "MASK", null, corpseLo, true, scrollClip, mouseX, mouseY);
-			curY += 29;
-			drawEquipSlot(context, area.x + pad, curY, halfW, 26, EquipmentSlotType.BODY_ARMOR, "ARMOR", null, corpseLo, true, scrollClip, mouseX, mouseY);
-			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 26, EquipmentSlotType.RIG, "RIG", null, corpseLo, true, scrollClip, mouseX, mouseY);
-			curY += 29;
-			drawEquipSlot(context, area.x + pad, curY, halfW, 26, EquipmentSlotType.BACKPACK, "BACKPACK", null, corpseLo, true, scrollClip, mouseX, mouseY);
-			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 26, EquipmentSlotType.MELEE, "MELEE", null, corpseLo, true, scrollClip, mouseX, mouseY);
-			curY += 29;
-			drawEquipSlot(context, area.x + pad, curY, halfW, 26, EquipmentSlotType.PRIMARY_1, "PRIMARY 1", null, corpseLo, true, scrollClip, mouseX, mouseY);
-			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 26, EquipmentSlotType.PRIMARY_2, "PRIMARY 2", null, corpseLo, true, scrollClip, mouseX, mouseY);
-			curY += 29;
-			drawEquipSlot(context, area.x + pad, curY, halfW, 26, EquipmentSlotType.PISTOL, "HOLSTER", null, corpseLo, true, scrollClip, mouseX, mouseY);
-			curY += 32;
-
-			if (snap.externalGridView() != null) {
-				TarkovUiTheme.drawFlatText(context, textRenderer, Text.translatable("ui.tarkovcraft.pockets").getString(),
-					area.x + pad, curY, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
-				curY += 10;
-				drawGridView(context, area.x + pad, curY, scrollClip, TarkovNetworking.LOC_EXTERNAL_GRID, 0, extCell, snap.externalGridView(), snap, false, mouseX, mouseY);
-				curY += snap.externalGridView().height() * extCell + 8;
-			}
-
-			if (!snap.corpseRigViews().isEmpty()) {
-				ItemStack cRig = corpseLo.getEquipment(EquipmentSlotType.RIG);
-				TarkovUiTheme.drawFlatText(context, textRenderer,
-					Text.translatable("ui.tarkovcraft.rig").getString() + " // " + cRig.getName().getString().toUpperCase(),
-					area.x + pad, curY, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
-				curY += 10;
-				curY = drawRigViewsBody(context, scrollClip, pad, curY, TarkovNetworking.LOC_CORPSE_RIG_GRID, snap.corpseRigViews(), snap, mouseX, mouseY);
-			}
-
-			if (snap.corpseBackpackView() != null) {
-				ItemStack cBp = corpseLo.getEquipment(EquipmentSlotType.BACKPACK);
-				TarkovUiTheme.drawFlatText(context, textRenderer,
-					Text.translatable("ui.tarkovcraft.backpack").getString() + " // " + cBp.getName().getString().toUpperCase(),
-					area.x + pad, curY, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
-				curY += 10;
-				drawGridView(context, area.x + pad, curY, scrollClip, TarkovNetworking.LOC_CORPSE_BACKPACK_GRID, 0, extCell, snap.corpseBackpackView(), snap, false, mouseX, mouseY);
-				curY += snap.corpseBackpackView().height() * extCell + 10;
-			}
-		} else if (handler.getMode() == TarkovScreenHandler.MODE_GROUND_ITEM) {
-			if (snap.externalGridView() != null) {
-				drawGridView(context, area.x + pad, curY, scrollClip, TarkovNetworking.LOC_EXTERNAL_GRID, 0, extCell, snap.externalGridView(), snap, false, mouseX, mouseY);
-				curY += snap.externalGridView().height() * extCell + 10;
-			} else if (!snap.corpseRigViews().isEmpty()) {
-				curY = drawRigViewsBody(context, scrollClip, pad, curY, TarkovNetworking.LOC_CORPSE_RIG_GRID, snap.corpseRigViews(), snap, mouseX, mouseY);
-			}
-		} else if (snap.externalGridView() != null) {
-			drawGridView(context, area.x + pad, curY, scrollClip, TarkovNetworking.LOC_EXTERNAL_GRID, 0, extCell, snap.externalGridView(), snap, false, mouseX, mouseY);
-			curY += snap.externalGridView().height() * extCell + 10;
-		}
-
-		context.disableScissor();
-
-		int contentH = curY - startY;
-		rightMaxScroll = Math.max(0, contentH - scrollClip.h + pad);
-		rightScrollY = Math.max(0, Math.min(rightScrollY, rightMaxScroll));
-		drawScrollbar(context, scrollClip, rightScrollY, rightMaxScroll);
-	}
-
-	private int drawRigViewsBody(
-		DrawContext context, Rect clip, int pad, int curY,
-		byte locType, List<TarkovNetworking.GridView> rigViews,
-		TarkovNetworking.ScreenStateSnapshot snap, int mouseX, int mouseY
-	) {
-		TarkovNetworking.GridView first = rigViews.get(0);
-		if (!first.gridRevealed()) {
-			boolean scanningRig = snap.searchStage() == 1 && first.searchTargetId().equals(snap.searchTargetId());
-			int barW = clip.w - pad * 2 - 6;
-			context.fill(clip.x + pad, curY, clip.x + pad + barW, curY + 11, 0xFF111418);
-			context.drawBorder(clip.x + pad, curY, barW, 11, scanningRig ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.BORDER_SLOT);
-			if (scanningRig) {
-				context.fill(clip.x + pad + 1, curY + 1, clip.x + pad + 1 + Math.round((barW - 2) * snap.searchProgress()), curY + 10, 0xAA8A733E);
-				TarkovUiTheme.drawCenteredFlatText(context, textRenderer, Text.translatable("ui.tarkovcraft.searching").getString(),
-					clip.x + pad + barW / 2, curY + 3, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+		for (GridEntry entry : currentEntries) {
+			int matchIdx = findMatchingUnused(entry.getStack(), liveStacks, liveMatched);
+			if (matchIdx >= 0) {
+				liveMatched[matchIdx] = true;
+				keptEntries.add(entry);
 			} else {
-				TarkovUiTheme.drawCenteredFlatText(context, textRenderer, Text.translatable("ui.tarkovcraft.unsearched").getString(),
-					clip.x + pad + barW / 2, curY + 3, TarkovUiTheme.TEXT_MUTED, TarkovUiTheme.TEXT_SCALE_SMALL);
+				removedEntries.add(entry);
 			}
-			curY += 14;
 		}
 
-		int rCell = Math.max(18, Math.min(cellSize, (clip.w - pad * 2 - 10) / 5));
-		int rx = clip.x + pad;
-		int rowMaxH = 0;
-		for (int i = 0; i < rigViews.size(); i++) {
-			TarkovNetworking.GridView gv = rigViews.get(i);
-			int gw = gv.width() * rCell;
-			int gh = gv.height() * rCell;
-			if (rx + gw > clip.x + clip.w - pad - 4 && rx > clip.x + pad) {
-				rx = clip.x + pad;
-				curY += rowMaxH + 4;
-				rowMaxH = 0;
+		List<ItemStack> addedStacks = new ArrayList<>();
+		for (int i = 0; i < liveStacks.size(); i++) {
+			if (!liveMatched[i]) {
+				addedStacks.add(liveStacks.get(i));
 			}
-			drawGridView(context, rx, curY, clip, locType, i, rCell, gv, snap, true, mouseX, mouseY);
-			rx += gw + 4;
-			rowMaxH = Math.max(rowMaxH, gh);
 		}
-		return curY + rowMaxH + 8;
+
+		// Fast-path: 100% match -> zero changes
+		if (removedEntries.isEmpty() && addedStacks.isEmpty() && grid.getWidth() >= baseW) {
+			return false;
+		}
+
+		for (GridEntry removed : removedEntries) {
+			grid.remove(removed.getEntryId());
+		}
+
+		// Ensure width >= baseW and try placing additions in the existing grid first
+		boolean needsRebuild = grid.getWidth() < baseW || grid.getHeight() < baseH;
+		if (!needsRebuild) {
+			List<GridEntry> newlyPlaced = new ArrayList<>();
+			for (ItemStack added : addedStacks) {
+				GridEntry placed = grid.tryPlaceInFreeCell(added);
+				if (placed == null) {
+					needsRebuild = true;
+					break;
+				}
+				newlyPlaced.add(placed);
+			}
+			if (!needsRebuild) {
+				return true;
+			}
+			// Roll back partial placements before rebuilding with taller height
+			for (GridEntry np : newlyPlaced) {
+				grid.remove(np.getEntryId());
+			}
+		}
+
+		GridContainer grown = rebuildWithAutoGrow(
+			Math.max(baseW, grid.getWidth()),
+			Math.max(baseH, grid.getHeight()),
+			grid.getContainerId(),
+			keptEntries,
+			addedStacks
+		);
+		stored.setGrid(grown);
+		return true;
 	}
 
-	private void renderQuickUseBar(DrawContext context, PlayerLoadout loadout, int mouseX, int mouseY) {
-		int qSlot = Math.max(18, Math.min(24, (this.width - 60) / 11));
-		int gap = 2;
-		int groupGap = 8;
-		int slotsW = qSlot + groupGap + (3 * qSlot + 2 * gap) + groupGap + (6 * qSlot + 5 * gap);
-		int labelW = this.width >= 480 ? 64 : 0;
-		int barW = slotsW + labelW + 14;
-		int barH = TarkovUiTheme.QUICK_BAR_H;
-		int barX = (this.width - barW) / 2;
-		int barY = this.height - barH - 4;
+	private static GridContainer rebuildWithAutoGrow(
+		int width,
+		int startHeight,
+		UUID containerId,
+		List<GridEntry> keptEntries,
+		List<ItemStack> addedStacks
+	) {
+		for (int h = startHeight; h <= MAX_AUTO_HEIGHT; h += 3) {
+			GridContainer candidate = new GridContainer(width, h, containerId);
+			boolean allPlaced = true;
 
-		context.fill(barX, barY, barX + barW, barY + barH, TarkovUiTheme.BG_QUICK_BAR);
-		context.drawBorder(barX, barY, barW, barH, TarkovUiTheme.BORDER_PANEL);
-
-		int sx = barX + 6;
-		if (labelW > 0) {
-			TarkovUiTheme.drawFlatText(context, textRenderer, Text.translatable("ui.tarkovcraft.quick_use").getString(),
-				sx, barY + 11, TarkovUiTheme.TEXT_MUTED, TarkovUiTheme.TEXT_SCALE_SMALL);
-			sx += labelW;
+			for (GridEntry kept : keptEntries) {
+				if (!placePreservingId(candidate, kept)) {
+					allPlaced = false;
+					break;
+				}
+			}
+			if (allPlaced) {
+				for (ItemStack added : addedStacks) {
+					if (candidate.tryPlaceInFreeCell(added) == null) {
+						allPlaced = false;
+						break;
+					}
+				}
+			}
+			if (allPlaced) {
+				return candidate;
+			}
 		}
-		int sy = barY + (barH - qSlot) / 2;
 
-		String meleeKey = TarkovCraftClient.getShortKeyLabel(TarkovCraftClient.toggleMeleeKey);
-		Rect meleeRect = new Rect(sx, sy, qSlot, qSlot);
-		regions.add(new InteractiveRegion(meleeRect, null, TarkovNetworking.LOC_EQUIPMENT, EquipmentSlotType.MELEE.ordinal(), 1, 1, qSlot, null));
-		drawSingleCellSlot(context, meleeRect, TarkovNetworking.LOC_EQUIPMENT, EquipmentSlotType.MELEE.ordinal(),
-			loadout.getEquipment(EquipmentSlotType.MELEE), meleeKey, mouseX, mouseY);
-		sx += qSlot + groupGap;
-
-		EquipmentSlotType[] weaponSlots = {EquipmentSlotType.PRIMARY_1, EquipmentSlotType.PRIMARY_2, EquipmentSlotType.PISTOL};
-		for (int i = 0; i < 3; i++) {
-			Rect wr = new Rect(sx, sy, qSlot, qSlot);
-			int slotOrd = weaponSlots[i].ordinal();
-			regions.add(new InteractiveRegion(wr, null, TarkovNetworking.LOC_EQUIPMENT, slotOrd, 1, 1, qSlot, null));
-			String keyLbl = client != null ? TarkovCraftClient.getShortKeyLabel(client.options.hotbarKeys[i]) : String.valueOf(i + 1);
-			drawSingleCellSlot(context, wr, TarkovNetworking.LOC_EQUIPMENT, slotOrd,
-				loadout.getEquipment(weaponSlots[i]), keyLbl, mouseX, mouseY);
-			sx += qSlot + gap;
+		// Fallback (should never happen with MAX_AUTO_HEIGHT = 60, guarantees zero silent drops)
+		GridContainer fallback = new GridContainer(width, MAX_AUTO_HEIGHT, containerId);
+		for (GridEntry kept : keptEntries) {
+			placePreservingId(fallback, kept);
 		}
-		sx += groupGap - gap;
+		for (ItemStack added : addedStacks) {
+			fallback.tryPlaceInFreeCell(added);
+		}
+		return fallback;
+	}
 
+	private static boolean placePreservingId(GridContainer target, GridEntry old) {
+		if (target.placeWithId(old.getEntryId(), old.getStack(), old.getX(), old.getY(), old.isRotated()) != null) {
+			return true;
+		}
+		ItemSize baseSize = ItemSizeRegistry.getSize(old.getStack());
+		boolean[] orientations = baseSize.width() == baseSize.height()
+			? new boolean[]{false}
+			: new boolean[]{false, true};
+		for (boolean rot : orientations) {
+			for (int y = 0; y < target.getHeight(); y++) {
+				for (int x = 0; x < target.getWidth(); x++) {
+					if (target.placeWithId(old.getEntryId(), old.getStack(), x, y, rot) != null) {
+						return true;
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	private static int findMatchingUnused(ItemStack target, List<ItemStack> liveStacks, boolean[] used) {
+		for (int i = 0; i < liveStacks.size(); i++) {
+			if (!used[i] && stacksEqual(target, liveStacks.get(i))) {
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	private static boolean stacksEqual(ItemStack a, ItemStack b) {
+		return a.getCount() == b.getCount() && ItemStack.canCombine(a, b);
+	}
+
+	/**
+	 * Immediately mirrors every GridEntry in {@code grid} back into {@code inv} (write-through).
+	 */
+	public static void syncGridToInventory(GridContainer grid, Inventory inv) {
+		int slot = 0;
+		for (GridEntry entry : grid.getEntries()) {
+			if (slot >= inv.size()) {
+				break;
+			}
+			inv.setStack(slot++, entry.getStack().copy());
+		}
+		while (slot < inv.size()) {
+			inv.setStack(slot++, ItemStack.EMPTY);
+		}
+		inv.markDirty();
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\container\VanillaContainerState.java ==========
+package com.tarkovcraft.container;
+
+import com.tarkovcraft.grid.GridContainer;
+import com.tarkovcraft.loot.TarkovLootPool;
+import com.tarkovcraft.search.ContainerSearchMemory;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtElement;
+import net.minecraft.nbt.NbtList;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.world.PersistentState;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/**
+ * Per-world persistent storage mapping canonical vanilla container keys
+ * (single/double chest, barrel, shulker, player ender chest) to their
+ * TarkovCraft Tetris GridContainer layout and per-player ContainerSearchMemory.
+ */
+public final class VanillaContainerState extends PersistentState {
+	public static final String DATA_NAME = "tarkovcraft_vanilla_containers";
+
+	private final Map<String, StoredVanillaContainer> containers = new LinkedHashMap<>();
+
+	public static final class StoredVanillaContainer {
+		private GridContainer grid;
+		private ContainerSearchMemory searchMemory;
+		@Nullable
+		private TarkovLootPool assignedPool;
+		private long lastLootEpochMs;
+		private boolean playerPlaced;
+
+		public StoredVanillaContainer(GridContainer grid, ContainerSearchMemory searchMemory) {
+			this.grid = grid;
+			this.searchMemory = searchMemory;
+		}
+
+		public GridContainer getGrid() {
+			return grid;
+		}
+
+		public void setGrid(GridContainer grid) {
+			this.grid = grid;
+		}
+
+		public ContainerSearchMemory getSearchMemory() {
+			return searchMemory;
+		}
+
+		public void setSearchMemory(ContainerSearchMemory searchMemory) {
+			this.searchMemory = searchMemory;
+		}
+
+		@Nullable
+		public TarkovLootPool getAssignedPool() {
+			return assignedPool;
+		}
+
+		public void setAssignedPool(@Nullable TarkovLootPool assignedPool) {
+			this.assignedPool = assignedPool;
+		}
+
+		public long getLastLootEpochMs() {
+			return lastLootEpochMs;
+		}
+
+		public void setLastLootEpochMs(long lastLootEpochMs) {
+			this.lastLootEpochMs = Math.max(0L, lastLootEpochMs);
+		}
+
+		public boolean isPlayerPlaced() {
+			return playerPlaced;
+		}
+
+		public void setPlayerPlaced(boolean playerPlaced) {
+			this.playerPlaced = playerPlaced;
+		}
+
+		public NbtCompound toNbt() {
+			NbtCompound tag = new NbtCompound();
+			tag.put("Grid", grid.toNbt());
+			tag.put("SearchMemory", searchMemory.toNbt());
+			if (assignedPool != null) {
+				tag.putString("AssignedPool", assignedPool.getId());
+			}
+			if (lastLootEpochMs > 0L) {
+				tag.putLong("LastLootEpochMs", lastLootEpochMs);
+			}
+			if (playerPlaced) {
+				tag.putBoolean("PlayerPlaced", true);
+			}
+			return tag;
+		}
+
+		public static StoredVanillaContainer fromNbt(NbtCompound tag, int defaultWidth, int defaultHeight) {
+			GridContainer grid = tag.contains("Grid", NbtElement.COMPOUND_TYPE)
+				? GridContainer.fromNbt(tag.getCompound("Grid"), defaultWidth, defaultHeight)
+				: new GridContainer(defaultWidth, defaultHeight);
+			ContainerSearchMemory mem = tag.contains("SearchMemory", NbtElement.COMPOUND_TYPE)
+				? ContainerSearchMemory.fromNbt(tag.getCompound("SearchMemory"))
+				: new ContainerSearchMemory();
+			StoredVanillaContainer stored = new StoredVanillaContainer(grid, mem);
+			if (tag.contains("AssignedPool", NbtElement.STRING_TYPE)) {
+				stored.assignedPool = TarkovLootPool.byId(tag.getString("AssignedPool"));
+			}
+			stored.lastLootEpochMs = Math.max(0L, tag.getLong("LastLootEpochMs"));
+			stored.playerPlaced = tag.getBoolean("PlayerPlaced");
+			return stored;
+		}
+	}
+
+	public static VanillaContainerState get(ServerWorld world) {
+		return world.getPersistentStateManager().getOrCreate(
+			VanillaContainerState::fromNbt,
+			VanillaContainerState::new,
+			DATA_NAME
+		);
+	}
+
+	@Nullable
+	public StoredVanillaContainer getEntry(String key) {
+		return containers.get(key);
+	}
+
+	public StoredVanillaContainer getOrCreateEntry(String key, int baseWidth, int baseHeight) {
+		StoredVanillaContainer existing = containers.get(key);
+		if (existing != null) {
+			return existing;
+		}
+		StoredVanillaContainer created = new StoredVanillaContainer(
+			new GridContainer(baseWidth, baseHeight),
+			new ContainerSearchMemory()
+		);
+		containers.put(key, created);
+		markDirty();
+		return created;
+	}
+
+	public void putEntry(String key, StoredVanillaContainer entry) {
+		containers.put(key, entry);
+		markDirty();
+	}
+
+	public void removeEntry(String key) {
+		if (containers.remove(key) != null) {
+			markDirty();
+		}
+	}
+
+	public int size() {
+		return containers.size();
+	}
+
+	@Override
+	public NbtCompound writeNbt(NbtCompound nbt) {
+		NbtList list = new NbtList();
+		for (Map.Entry<String, StoredVanillaContainer> entry : containers.entrySet()) {
+			NbtCompound row = entry.getValue().toNbt();
+			row.putString("Key", entry.getKey());
+			list.add(row);
+		}
+		nbt.put("Containers", list);
+		return nbt;
+	}
+
+	public static VanillaContainerState fromNbt(NbtCompound nbt) {
+		VanillaContainerState state = new VanillaContainerState();
+		if (nbt == null || !nbt.contains("Containers", NbtElement.LIST_TYPE)) {
+			return state;
+		}
+		NbtList list = nbt.getList("Containers", NbtElement.COMPOUND_TYPE);
+		for (int i = 0; i < list.size(); i++) {
+			NbtCompound row = list.getCompound(i);
+			String key = row.getString("Key");
+			if (key == null || key.isEmpty()) {
+				continue;
+			}
+			StoredVanillaContainer stored = StoredVanillaContainer.fromNbt(row, 6, 5);
+			state.containers.put(key, stored);
+		}
+		return state;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\entity\AirdropEntity.java ==========
+package com.tarkovcraft.entity;
+
+import com.tarkovcraft.block.SearchableLootBlockEntity;
+import com.tarkovcraft.config.TarkovConfig;
+import com.tarkovcraft.loot.TarkovLootPool;
+import com.tarkovcraft.registry.ModBlocks;
+import net.minecraft.block.Block;
+import net.minecraft.block.BlockState;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityType;
+import net.minecraft.entity.MovementType;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.particle.DustParticleEffect;
+import net.minecraft.particle.ParticleTypes;
+import net.minecraft.registry.tag.BlockTags;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.sound.SoundEvents;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.Heightmap;
+import net.minecraft.world.World;
+import org.joml.Vector3f;
+
+public class AirdropEntity extends Entity {
+	public static final double DESCENT_SPEED = -0.065;
+	public static final int MAX_AIR_TICKS = 3600;
+	private static final DustParticleEffect RED_FLARE_DUST =
+		new DustParticleEffect(new Vector3f(0.92f, 0.14f, 0.14f), 2.2f);
+
+	private int ticksInAir = 0;
+	private BlockPos landingPoint;
+
+	public AirdropEntity(EntityType<? extends AirdropEntity> type, World world) {
+		super(type, world);
+		this.intersectionChecked = true;
+		this.setNoGravity(true);
+	}
+
+	@Override
+	protected void initDataTracker() {
+	}
+
+	@Override
+	protected void readCustomDataFromNbt(NbtCompound nbt) {
+		this.ticksInAir = nbt.getInt("TicksInAir");
+		landingPoint = nbt.contains("LandingPoint") ? BlockPos.fromLong(nbt.getLong("LandingPoint")) : null;
+	}
+
+	@Override
+	protected void writeCustomDataToNbt(NbtCompound nbt) {
+		nbt.putInt("TicksInAir", this.ticksInAir);
+		if (landingPoint != null) nbt.putLong("LandingPoint", landingPoint.asLong());
+	}
+
+	public void setLandingPoint(BlockPos landingPoint) {
+		this.landingPoint = landingPoint.toImmutable();
+	}
+
+	@Override
+	public boolean shouldRender(double distance) {
+		return distance < 256.0 * 256.0;
+	}
+
+	@Override
+	public void tick() {
+		super.tick();
+		this.ticksInAir++;
+
+		this.setVelocity(new Vec3d(0.0, DESCENT_SPEED, 0.0));
+		this.move(MovementType.SELF, this.getVelocity());
+
+		if (!(getWorld() instanceof ServerWorld sw)) {
+			return;
+		}
+
+		if (this.ticksInAir % 3 == 0) {
+			double cx = getX();
+			double cy = getY() + 1.0;
+			double cz = getZ();
+			sw.spawnParticles(RED_FLARE_DUST, cx, cy + 0.6, cz, 4, 0.22, 0.45, 0.22, 0.01);
+			sw.spawnParticles(ParticleTypes.CAMPFIRE_SIGNAL_SMOKE, cx, cy + 1.1, cz, 1, 0.12, 0.2, 0.12, 0.04);
+		}
+
+		BlockPos below = BlockPos.ofFloored(getX(), getY() - 0.08, getZ());
+		BlockState belowState = sw.getBlockState(below);
+		boolean hitGround = this.isOnGround()
+			|| (!belowState.isAir() && !belowState.isReplaceable())
+			|| !sw.getFluidState(getBlockPos()).isEmpty()
+			|| this.ticksInAir > MAX_AIR_TICKS;
+
+		if (landingPoint != null) {
+			if (getY() <= landingPoint.getY() + 0.08) {
+				BlockState support = sw.getBlockState(landingPoint.down());
+				if (sw.getBlockState(landingPoint).isAir()
+					&& sw.getTopY(Heightmap.Type.MOTION_BLOCKING, landingPoint.getX(), landingPoint.getZ()) == landingPoint.getY()
+					&& support.isSolidBlock(sw, landingPoint.down())
+					&& !support.isIn(BlockTags.LEAVES) && !support.isIn(BlockTags.LOGS)) {
+					placeCrate(sw, landingPoint);
+				}
+				discard();
+			} else if (hitGround) {
+				discard();
+			}
+		} else if (hitGround) {
+			land(sw);
+		}
+	}
+
+	private void land(ServerWorld sw) {
+		BlockPos placePos = getBlockPos();
+		if (this.ticksInAir > MAX_AIR_TICKS && sw.getBlockState(placePos.down()).isReplaceable()) {
+			placePos = sw.getTopPosition(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, placePos);
+		}
+		for (int i = 0; i < 4; i++) {
+			BlockState current = sw.getBlockState(placePos);
+			if (current.isAir() || current.isReplaceable()) {
+				break;
+			}
+			placePos = placePos.up();
+		}
+
+		if (sw.getBlockState(placePos).isReplaceable()) placeCrate(sw, placePos);
+		discard();
+	}
+
+	private static void placeCrate(ServerWorld sw, BlockPos placePos) {
+		if (!sw.setBlockState(placePos, ModBlocks.AIRDROP_CRATE.getDefaultState(), Block.NOTIFY_ALL)) return;
+		if (sw.getBlockEntity(placePos) instanceof SearchableLootBlockEntity be) {
+			be.populateFromPool(TarkovLootPool.AIRDROP, sw.random);
+			be.setSmokeTicksRemaining(TarkovConfig.get().airdropSmokeSeconds * 20);
+		}
+		sw.playSound(null, placePos, SoundEvents.BLOCK_ANVIL_LAND, SoundCategory.BLOCKS, 1.0f, 0.85f);
+		sw.spawnParticles(ParticleTypes.CLOUD, placePos.getX() + 0.5, placePos.getY() + 0.4, placePos.getZ() + 0.5,
+			16, 0.6, 0.15, 0.6, 0.04);
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\entity\CorpseEntity.java ==========
+package com.tarkovcraft.entity;
+
+import com.tarkovcraft.arena.RaidSession;
+import com.tarkovcraft.config.TarkovConfig;
+import com.tarkovcraft.grid.ContainerItemHelper;
+import com.tarkovcraft.grid.GridContainer;
+import com.tarkovcraft.item.BackpackItem;
+import com.tarkovcraft.item.TacticalRigItem;
+import com.tarkovcraft.item.TarkovArmorItem;
+import com.tarkovcraft.loadout.EquipmentSlotType;
+import com.tarkovcraft.loadout.PlayerLoadout;
+import com.tarkovcraft.loot.TarkovLootGenerator;
+import com.tarkovcraft.loot.TarkovLootPool;
+import com.tarkovcraft.registry.ModEntities;
+import com.tarkovcraft.registry.ModItems;
+import com.tarkovcraft.screen.TarkovScreenHandler;
+import com.tarkovcraft.search.ContainerSearchMemory;
+import com.tarkovcraft.search.SearchTarget;
+import net.fabricmc.fabric.api.screenhandler.v1.ExtendedScreenHandlerFactory;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityType;
+import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.damage.DamageSource;
+import net.minecraft.entity.data.DataTracker;
+import net.minecraft.entity.data.TrackedData;
+import net.minecraft.entity.data.TrackedDataHandlerRegistry;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtElement;
+import net.minecraft.network.PacketByteBuf;
+import net.minecraft.screen.ScreenHandler;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
+import net.minecraft.util.ActionResult;
+import net.minecraft.util.Hand;
+import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.math.random.Random;
+import net.minecraft.world.World;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Lootable corpse spawned on death of a player or humanoid mob.
+ * NO fake generic container: holds the deceased's REAL equipment, REAL 6x(1x1) pockets,
+ * REAL Tactical Rig (with its sub-grids), and REAL Backpack (with its grid).
+ * Everything on the corpse searches automatically in order: Pockets -> Rig -> Backpack.
+ * Both the Rig and Backpack can be stripped whole at any time (even unsearched).
+ */
+public class CorpseEntity extends Entity {
+	private static final int MAX_LIFETIME_TICKS = 20 * 60 * 15; // 15 minutes
+	private static final int EMPTY_DESPAWN_TICKS = 20 * 10;     // 10 seconds once completely looted
+	private static final TrackedData<String> OWNER_NAME = DataTracker.registerData(CorpseEntity.class, TrackedDataHandlerRegistry.STRING);
+	private static final TrackedData<Boolean> HAS_BACKPACK = DataTracker.registerData(CorpseEntity.class, TrackedDataHandlerRegistry.BOOLEAN);
+	private static final TrackedData<Boolean> HAS_HELMET = DataTracker.registerData(CorpseEntity.class, TrackedDataHandlerRegistry.BOOLEAN);
+
+	private PlayerLoadout loadout = new PlayerLoadout();
+	// Corpse pockets represented as a 6x1 searchable grid (6x 1x1 pockets, real Tarkov pockets!)
+	private GridContainer pocketsGrid = new GridContainer(6, 1);
+	private ContainerSearchMemory pocketsSearchMemory = new ContainerSearchMemory();
+	private int ageTicks = 0;
+	private int emptyTicks = 0;
+	@Nullable
+	private UUID ownerUuid;
+
+	public CorpseEntity(EntityType<?> type, World world) {
+		super(type, world);
+		this.intersectionChecked = true;
+	}
+
+	public static CorpseEntity fromPlayer(World world, PlayerEntity player, PlayerLoadout sourceLoadout) {
+		return fromPlayer(world, player, sourceLoadout, List.of(), new ArrayList<>());
+	}
+
+	public static CorpseEntity fromPlayer(
+		World world,
+		PlayerEntity player,
+		PlayerLoadout sourceLoadout,
+		List<ItemStack> extras,
+		List<ItemStack> overflow
+	) {
+		return fromSnapshot(world, player.getPos(), player.getYaw(), player.getUuid(),
+			player.getName().getString(), sourceLoadout, extras, overflow);
+	}
+
+	public static CorpseEntity fromSnapshot(
+		World world,
+		Vec3d position,
+		float yaw,
+		UUID ownerUuid,
+		String ownerName,
+		PlayerLoadout sourceLoadout,
+		List<ItemStack> extras,
+		List<ItemStack> overflow
+	) {
+		CorpseEntity corpse = new CorpseEntity(ModEntities.CORPSE, world);
+		corpse.setPosition(position.x, position.y, position.z);
+		corpse.setYaw(yaw);
+		corpse.ownerUuid = ownerUuid;
+		corpse.setOwnerName(ownerName);
+
+		corpse.loadout = transferPlayerInventoryToCorpse(sourceLoadout, corpse.pocketsGrid, extras, overflow);
+		corpse.syncVisualFlags();
+		return corpse;
+	}
+
+	public static PlayerLoadout transferPlayerInventoryToCorpse(
+		PlayerLoadout sourceLoadout,
+		GridContainer targetPocketsGrid,
+		List<ItemStack> extras,
+		List<ItemStack> overflow
+	) {
+		PlayerLoadout copy = sourceLoadout.copyLoot();
 		for (int i = 0; i < PlayerLoadout.POCKET_COUNT; i++) {
-			Rect pr = new Rect(sx, sy, qSlot, qSlot);
-			regions.add(new InteractiveRegion(pr, null, TarkovNetworking.LOC_POCKET, i, 1, 1, qSlot, null));
-			String keyLbl = client != null ? TarkovCraftClient.getShortKeyLabel(client.options.hotbarKeys[i + 3]) : String.valueOf(i + 4);
-			drawSingleCellSlot(context, pr, TarkovNetworking.LOC_POCKET, i, loadout.getPocket(i), keyLbl, mouseX, mouseY);
-			sx += qSlot + gap;
-		}
-	}
-
-	private void drawSingleCellSlot(
-		DrawContext context, Rect r, byte locType, int idx, ItemStack stack,
-		@Nullable String keyBadge, int mouseX, int mouseY
-	) {
-		boolean hovered = r.contains(mouseX, mouseY) && (drag == null || !drag.active);
-		boolean selected = selectedTarget != null && selectedTarget.matches(locType, idx, null);
-		boolean isDragSrc = drag != null && drag.isSource(locType, idx, null);
-
-		int bg = stack.isEmpty() ? TarkovUiTheme.BG_CELL_EMPTY : TarkovUiTheme.itemCategoryTint(stack);
-		int border = (hovered || selected) ? TarkovUiTheme.BORDER_HOVER
-			: (stack.isEmpty() ? TarkovUiTheme.BORDER_CELL : TarkovUiTheme.BORDER_OCCUPIED);
-
-		context.fill(r.x, r.y, r.x + r.w, r.y + r.h, bg);
-		context.drawBorder(r.x, r.y, r.w, r.h, border);
-
-		if (!stack.isEmpty()) {
-			TarkovUiTheme.drawScaledItem(context, stack, r.x + 1, r.y + 1, r.w - 2, r.h - 2);
-			drawCellCornerTags(context, r.x, r.y, r.w, r.h, stack);
-		}
-		if (keyBadge != null && !keyBadge.isEmpty()) {
-			TarkovUiTheme.drawFlatText(context, textRenderer, keyBadge, r.x + 2, r.y + 2,
-				TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
-		}
-		if (isDragSrc) {
-			context.fill(r.x + 1, r.y + 1, r.x + r.w - 1, r.y + r.h - 1, TarkovUiTheme.BG_DIM_DRAG_SOURCE);
-		}
-	}
-
-	private void drawEquipSlot(
-		DrawContext context, int x, int y, int w, int h,
-		EquipmentSlotType slot, String label, @Nullable String keyBadge,
-		PlayerLoadout loadout, boolean isCorpse, @Nullable Rect clip, int mouseX, int mouseY
-	) {
-		Rect r = new Rect(x, y, w, h);
-		byte loc = isCorpse ? TarkovNetworking.LOC_CORPSE_EQUIPMENT : TarkovNetworking.LOC_EQUIPMENT;
-		regions.add(new InteractiveRegion(r, clip, loc, slot.ordinal(), 1, 1, Math.min(w, h), null));
-
-		ItemStack stack = loadout.getEquipment(slot);
-		TarkovArmorItem armor = (!stack.isEmpty() && stack.getItem() instanceof TarkovArmorItem a && a.getArmorClass() > 0) ? a : null;
-		boolean brokenArmor = armor != null && TarkovArmorItem.isBroken(stack);
-		boolean hovered = r.contains(mouseX, mouseY) && (clip == null || clip.contains(mouseX, mouseY)) && (drag == null || !drag.active);
-		boolean selected = selectedTarget != null && selectedTarget.matches(loc, slot.ordinal(), null);
-		boolean isDragSrc = drag != null && drag.isSource(loc, slot.ordinal(), null);
-
-		int borderCol = brokenArmor ? TarkovUiTheme.BORDER_BROKEN
-			: ((hovered || selected) ? TarkovUiTheme.BORDER_HOVER : TarkovUiTheme.BORDER_SLOT);
-
-		context.fill(x, y, x + w, y + h, TarkovUiTheme.BG_SLOT);
-		context.drawBorder(x, y, w, h, borderCol);
-
-		if (label != null && !label.isEmpty()) {
-			int rightReserve = 0;
-			if (keyBadge != null && !keyBadge.isEmpty()) {
-				rightReserve = Math.max(11, Math.round(textRenderer.getWidth(keyBadge) * TarkovUiTheme.TEXT_SCALE_SMALL) + 4) + 3;
-			} else if (armor != null) {
-				rightReserve = Math.max(18, Math.round(textRenderer.getWidth("CL." + armor.getArmorClass()) * TarkovUiTheme.TEXT_SCALE_SMALL) + 4) + 3;
-			}
-			int availW = Math.max(12, w - 6 - rightReserve);
-			float lblScale = Math.min(0.68f, availW / (float) Math.max(1, textRenderer.getWidth(label)));
-			lblScale = Math.max(0.48f, lblScale);
-			String trimmedLbl = TarkovUiTheme.trimWithEllipsis(textRenderer, label, availW, lblScale);
-			TarkovUiTheme.drawFlatText(context, textRenderer, trimmedLbl, x + 3, y + 2,
-				TarkovUiTheme.TEXT_SECONDARY, lblScale);
-		}
-		if (keyBadge != null && !keyBadge.isEmpty()) {
-			int kw = Math.max(11, Math.round(textRenderer.getWidth(keyBadge) * TarkovUiTheme.TEXT_SCALE_SMALL) + 4);
-			context.fill(x + w - kw - 1, y + 1, x + w - 1, y + 10, 0xCC0A0C0E);
-			TarkovUiTheme.drawCenteredFlatText(context, textRenderer, keyBadge, x + w - kw / 2 - 1, y + 2,
-				TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
-		} else if (armor != null) {
-			String clTxt = "CL." + armor.getArmorClass();
-			int cw = Math.max(18, Math.round(textRenderer.getWidth(clTxt) * TarkovUiTheme.TEXT_SCALE_SMALL) + 4);
-			context.fill(x + w - cw - 1, y + 1, x + w - 1, y + 10, 0xCC0A0C0E);
-			TarkovUiTheme.drawCenteredFlatText(context, textRenderer, clTxt, x + w - cw / 2 - 1, y + 2,
-				brokenArmor ? 0xFFFF5555 : 0xFF63D2FF, TarkovUiTheme.TEXT_SCALE_SMALL);
-		}
-
-		if (!stack.isEmpty()) {
-			int iconPadTop = (label != null && !label.isEmpty()) ? 8 : 2;
-			TarkovUiTheme.drawScaledItem(context, stack, x + 2, y + iconPadTop, w - 4, h - iconPadTop - 2);
-		}
-
-		if (armor != null) {
-			int maxDur = Math.max(1, stack.getMaxDamage());
-			int curDur = TarkovArmorItem.getRemainingDurability(stack);
-			float ratio = curDur / (float) maxDur;
-			int durCol = curDur <= 0 ? 0xFFFF5555
-				: (ratio < 0.25f ? 0xFFE53935 : (ratio < 0.50f ? 0xFFE0B23B : 0xFF77B85A));
-			TarkovUiTheme.drawFlatText(context, textRenderer, curDur + "/" + maxDur, x + 3, y + h - 8,
-				durCol, TarkovUiTheme.TEXT_SCALE_SMALL);
-		} else if (!stack.isEmpty() && stack.getCount() > 1) {
-			TarkovUiTheme.drawRightAlignedFlatText(context, textRenderer, String.valueOf(stack.getCount()),
-				x + w - 3, y + h - 8, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
-		}
-
-		if (isDragSrc) {
-			context.fill(x + 1, y + 1, x + w - 1, y + h - 1, TarkovUiTheme.BG_DIM_DRAG_SOURCE);
-		}
-	}
-
-	private void drawGridView(
-		DrawContext context, int x, int y, Rect clip,
-		byte locType, int containerIndex, int gCell,
-		TarkovNetworking.GridView view,
-		@Nullable TarkovNetworking.ScreenStateSnapshot snap,
-		boolean suppressStage1Bar,
-		int mouseX, int mouseY
-	) {
-		int gw = view.width() * gCell;
-		int gh = view.height() * gCell;
-		Rect r = new Rect(x, y, gw, gh);
-		regions.add(new InteractiveRegion(r, clip, locType, containerIndex, view.width(), view.height(), gCell, view));
-
-		for (int gx = 0; gx < view.width(); gx++) {
-			for (int gy = 0; gy < view.height(); gy++) {
-				int cx = x + gx * gCell;
-				int cy = y + gy * gCell;
-				context.fill(cx, cy, cx + gCell, cy + gCell, TarkovUiTheme.BG_CELL_EMPTY);
-				context.drawBorder(cx, cy, gCell, gCell, TarkovUiTheme.BORDER_CELL);
+			ItemStack p = copy.getPocket(i);
+			if (!p.isEmpty()) {
+				if (targetPocketsGrid.place(p.copy(), i, 0, false) == null) {
+					overflow.add(p.copy());
+				}
+				copy.setPocket(i, ItemStack.EMPTY);
 			}
 		}
 
-		if (!view.gridRevealed()) {
-			context.fill(x, y, x + gw, y + gh, 0xDD090B0E);
-			context.drawBorder(x, y, gw, gh, suppressStage1Bar ? TarkovUiTheme.BORDER_SLOT : TarkovUiTheme.ACCENT_SAND);
-			if (!suppressStage1Bar) {
-				boolean isScanningThis = snap != null
-					&& snap.searchStage() == 1
-					&& view.searchTargetId().equals(snap.searchTargetId());
-				String msg = Text.translatable(isScanningThis ? "ui.tarkovcraft.searching" : "ui.tarkovcraft.unsearched").getString();
-				if (gw >= 36) {
-					TarkovUiTheme.drawCenteredFlatText(context, textRenderer, msg, x + gw / 2, y + gh / 2 - 5,
-						isScanningThis ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.TEXT_MUTED, TarkovUiTheme.TEXT_SCALE_SMALL);
+		// Store any offHand or vanilla main-inventory extras into corpse pockets -> empty equipment -> rig -> backpack -> overflow
+		if (extras != null) {
+			for (ItemStack extra : extras) {
+				if (extra == null || extra.isEmpty()) {
+					continue;
 				}
-				if (isScanningThis) {
-					int barW = Math.max(14, gw - 8);
-					int bx = x + (gw - barW) / 2;
-					int by = y + gh / 2 + 3;
-					context.fill(bx, by, bx + barW, by + 4, 0xFF20252A);
-					context.fill(bx, by, bx + Math.round(barW * snap.searchProgress()), by + 4, TarkovUiTheme.ACCENT_SAND);
+				ItemStack rem = extra.copy();
+				if (!targetPocketsGrid.tryAutoPlace(rem) && !rem.isEmpty()) {
+					tryPlaceExtraIntoCorpseLoadout(copy, rem);
 				}
+				if (!rem.isEmpty()) {
+					overflow.add(rem);
+				}
+			}
+		}
+
+		markContainerUnsearched(copy.getEquipment(EquipmentSlotType.BACKPACK));
+		markContainerUnsearched(copy.getEquipment(EquipmentSlotType.RIG));
+		return copy;
+	}
+
+	private static void tryPlaceExtraIntoCorpseLoadout(PlayerLoadout corpseLoadout, ItemStack rem) {
+		if (rem.isEmpty()) {
+			return;
+		}
+		// 1. Empty matching equipment slot (armor, backpack, rig, melee, weapons)
+		for (EquipmentSlotType slot : EquipmentSlotType.values()) {
+			if (corpseLoadout.getEquipment(slot).isEmpty() && slot.accepts(rem)) {
+				corpseLoadout.setEquipment(slot, rem.copy());
+				rem.setCount(0);
+				return;
+			}
+		}
+		// 2. Equipped Rig compartments
+		ItemStack rig = corpseLoadout.getEquipment(EquipmentSlotType.RIG);
+		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
+			List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
+			boolean changed = false;
+			for (GridContainer g : grids) {
+				int before = rem.getCount();
+				boolean full = g.tryAutoPlace(rem);
+				if (full || rem.getCount() < before) {
+					changed = true;
+					if (rem.isEmpty()) break;
+				}
+			}
+			if (changed) {
+				ContainerItemHelper.writeRigGrids(rig, grids);
+				if (rem.isEmpty()) return;
+			}
+		}
+		// 3. Equipped Backpack grid
+		ItemStack bp = corpseLoadout.getEquipment(EquipmentSlotType.BACKPACK);
+		if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem) {
+			GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
+			int before = rem.getCount();
+			boolean full = bpGrid.tryAutoPlace(rem);
+			if (full || rem.getCount() < before) {
+				ContainerItemHelper.writeBackpackGrid(bp, bpGrid);
+			}
+		}
+	}
+
+	public static CorpseEntity fromMob(World world, LivingEntity mob) {
+		return fromGearedMob(world, mob);
+	}
+
+	public static CorpseEntity fromGearedMob(World world, LivingEntity mob) {
+		CorpseEntity corpse = new CorpseEntity(ModEntities.CORPSE, world);
+		corpse.setPosition(mob.getX(), mob.getY(), mob.getZ());
+		corpse.setYaw(mob.getYaw());
+		corpse.setOwnerName(mob.getDisplayName().getString());
+		Random random = world.getRandom();
+
+		ItemStack headStack = mob.getEquippedStack(EquipmentSlot.HEAD);
+		if (!headStack.isEmpty() && headStack.getItem() instanceof TarkovArmorItem armor
+			&& armor.getTargetSlot() == EquipmentSlotType.HELMET) {
+			corpse.loadout.setEquipment(EquipmentSlotType.HELMET, headStack.copy());
+		} else if (random.nextFloat() < 0.45f) {
+			ItemStack rolledHelmet = TarkovLootGenerator.pickRandomLightHelmet(random);
+			if (!rolledHelmet.isEmpty()) {
+				corpse.loadout.setEquipment(EquipmentSlotType.HELMET, rolledHelmet);
+			}
+		}
+
+		ItemStack chestStack = mob.getEquippedStack(EquipmentSlot.CHEST);
+		if (!chestStack.isEmpty() && chestStack.getItem() instanceof TarkovArmorItem armor
+			&& armor.getTargetSlot() == EquipmentSlotType.BODY_ARMOR) {
+			corpse.loadout.setEquipment(EquipmentSlotType.BODY_ARMOR, chestStack.copy());
+		} else if (random.nextFloat() < 0.5f) {
+			ItemStack rolledArmor = TarkovLootGenerator.pickRandomLightArmor(random);
+			if (!rolledArmor.isEmpty()) {
+				corpse.loadout.setEquipment(EquipmentSlotType.BODY_ARMOR, rolledArmor);
+			}
+		}
+
+		if (mob.getCommandTags().contains(MobGearSpawner.TAG_GEARED_RIG) || random.nextFloat() < 0.65f) {
+			ItemStack rig = TarkovLootGenerator.pickRandomScavRig(random);
+			if (!rig.isEmpty()) {
+				List<GridContainer> rigGrids = ContainerItemHelper.readRigGrids(rig);
+				for (GridContainer g : rigGrids) {
+					TarkovLootGenerator.populateLootGrid(g, TarkovLootPool.SCAV_POCKET, random);
+				}
+				ContainerItemHelper.writeRigGrids(rig, rigGrids);
+				markContainerUnsearched(rig);
+				corpse.loadout.setEquipment(EquipmentSlotType.RIG, rig);
+			}
+		}
+
+		if (mob.getCommandTags().contains(MobGearSpawner.TAG_GEARED_BACKPACK)) {
+			ItemStack bp = TarkovLootGenerator.pickRandomScavBackpack(random);
+			if (!bp.isEmpty()) {
+				GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
+				TarkovLootGenerator.populateLootGrid(bpGrid, TarkovLootPool.CIVILIAN, random);
+				ContainerItemHelper.writeBackpackGrid(bp, bpGrid);
+				markContainerUnsearched(bp);
+				corpse.loadout.setEquipment(EquipmentSlotType.BACKPACK, bp);
+			}
+		}
+
+		TarkovLootGenerator.populateLootGrid(corpse.pocketsGrid, TarkovLootPool.SCAV_POCKET, random);
+		corpse.syncVisualFlags();
+		return corpse;
+	}
+
+	public static CorpseEntity fromRegularMob(World world, LivingEntity mob) {
+		CorpseEntity corpse = new CorpseEntity(ModEntities.CORPSE, world);
+		corpse.setPosition(mob.getX(), mob.getY(), mob.getZ());
+		corpse.setYaw(mob.getYaw());
+		corpse.setOwnerName(mob.getDisplayName().getString());
+		TarkovLootGenerator.populateLootGrid(corpse.pocketsGrid, TarkovLootPool.SCAV_POCKET, world.getRandom());
+		corpse.syncVisualFlags();
+		return corpse;
+	}
+
+	public void populateScavLoot(Random random) {
+		ItemStack helmet = TarkovLootGenerator.pickRandomLightHelmet(random);
+		if (!helmet.isEmpty() && random.nextFloat() < 0.65f) {
+			loadout.setEquipment(EquipmentSlotType.HELMET, helmet);
+		}
+		ItemStack armor = TarkovLootGenerator.pickRandomLightArmor(random);
+		if (!armor.isEmpty() && random.nextFloat() < 0.6f) {
+			loadout.setEquipment(EquipmentSlotType.BODY_ARMOR, armor);
+		}
+
+		ItemStack rig = TarkovLootGenerator.pickRandomScavRig(random);
+		if (!rig.isEmpty()) {
+			List<GridContainer> rigGrids = ContainerItemHelper.readRigGrids(rig);
+			for (GridContainer g : rigGrids) {
+				TarkovLootGenerator.populateLootGrid(g, TarkovLootPool.SCAV_POCKET, random);
+			}
+			ContainerItemHelper.writeRigGrids(rig, rigGrids);
+			markContainerUnsearched(rig);
+			loadout.setEquipment(EquipmentSlotType.RIG, rig);
+		}
+
+		ItemStack bp = TarkovLootGenerator.pickRandomScavBackpack(random);
+		if (!bp.isEmpty()) {
+			GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
+			TarkovLootGenerator.populateLootGrid(bpGrid, TarkovLootPool.CIVILIAN, random);
+			ContainerItemHelper.writeBackpackGrid(bp, bpGrid);
+			markContainerUnsearched(bp);
+			loadout.setEquipment(EquipmentSlotType.BACKPACK, bp);
+		}
+
+		TarkovLootGenerator.populateLootGrid(pocketsGrid, TarkovLootPool.SCAV_POCKET, random);
+		syncVisualFlags();
+	}
+
+	private static void markContainerUnsearched(ItemStack stack) {
+		if (!stack.isEmpty() && ContainerItemHelper.isContainerItem(stack)) {
+			ContainerItemHelper.setRequiresSearch(stack, true);
+			ContainerItemHelper.saveSearchMemory(stack, new ContainerSearchMemory());
+		}
+	}
+
+	public void syncVisualFlags() {
+		this.dataTracker.set(HAS_BACKPACK, !loadout.getEquipment(EquipmentSlotType.BACKPACK).isEmpty());
+		this.dataTracker.set(HAS_HELMET, !loadout.getEquipment(EquipmentSlotType.HELMET).isEmpty());
+	}
+
+	@Override
+	protected void initDataTracker() {
+		this.dataTracker.startTracking(OWNER_NAME, "Scav");
+		this.dataTracker.startTracking(HAS_BACKPACK, false);
+		this.dataTracker.startTracking(HAS_HELMET, false);
+	}
+
+	public String getOwnerName() {
+		return this.dataTracker.get(OWNER_NAME);
+	}
+
+	@Nullable
+	public UUID getOwnerUuid() {
+		return ownerUuid;
+	}
+
+	public void setOwnerName(String name) {
+		this.dataTracker.set(OWNER_NAME, name == null ? "Scav" : name);
+	}
+
+	public boolean hasBackpackVisual() {
+		return this.dataTracker.get(HAS_BACKPACK);
+	}
+
+	public boolean hasHelmetVisual() {
+		return this.dataTracker.get(HAS_HELMET);
+	}
+
+	public PlayerLoadout getLoadout() {
+		return loadout;
+	}
+
+	public GridContainer getPocketsGrid() {
+		return pocketsGrid;
+	}
+
+	public ContainerSearchMemory getPocketsSearchMemory() {
+		return pocketsSearchMemory;
+	}
+
+	/**
+	 * Ordered list of all searchable containers currently on this corpse:
+	 * 1. Pockets (6x1)
+	 * 2. Tactical Rig (all compartments, searched as one unit)
+	 * 3. Backpack (its full WxH grid)
+	 */
+	public List<SearchTarget> buildCorpseSearchTargets() {
+		List<SearchTarget> targets = new ArrayList<>();
+		targets.add(new SearchTarget(pocketsGrid.getContainerId(), List.of(pocketsGrid), pocketsSearchMemory, () -> {}));
+
+		ItemStack rig = loadout.getEquipment(EquipmentSlotType.RIG);
+		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem && ContainerItemHelper.requiresSearch(rig)) {
+			UUID rigId = ContainerItemHelper.getOrCreateContainerUuid(rig);
+			List<GridContainer> rigGrids = ContainerItemHelper.readRigGrids(rig);
+			ContainerSearchMemory rigMem = ContainerItemHelper.getSearchMemory(rig);
+			targets.add(new SearchTarget(rigId, rigGrids, rigMem, () -> {
+				ContainerItemHelper.saveSearchMemory(rig, rigMem);
+			}));
+		}
+
+		ItemStack bp = loadout.getEquipment(EquipmentSlotType.BACKPACK);
+		if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem && ContainerItemHelper.requiresSearch(bp)) {
+			UUID bpId = ContainerItemHelper.getOrCreateContainerUuid(bp);
+			GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
+			ContainerSearchMemory bpMem = ContainerItemHelper.getSearchMemory(bp);
+			targets.add(new SearchTarget(bpId, List.of(bpGrid), bpMem, () -> {
+				ContainerItemHelper.saveSearchMemory(bp, bpMem);
+			}));
+		}
+
+		return targets;
+	}
+
+	public boolean isCompletelyEmpty() {
+		return loadout.isEmpty() && pocketsGrid.isEmpty();
+	}
+
+	@Override
+	public boolean canHit() {
+		return !this.isRemoved();
+	}
+
+	@Override
+	public boolean damage(DamageSource source, float amount) {
+		// Allow Creative-mode players to immediately punch/remove corpses!
+		if (!this.getWorld().isClient && source.getAttacker() instanceof PlayerEntity p && p.isCreative()) {
+			this.discard();
+			return true;
+		}
+		return false;
+	}
+
+	@Override
+	public void tick() {
+		super.tick();
+		if (!this.getWorld().isClient) {
+			ageTicks++;
+			if (isCompletelyEmpty()) {
+				emptyTicks++;
+				if (emptyTicks >= EMPTY_DESPAWN_TICKS) {
+					this.discard();
+					return;
+				}
+			} else {
+				emptyTicks = 0;
+			}
+			if (ageTicks >= TarkovConfig.get().getCorpseLifetimeTicks()) {
+				this.discard();
+			}
+		}
+	}
+
+	@Override
+	public ActionResult interact(PlayerEntity player, Hand hand) {
+		// Looting corpses is strictly via [F] interact, NOT right-click
+		return ActionResult.PASS;
+	}
+
+	public void openForPlayer(ServerPlayerEntity player) {
+		if (player.getUuid().equals(ownerUuid) && RaidSession.isScav(player)) {
+			player.sendMessage(Text.translatable("message.tarkovcraft.raid.own_corpse"), true);
+			return;
+		}
+		player.openHandledScreen(new ExtendedScreenHandlerFactory() {
+			@Override
+			public void writeScreenOpeningData(ServerPlayerEntity player, PacketByteBuf buf) {
+				buf.writeByte(TarkovScreenHandler.MODE_CORPSE);
+				buf.writeInt(CorpseEntity.this.getId());
+			}
+
+			@Override
+			public Text getDisplayName() {
+				return Text.translatable("entity.tarkovcraft.corpse_title", getOwnerName());
+			}
+
+			@Nullable
+			@Override
+			public ScreenHandler createMenu(int syncId, PlayerInventory inv, PlayerEntity p) {
+				return TarkovScreenHandler.forCorpse(syncId, inv, CorpseEntity.this);
+			}
+		});
+		if (player.currentScreenHandler instanceof TarkovScreenHandler tsh) {
+			tsh.syncToClient(player);
+		}
+	}
+
+	@Override
+	protected void readCustomDataFromNbt(NbtCompound nbt) {
+		if (nbt.contains("OwnerName", NbtElement.STRING_TYPE)) {
+			setOwnerName(nbt.getString("OwnerName"));
+		}
+		ownerUuid = nbt.containsUuid("OwnerUuid") ? nbt.getUuid("OwnerUuid") : null;
+		if (nbt.contains("Loadout", NbtElement.COMPOUND_TYPE)) {
+			loadout.readNbt(nbt.getCompound("Loadout"));
+		}
+		if (nbt.contains("PocketsGrid", NbtElement.COMPOUND_TYPE)) {
+			pocketsGrid = GridContainer.fromNbt(nbt.getCompound("PocketsGrid"), 6, 1);
+		}
+		if (nbt.contains("PocketsSearchMemory", NbtElement.COMPOUND_TYPE)) {
+			pocketsSearchMemory = ContainerSearchMemory.fromNbt(nbt.getCompound("PocketsSearchMemory"));
+		}
+		ageTicks = nbt.getInt("AgeTicks");
+		syncVisualFlags();
+	}
+
+	@Override
+	protected void writeCustomDataToNbt(NbtCompound nbt) {
+		nbt.putString("OwnerName", getOwnerName());
+		if (ownerUuid != null) nbt.putUuid("OwnerUuid", ownerUuid);
+		nbt.put("Loadout", loadout.writeLootNbt());
+		nbt.put("PocketsGrid", pocketsGrid.toNbt());
+		nbt.put("PocketsSearchMemory", pocketsSearchMemory.toNbt());
+		nbt.putInt("AgeTicks", ageTicks);
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\entity\MobGearSpawner.java ==========
+package com.tarkovcraft.entity;
+
+import com.tarkovcraft.config.TarkovConfig;
+import com.tarkovcraft.loot.TarkovLootGenerator;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.entity.mob.HuskEntity;
+import net.minecraft.entity.mob.MobEntity;
+import net.minecraft.entity.mob.PillagerEntity;
+import net.minecraft.entity.mob.SkeletonEntity;
+import net.minecraft.entity.mob.StrayEntity;
+import net.minecraft.entity.mob.VindicatorEntity;
+import net.minecraft.entity.mob.ZombieEntity;
+import net.minecraft.item.ItemStack;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.math.random.Random;
+
+/**
+ * Assigns Tarkov Scav/Raider gear tags and visible armor pieces to eligible Overworld/hostile mobs on spawn.
+ */
+public final class MobGearSpawner {
+	public static final String TAG_GEAR_ROLLED = "tarkovcraft:gear_rolled";
+	public static final String TAG_GEARED_MOB = "tarkovcraft:geared_mob";
+	public static final String TAG_GEARED_RIG = "tarkovcraft:geared_rig";
+	public static final String TAG_GEARED_BACKPACK = "tarkovcraft:geared_backpack";
+
+	private MobGearSpawner() {
+	}
+
+	public static void register() {
+		ServerEntityEvents.ENTITY_LOAD.register(MobGearSpawner::onEntityLoad);
+	}
+
+	public static boolean isEligibleMob(Entity entity) {
+		if (!(entity instanceof MobEntity mob) || mob.isBaby()) {
+			return false;
+		}
+		return mob instanceof ZombieEntity
+			|| mob instanceof HuskEntity
+			|| mob instanceof SkeletonEntity
+			|| mob instanceof StrayEntity
+			|| mob instanceof PillagerEntity
+			|| mob instanceof VindicatorEntity;
+	}
+
+	private static void onEntityLoad(Entity entity, ServerWorld world) {
+		if (!isEligibleMob(entity)) {
+			return;
+		}
+		MobEntity mob = (MobEntity) entity;
+		if (mob.getCommandTags().contains(TAG_GEAR_ROLLED)) {
+			return;
+		}
+		mob.addCommandTag(TAG_GEAR_ROLLED);
+
+		TarkovConfig cfg = TarkovConfig.get();
+		Random random = world.random;
+		if (random.nextFloat() >= cfg.mobGearSpawnChance) {
+			return;
+		}
+
+		mob.addCommandTag(TAG_GEARED_MOB);
+		if (mob.getEquippedStack(EquipmentSlot.HEAD).isEmpty() && random.nextFloat() < 0.65f) {
+			ItemStack helmet = TarkovLootGenerator.pickRandomLightHelmet(random);
+			if (!helmet.isEmpty()) {
+				mob.equipStack(EquipmentSlot.HEAD, helmet);
+				mob.setEquipmentDropChance(EquipmentSlot.HEAD, 0.0f);
+			}
+		}
+		if (mob.getEquippedStack(EquipmentSlot.CHEST).isEmpty() && random.nextFloat() < 0.75f) {
+			ItemStack armor = TarkovLootGenerator.pickRandomLightArmor(random);
+			if (!armor.isEmpty()) {
+				mob.equipStack(EquipmentSlot.CHEST, armor);
+				mob.setEquipmentDropChance(EquipmentSlot.CHEST, 0.0f);
+			}
+		}
+		if (random.nextFloat() < 0.65f) {
+			mob.addCommandTag(TAG_GEARED_RIG);
+		}
+		if (random.nextFloat() < cfg.mobBackpackChance) {
+			mob.addCommandTag(TAG_GEARED_BACKPACK);
+		}
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\entity\SleeperPlayerEntity.java ==========
+package com.tarkovcraft.entity;
+
+import com.mojang.authlib.GameProfile;
+import com.tarkovcraft.arena.RaidSession;
+import com.tarkovcraft.health.BodyPartHealth;
+import com.tarkovcraft.health.HitZone;
+import com.tarkovcraft.health.HitZoneResolver;
+import com.tarkovcraft.health.TaCZBulletHelper;
+import com.tarkovcraft.loadout.PlayerLoadout;
+import com.tarkovcraft.loadout.PlayerLoadoutHolder;
+import com.tarkovcraft.network.EquipmentAppearance;
+import com.tarkovcraft.registry.ModEntities;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityDimensions;
+import net.minecraft.entity.EntityPose;
+import net.minecraft.entity.EntityType;
+import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.ai.brain.MemoryModuleType;
+import net.minecraft.entity.attribute.EntityAttributes;
+import net.minecraft.entity.damage.DamageSource;
+import net.minecraft.entity.data.DataTracker;
+import net.minecraft.entity.data.TrackedData;
+import net.minecraft.entity.data.TrackedDataHandlerRegistry;
+import net.minecraft.entity.effect.StatusEffectInstance;
+import net.minecraft.entity.effect.StatusEffects;
+import net.minecraft.entity.mob.HostileEntity;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtHelper;
+import net.minecraft.nbt.NbtList;
+import net.minecraft.registry.Registries;
+import net.minecraft.registry.tag.DamageTypeTags;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.sound.SoundEvent;
+import net.minecraft.sound.SoundEvents;
+import net.minecraft.util.Arm;
+import net.minecraft.util.math.MathHelper;
+import net.minecraft.world.World;
+
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * A server-owned combat target that holds the disconnected participant's raid state.
+ * The raid owns its lifetime and is responsible for retiring it after a successful reconnect.
+ */
+public final class SleeperPlayerEntity extends LivingEntity {
+	private static final float DAMAGE_SCALE = 4.5f;
+	private static final TrackedData<NbtCompound> PROFILE =
+		DataTracker.registerData(SleeperPlayerEntity.class, TrackedDataHandlerRegistry.NBT_COMPOUND);
+	private static final TrackedData<NbtCompound> GEAR =
+		DataTracker.registerData(SleeperPlayerEntity.class, TrackedDataHandlerRegistry.NBT_COMPOUND);
+	private static final TrackedData<Boolean> LEFT_HANDED =
+		DataTracker.registerData(SleeperPlayerEntity.class, TrackedDataHandlerRegistry.BOOLEAN);
+	private static final List<EquipmentSlot> ARMOR_SLOTS =
+		List.of(EquipmentSlot.FEET, EquipmentSlot.LEGS, EquipmentSlot.CHEST, EquipmentSlot.HEAD);
+
+	private final PlayerLoadout loadout = new PlayerLoadout();
+	private final BodyPartHealth bodyHealth = new BodyPartHealth();
+	private final EnumMap<EquipmentSlot, ItemStack> equipment = new EnumMap<>(EquipmentSlot.class);
+	private UUID ownerUuid;
+	private NbtList vanillaInventory = new NbtList();
+	private int selectedSlot;
+
+	public SleeperPlayerEntity(EntityType<? extends SleeperPlayerEntity> type, World world) {
+		super(type, world);
+	}
+
+	public static SleeperPlayerEntity fromPlayer(ServerPlayerEntity player) {
+		SleeperPlayerEntity sleeper = new SleeperPlayerEntity(ModEntities.SLEEPER, player.getWorld());
+		PlayerLoadoutHolder holder = (PlayerLoadoutHolder) player;
+		sleeper.ownerUuid = player.getUuid();
+		sleeper.loadout.readNbt(holder.tarkovcraft$getLoadout().writeNbt());
+		sleeper.bodyHealth.readNbt(holder.tarkovcraft$getBodyHealth().writeNbt());
+		sleeper.bodyHealth.clearActiveMedUse();
+		sleeper.vanillaInventory = player.getInventory().writeNbt(new NbtList());
+		sleeper.selectedSlot = player.getInventory().selectedSlot;
+
+		sleeper.refreshPositionAndAngles(player.getX(), player.getY(), player.getZ(), player.getYaw(), player.getPitch());
+		sleeper.setBodyYaw(player.getBodyYaw());
+		sleeper.setHeadYaw(player.getHeadYaw());
+		sleeper.setOnGround(player.isOnGround());
+		sleeper.setVelocity(player.getVelocity());
+		sleeper.setAir(player.getAir());
+		sleeper.setFireTicks(player.getFireTicks());
+		player.getStatusEffects().forEach(effect -> sleeper.addStatusEffect(new StatusEffectInstance(effect)));
+		sleeper.setAbsorptionAmount(player.getAbsorptionAmount());
+		sleeper.updateVanillaHealth();
+		sleeper.equipStack(EquipmentSlot.MAINHAND, player.getMainHandStack().copy());
+		sleeper.equipStack(EquipmentSlot.OFFHAND, player.getOffHandStack().copy());
+
+		GameProfile profile = new GameProfile(player.getUuid(), player.getGameProfile().getName());
+		profile.getProperties().putAll("textures", player.getGameProfile().getProperties().get("textures"));
+		sleeper.dataTracker.set(PROFILE, NbtHelper.writeGameProfile(new NbtCompound(), profile));
+		sleeper.dataTracker.set(LEFT_HANDED, player.getMainArm() == Arm.LEFT);
+		NbtCompound gear = new NbtCompound();
+		int index = 0;
+		for (Item item : EquipmentAppearance.capture(sleeper.loadout).items()) {
+			gear.putInt(Integer.toString(index++), Registries.ITEM.getRawId(item));
+		}
+		sleeper.dataTracker.set(GEAR, gear);
+		sleeper.setCustomName(player.getName());
+		return sleeper;
+	}
+
+	public void restore(ServerPlayerEntity player) {
+		if (!player.getUuid().equals(ownerUuid) || !isAlive() || !(getWorld() instanceof ServerWorld world)) {
+			throw new IllegalStateException("Cannot restore player from this sleeper");
+		}
+		PlayerLoadoutHolder holder = (PlayerLoadoutHolder) player;
+		holder.tarkovcraft$getLoadout().readNbt(loadout.writeNbt());
+		holder.tarkovcraft$getBodyHealth().readNbt(bodyHealth.writeNbt());
+		player.getInventory().readNbt(vanillaInventory);
+		player.getInventory().selectedSlot = selectedSlot;
+		player.teleport(world, getX(), getY(), getZ(), getYaw(), getPitch());
+		player.setBodyYaw(getBodyYaw());
+		player.setHeadYaw(getHeadYaw());
+		player.setVelocity(getVelocity());
+		player.velocityModified = true;
+		player.setAir(getAir());
+		player.setFireTicks(getFireTicks());
+		player.clearStatusEffects();
+		getStatusEffects().forEach(effect -> player.addStatusEffect(new StatusEffectInstance(effect)));
+		player.setAbsorptionAmount(getAbsorptionAmount());
+		player.setHealth(Math.max(1.0f, bodyHealth.getTotalRatio() * player.getMaxHealth()));
+	}
+
+	@Override
+	protected void initDataTracker() {
+		super.initDataTracker();
+		dataTracker.startTracking(PROFILE, new NbtCompound());
+		dataTracker.startTracking(GEAR, new NbtCompound());
+		dataTracker.startTracking(LEFT_HANDED, false);
+	}
+
+	public GameProfile getOwnerProfile() {
+		GameProfile profile = NbtHelper.toGameProfile(dataTracker.get(PROFILE));
+		return profile == null ? new GameProfile(getUuid(), "Sleeper") : profile;
+	}
+
+	public UUID getOwnerUuid() {
+		return ownerUuid;
+	}
+
+	public PlayerLoadout getLoadout() {
+		return loadout;
+	}
+
+	public BodyPartHealth getBodyHealth() {
+		return bodyHealth;
+	}
+
+	public List<Item> getVisibleGear() {
+		NbtCompound tag = dataTracker.get(GEAR);
+		List<Item> items = new ArrayList<>(tag.getSize());
+		for (int i = 0; i < tag.getSize(); i++) {
+			items.add(Registries.ITEM.get(tag.getInt(Integer.toString(i))));
+		}
+		return items;
+	}
+
+	@Override
+	public void tick() {
+		super.tick();
+		if (!(getWorld() instanceof ServerWorld) || !isAlive()) return;
+		BodyPartHealth.TickResult result = bodyHealth.tickEffects(false);
+		if (result.stateChanged()) updateVanillaHealth();
+		if (bodyHealth.isDead()) {
+			onDeath(getDamageSources().generic());
+			return;
+		}
+		if (age % 10 == 0) tickHostileTargets();
+	}
+
+	private void tickHostileTargets() {
+		for (HostileEntity hostile : getWorld().getEntitiesByClass(HostileEntity.class,
+			getBoundingBox().expand(48.0), mob -> mob.isAlive() && !mob.isAiDisabled())) {
+			LivingEntity target = hostile.getTarget();
+			if (target != null && target.isAlive()
+				&& (!(target instanceof SleeperPlayerEntity) || hostile.squaredDistanceTo(target) <= hostile.squaredDistanceTo(this))) {
+				continue;
+			}
+			double followRange = hostile.getAttributeValue(EntityAttributes.GENERIC_FOLLOW_RANGE);
+			if (hostile.squaredDistanceTo(this) > followRange * followRange
+				|| !hostile.canTarget(this) || !hostile.canSee(this)) continue;
+
+			hostile.setTarget(this);
+			var brain = hostile.getBrain();
+			if (brain.hasMemoryModule(MemoryModuleType.ATTACK_TARGET)
+				&& brain.getOptionalRegisteredMemory(MemoryModuleType.ATTACK_TARGET).filter(LivingEntity::isAlive).isEmpty()) {
+				brain.remember(MemoryModuleType.ATTACK_TARGET, this, 20);
+			}
+		}
+	}
+
+	@Override
+	protected void applyDamage(DamageSource source, float amount) {
+		if (getWorld().isClient || amount <= 0.0f) return;
+		String sourceName = source.getName();
+		if ("outOfWorld".equals(sourceName) || "genericKill".equals(sourceName)) {
+			bodyHealth.applyHit(loadout, HitZone.THORAX, 9999.0f, 100, 0.0f, true, false, 1.0f, sourceName, "", "", 0.0f);
+			updateVanillaHealth();
+			return;
+		}
+
+		StatusEffectInstance resistance = getStatusEffect(StatusEffects.RESISTANCE);
+		if (resistance != null && !source.isIn(DamageTypeTags.BYPASSES_RESISTANCE)) {
+			amount *= Math.max(0, 25 - (resistance.getAmplifier() + 1) * 5) / 25.0f;
+			if (amount <= 0.001f) return;
+		}
+		if (source.isIn(DamageTypeTags.IS_FALL)) {
+			bodyHealth.applyFallDamage(amount, loadout.calculateWeightKg(), random.nextFloat());
+			updateVanillaHealth();
+			return;
+		}
+
+		TaCZBulletHelper.BulletInfo bullet = TaCZBulletHelper.inspectDamageSource(source);
+		boolean bypassArmor = source.isIn(DamageTypeTags.IS_DROWNING)
+			|| source.isIn(DamageTypeTags.IS_FIRE)
+			|| source.isIn(DamageTypeTags.IS_FREEZING)
+			|| !bullet.isTaczBullet() && source.isIn(DamageTypeTags.BYPASSES_ARMOR);
+		boolean canRicochet = !bypassArmor && (bullet.isTaczBullet() || source.isIn(DamageTypeTags.IS_PROJECTILE));
+		float damage = amount * DAMAGE_SCALE * bullet.damageMultiplier();
+		if (getAbsorptionAmount() > 0 && !source.isIn(DamageTypeTags.BYPASSES_INVULNERABILITY)) {
+			float absorbed = Math.min(damage, getAbsorptionAmount() * DAMAGE_SCALE);
+			setAbsorptionAmount(Math.max(0, getAbsorptionAmount() - absorbed / DAMAGE_SCALE));
+			damage -= absorbed;
+			if (damage <= 0.001f) return;
+		}
+		Entity attacker = source.getAttacker();
+		String killer = attacker == null ? sourceName : attacker.getDisplayName().getString();
+		bodyHealth.applyHit(loadout, HitZoneResolver.resolveFromDamage(this, source),
+			damage, bullet.penetrationPower(), bullet.armorWearMultiplier(), bypassArmor, canRicochet,
+			random.nextFloat(), random.nextFloat(), random.nextFloat(), killer, bullet.weaponName(),
+			bullet.ammoName(), attacker == null ? 0.0f : distanceTo(attacker));
+		updateVanillaHealth();
+	}
+
+	private void updateVanillaHealth() {
+		setHealth(bodyHealth.isDead() ? 0.0f : Math.max(1.0f, bodyHealth.getTotalRatio() * getMaxHealth()));
+	}
+
+	@Override
+	public void onDeath(DamageSource source) {
+		if (dead) return;
+		super.onDeath(source);
+		if (!(getWorld() instanceof ServerWorld world) || ownerUuid == null) return;
+
+		List<ItemStack> extras = new ArrayList<>(vanillaInventory.size());
+		for (int i = 0; i < vanillaInventory.size(); i++) {
+			extras.add(ItemStack.fromNbt(vanillaInventory.getCompound(i)));
+		}
+		List<ItemStack> overflow = new ArrayList<>();
+		CorpseEntity corpse = CorpseEntity.fromSnapshot(world, getPos(), getYaw(),
+			ownerUuid, getName().getString(), loadout, extras, overflow);
+		if (world.spawnEntity(corpse)) {
+			overflow.forEach(this::dropStack);
+		}
+		RaidSession.onSleeperDeath(this, source);
+	}
+
+	@Override
+	protected boolean shouldDropLoot() {
+		return false;
+	}
+
+	@Override
+	protected SoundEvent getHurtSound(DamageSource source) {
+		return SoundEvents.ENTITY_PLAYER_HURT;
+	}
+
+	@Override
+	protected SoundEvent getDeathSound() {
+		return SoundEvents.ENTITY_PLAYER_DEATH;
+	}
+
+	@Override
+	protected float getActiveEyeHeight(EntityPose pose, EntityDimensions dimensions) {
+		return Math.min(1.62f, dimensions.height);
+	}
+
+	@Override
+	public Iterable<ItemStack> getArmorItems() {
+		return ARMOR_SLOTS.stream().map(this::getEquippedStack).toList();
+	}
+
+	@Override
+	public ItemStack getEquippedStack(EquipmentSlot slot) {
+		return equipment.getOrDefault(slot, ItemStack.EMPTY);
+	}
+
+	@Override
+	public void equipStack(EquipmentSlot slot, ItemStack stack) {
+		equipment.put(slot, stack);
+	}
+
+	@Override
+	public Arm getMainArm() {
+		return dataTracker.get(LEFT_HANDED) ? Arm.LEFT : Arm.RIGHT;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\entity\TarkovGrenadeEntity.java ==========
+package com.tarkovcraft.entity;
+
+import com.tarkovcraft.health.BodyPartHealth;
+import com.tarkovcraft.health.HitZone;
+import com.tarkovcraft.health.InjuryType;
+import com.tarkovcraft.item.TarkovGrenadeItem;
+import com.tarkovcraft.loadout.EquipmentSlotType;
+import com.tarkovcraft.loadout.PlayerLoadout;
+import com.tarkovcraft.loadout.PlayerLoadoutHolder;
+import com.tarkovcraft.registry.ModEntities;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityType;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.damage.DamageSource;
+import net.minecraft.entity.effect.StatusEffectInstance;
+import net.minecraft.entity.effect.StatusEffects;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.projectile.thrown.ThrownItemEntity;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.particle.DustParticleEffect;
+import net.minecraft.particle.ParticleTypes;
+import net.minecraft.registry.Registries;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.sound.SoundEvents;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.EntityHitResult;
+import net.minecraft.util.hit.HitResult;
+import net.minecraft.util.math.Box;
+import net.minecraft.util.math.Direction;
+import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.RaycastContext;
+import net.minecraft.world.World;
+import org.joml.Vector3f;
+
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * Thrown TarkovCraft tactical grenade with bounce physics, impact/timed fuses,
+ * block-safe fragmentation with zonal BodyPartHealth damage, flashbang LOS checks,
+ * smoke screen (M18), and tear gas cloud (CS Model 8230).
+ */
+public class TarkovGrenadeEntity extends ThrownItemEntity {
+	private static final HitZone[] FRAG_ZONES = {
+		HitZone.THORAX,
+		HitZone.STOMACH,
+		HitZone.LEFT_ARM,
+		HitZone.RIGHT_ARM,
+		HitZone.LEFT_LEG,
+		HitZone.RIGHT_LEG,
+		HitZone.HEAD_JAWS
+	};
+
+	private static final DustParticleEffect SMOKE_GREEN_DUST =
+		new DustParticleEffect(new Vector3f(0.28f, 0.72f, 0.34f), 4.0f);
+	private static final DustParticleEffect SMOKE_WHITE_DUST =
+		new DustParticleEffect(new Vector3f(0.78f, 0.82f, 0.78f), 4.0f);
+	private static final DustParticleEffect GAS_CS_DUST =
+		new DustParticleEffect(new Vector3f(0.68f, 0.78f, 0.22f), 2.8f);
+
+	private TarkovGrenadeItem.GrenadeType grenadeType = TarkovGrenadeItem.GrenadeType.FRAG_F1;
+	private int fuseRemaining = 40;
+	private int cloudRemaining = 0;
+	private boolean detonated = false;
+	private boolean emitting = false;
+	private boolean resting = false;
+
+	public TarkovGrenadeEntity(EntityType<? extends ThrownItemEntity> type, World world) {
+		super(type, world);
+	}
+
+	public TarkovGrenadeEntity(
+		World world,
+		LivingEntity owner,
+		ItemStack sourceStack,
+		TarkovGrenadeItem.GrenadeType grenadeType
+	) {
+		super(ModEntities.GRENADE, owner, world);
+		this.grenadeType = grenadeType != null ? grenadeType : TarkovGrenadeItem.GrenadeType.FRAG_F1;
+		this.fuseRemaining = this.grenadeType.getFuseTicks();
+		if (sourceStack != null && !sourceStack.isEmpty()) {
+			this.setItem(sourceStack.copyWithCount(1));
+		}
+	}
+
+	@Override
+	protected Item getDefaultItem() {
+		return Items.SNOWBALL;
+	}
+
+	@Override
+	protected float getGravity() {
+		return 0.045f;
+	}
+
+	@Override
+	protected void onBlockHit(BlockHitResult hit) {
+		if (emitting) {
+			setVelocity(Vec3d.ZERO);
+			return;
+		}
+		if (!getWorld().isClient && !detonated && grenadeType.isImpactFuse() && age >= grenadeType.getArmingTicks()) {
+			detonate();
+			return;
+		}
+
+		Vec3d vel = getVelocity();
+		Direction.Axis axis = hit.getSide().getAxis();
+		double vx = axis == Direction.Axis.X ? -vel.x * 0.55 : vel.x * 0.72;
+		double vy = axis == Direction.Axis.Y ? -vel.y * 0.42 : vel.y * 0.72;
+		double vz = axis == Direction.Axis.Z ? -vel.z * 0.55 : vel.z * 0.72;
+		Vec3d nextVel = new Vec3d(vx, vy, vz);
+
+		if (hit.getSide() == Direction.UP && nextVel.lengthSquared() < 0.015) {
+			resting = true;
+			setNoGravity(true);
+			setVelocity(Vec3d.ZERO);
+		} else {
+			setVelocity(nextVel);
+		}
+		getWorld().playSound(null, getX(), getY(), getZ(),
+			SoundEvents.BLOCK_METAL_HIT, SoundCategory.PLAYERS, 0.45f, 1.25f);
+	}
+
+	@Override
+	protected void onEntityHit(EntityHitResult hit) {
+		if (emitting) {
+			return;
+		}
+		if (!getWorld().isClient && !detonated && grenadeType.isImpactFuse() && age >= grenadeType.getArmingTicks()) {
+			detonate();
+			return;
+		}
+		Entity target = hit.getEntity();
+		if (!getWorld().isClient) {
+			target.damage(getDamageSources().thrown(this, getOwner()), 1.0f);
+		}
+		Vec3d vel = getVelocity();
+		setVelocity(vel.x * -0.35, Math.abs(vel.y) * 0.35, vel.z * -0.35);
+		getWorld().playSound(null, getX(), getY(), getZ(),
+			SoundEvents.BLOCK_METAL_HIT, SoundCategory.PLAYERS, 0.45f, 1.25f);
+	}
+
+	@Override
+	public void tick() {
+		if (resting && getWorld().getBlockState(getBlockPos().down()).isAir()) {
+			resting = false;
+			setNoGravity(false);
+		}
+		if (resting || emitting) {
+			setVelocity(Vec3d.ZERO);
+		}
+		super.tick();
+
+		if (getWorld().isClient) {
+			if (!detonated && age % 2 == 0) {
+				getWorld().addParticle(ParticleTypes.SMOKE, getX(), getY() + 0.15, getZ(), 0.0, 0.02, 0.0);
 			}
 			return;
 		}
 
-		for (TarkovNetworking.ViewEntry entry : view.entries()) {
-			int ex = x + entry.x() * gCell;
-			int ey = y + entry.y() * gCell;
-			int ew = entry.width() * gCell;
-			int eh = entry.height() * gCell;
+		if (!detonated) {
+			fuseRemaining--;
+			if (fuseRemaining <= 0) {
+				detonate();
+			}
+		} else if (emitting) {
+			cloudRemaining--;
+			tickCloud((ServerWorld) getWorld());
+			if (cloudRemaining <= 0) {
+				discard();
+			}
+		}
+	}
 
-			if (!entry.discovered()) {
-				context.fill(ex + 1, ey + 1, ex + ew - 1, ey + eh - 1, TarkovUiTheme.BG_CELL_SILHOUETTE);
-				// Dark tactical item silhouette block (Tarkov-style unrevealed item shape)
-				int padX = Math.max(3, ew / 6);
-				int padY = Math.max(3, eh / 6);
-				if (ew - padX * 2 >= 4 && eh - padY * 2 >= 4) {
+	private void detonate() {
+		if (detonated || !(getWorld() instanceof ServerWorld sw)) {
+			return;
+		}
+		detonated = true;
+
+		switch (grenadeType.getCategory()) {
+			case FRAG, IMPACT -> detonateFrag(sw);
+			case FLASH -> detonateFlash(sw);
+			case SMOKE -> startSmokeCloud(sw);
+			case GAS -> startGasCloud(sw);
+		}
+	}
+
+	private void detonateFrag(ServerWorld sw) {
+		sw.playSound(null, getX(), getY(), getZ(),
+			SoundEvents.ENTITY_GENERIC_EXPLODE, SoundCategory.PLAYERS, 3.0f, 0.9f);
+		sw.spawnParticles(ParticleTypes.EXPLOSION_EMITTER, getX(), getY() + 0.25, getZ(), 1, 0.1, 0.1, 0.1, 0.0);
+		sw.spawnParticles(ParticleTypes.EXPLOSION, getX(), getY() + 0.25, getZ(), 12, 0.8, 0.5, 0.8, 0.05);
+		sw.spawnParticles(ParticleTypes.CAMPFIRE_COSY_SMOKE, getX(), getY() + 0.25, getZ(), 18, 1.2, 0.6, 1.2, 0.03);
+		sw.spawnParticles(ParticleTypes.LAVA, getX(), getY() + 0.2, getZ(), 14, 0.8, 0.5, 0.8, 0.12);
+
+		float radius = grenadeType.getBlastRadius();
+		Vec3d origin = getPos().add(0.0, 0.2, 0.0);
+		DamageSource source = getDamageSources().explosion(this, getOwner());
+		String killerName = getOwner() != null ? getOwner().getName().getString() : "Grenade";
+		String weaponName = getStack().isEmpty() ? grenadeType.name() : getStack().getName().getString();
+
+		List<LivingEntity> targets = sw.getEntitiesByClass(LivingEntity.class, getBoundingBox().expand(radius),
+			e -> e.isAlive() && !e.isSpectator());
+		for (LivingEntity target : targets) {
+			double dist = origin.distanceTo(target.getPos().add(0.0, target.getHeight() * 0.5, 0.0));
+			if (dist > radius) {
+				continue;
+			}
+			float exposure = computeExposure(sw, origin, target);
+			if (exposure <= 0.0f) {
+				continue;
+			}
+
+			float falloff = Math.max(0.0f, 1.0f - (float) (dist / radius));
+			float effectiveDmg = grenadeType.getMaxDamage()
+				* (0.25f + 0.75f * falloff * falloff)
+				* exposure
+				* com.tarkovcraft.config.TarkovConfig.get().grenadeDamageMultiplier;
+
+			if (target instanceof ServerPlayerEntity sp && !sp.isCreative() && !sp.isSpectator()
+				&& sp instanceof PlayerLoadoutHolder holder) {
+				BodyPartHealth health = holder.tarkovcraft$getBodyHealth();
+				float perZone = effectiveDmg / 4.0f;
+				for (int i = 0; i < 4; i++) {
+					HitZone zone = (i == 0) ? HitZone.THORAX : FRAG_ZONES[random.nextInt(FRAG_ZONES.length)];
+					health.applyHit(
+						holder.tarkovcraft$getLoadout(),
+						zone,
+						perZone,
+						grenadeType.getPenetrationPower(),
+						1.0f, false, false, 1.0f,
+						random.nextFloat(),
+						random.nextFloat(),
+						killerName,
+						weaponName,
+						"Shrapnel",
+						(float) dist
+					);
+				}
+
+				if (random.nextFloat() < grenadeType.getBleedChance() * falloff * exposure) {
+					HitZone bleedZone = FRAG_ZONES[random.nextInt(FRAG_ZONES.length)];
+					health.addInjury(bleedZone.getBodyPart(),
+						falloff > 0.6f ? InjuryType.HEAVY_BLEED : InjuryType.LIGHT_BLEED);
+				}
+
+				holder.tarkovcraft$syncBodyHealth();
+				holder.tarkovcraft$syncLoadout();
+				if (health.isDead()) {
+					sp.setHealth(0.0f);
+					sp.onDeath(source);
+				} else {
+					sp.setHealth(Math.max(1.0f, health.getTotalRatio() * sp.getMaxHealth()));
+				}
+			} else if (!(target instanceof PlayerEntity)) {
+				target.damage(source, Math.max(1.0f, effectiveDmg / 9.0f));
+			}
+
+			Vec3d push = target.getPos().subtract(origin);
+			if (push.lengthSquared() > 1.0E-4) {
+				Vec3d knock = push.normalize().multiply(0.55 * falloff * exposure);
+				target.addVelocity(knock.x, Math.max(0.15 * falloff, knock.y), knock.z);
+				target.velocityModified = true;
+			}
+		}
+
+		discard();
+	}
+
+	private void detonateFlash(ServerWorld sw) {
+		sw.playSound(null, getX(), getY(), getZ(),
+			SoundEvents.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, SoundCategory.PLAYERS, 3.0f, 1.4f);
+		sw.playSound(null, getX(), getY(), getZ(),
+			SoundEvents.ENTITY_GENERIC_EXPLODE, SoundCategory.PLAYERS, 1.2f, 1.8f);
+		sw.spawnParticles(ParticleTypes.FLASH, getX(), getY() + 0.35, getZ(), 4, 0.2, 0.2, 0.2, 0.0);
+		sw.spawnParticles(ParticleTypes.EXPLOSION, getX(), getY() + 0.35, getZ(), 3, 0.3, 0.2, 0.3, 0.02);
+
+		float radius = grenadeType.getBlastRadius();
+		Vec3d origin = getPos().add(0.0, 0.25, 0.0);
+		List<LivingEntity> targets = sw.getEntitiesByClass(LivingEntity.class, getBoundingBox().expand(radius),
+			e -> e.isAlive() && !e.isSpectator());
+		for (LivingEntity target : targets) {
+			double dist = origin.distanceTo(target.getEyePos());
+			if (dist > radius) {
+				continue;
+			}
+			float exposure = computeExposure(sw, origin, target);
+			if (exposure <= 0.0f) {
+				continue;
+			}
+			float falloff = Math.max(0.0f, 1.0f - (float) (dist / radius));
+			Vec3d toFlash = origin.subtract(target.getEyePos());
+			double facingMult = 0.5;
+			if (toFlash.lengthSquared() > 1.0E-4) {
+				double dot = target.getRotationVec(1.0f).dotProduct(toFlash.normalize());
+				facingMult = dot > 0.25 ? 1.0 : 0.5;
+			}
+
+			int blindTicks = Math.max(40, (int) (220 * falloff * facingMult));
+			target.addStatusEffect(new StatusEffectInstance(StatusEffects.BLINDNESS, blindTicks, 0));
+			target.addStatusEffect(new StatusEffectInstance(StatusEffects.DARKNESS, 80, 0));
+			target.addStatusEffect(new StatusEffectInstance(StatusEffects.NAUSEA, 160, 0));
+			target.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 100, 1));
+		}
+
+		discard();
+	}
+
+	private void startSmokeCloud(ServerWorld sw) {
+		emitting = true;
+		resting = true;
+		setNoGravity(true);
+		setVelocity(Vec3d.ZERO);
+		cloudRemaining = grenadeType.getCloudTicks();
+		sw.playSound(null, getX(), getY(), getZ(),
+			SoundEvents.BLOCK_FIRE_EXTINGUISH, SoundCategory.PLAYERS, 1.2f, 0.8f);
+	}
+
+	private void startGasCloud(ServerWorld sw) {
+		emitting = true;
+		resting = true;
+		setNoGravity(true);
+		setVelocity(Vec3d.ZERO);
+		cloudRemaining = grenadeType.getCloudTicks();
+		sw.playSound(null, getX(), getY(), getZ(),
+			SoundEvents.BLOCK_FIRE_EXTINGUISH, SoundCategory.PLAYERS, 1.2f, 1.0f);
+	}
+
+	private void tickCloud(ServerWorld sw) {
+		float radius = grenadeType.getBlastRadius();
+		double spread = radius * 0.65;
+
+		if (grenadeType.getCategory() == TarkovGrenadeItem.Category.SMOKE) {
+			double smokeSpread = Math.max(2.6, radius * 0.72);
+			sw.spawnParticles(ParticleTypes.CAMPFIRE_SIGNAL_SMOKE, getX(), getY() + 0.45, getZ(), 10, smokeSpread, 0.8, smokeSpread, 0.012);
+			sw.spawnParticles(ParticleTypes.CAMPFIRE_SIGNAL_SMOKE, getX(), getY() + 1.85, getZ(), 8, smokeSpread * 0.85, 0.7, smokeSpread * 0.85, 0.01);
+			sw.spawnParticles(ParticleTypes.CLOUD, getX(), getY() + 1.2, getZ(), 14, smokeSpread * 0.9, 1.15, smokeSpread * 0.9, 0.008);
+			if (cloudRemaining % 2 == 0) {
+				sw.spawnParticles(SMOKE_GREEN_DUST, getX(), getY() + 1.0, getZ(), 20, smokeSpread, 1.2, smokeSpread, 0.01);
+				sw.spawnParticles(SMOKE_WHITE_DUST, getX(), getY() + 1.4, getZ(), 18, smokeSpread, 1.2, smokeSpread, 0.01);
+				sw.spawnParticles(ParticleTypes.LARGE_SMOKE, getX(), getY() + 0.8, getZ(), 12, smokeSpread, 1.0, smokeSpread, 0.015);
+			}
+			if (cloudRemaining % 8 == 0) {
+				Box box = getBoundingBox().expand(radius, 3.8, radius);
+				List<LivingEntity> targets = sw.getEntitiesByClass(LivingEntity.class, box,
+					e -> e.isAlive() && !e.isSpectator());
+				Vec3d origin = getPos();
+				for (LivingEntity target : targets) {
+					double dx = target.getX() - origin.x;
+					double dz = target.getZ() - origin.z;
+					double dy = target.getY() - origin.y;
+					if (dx * dx + dz * dz <= radius * radius && dy >= -1.0 && dy <= 4.0) {
+						target.addStatusEffect(new StatusEffectInstance(StatusEffects.BLINDNESS, 45, 0, false, false, true));
+						target.addStatusEffect(new StatusEffectInstance(StatusEffects.DARKNESS, 55, 0, false, false, true));
+					}
+				}
+			}
+			if (cloudRemaining % 30 == 0) {
+				sw.playSound(null, getX(), getY(), getZ(),
+					SoundEvents.BLOCK_FIRE_EXTINGUISH, SoundCategory.PLAYERS, 0.4f, 0.9f);
+			}
+			return;
+		}
+
+		if (grenadeType.getCategory() == TarkovGrenadeItem.Category.GAS) {
+			if (cloudRemaining % 2 == 0) {
+				sw.spawnParticles(GAS_CS_DUST, getX(), getY() + 0.8, getZ(), 12, spread, 0.9, spread, 0.01);
+				sw.spawnParticles(ParticleTypes.CAMPFIRE_COSY_SMOKE, getX(), getY() + 0.5, getZ(), 5, spread, 0.8, spread, 0.01);
+				sw.spawnParticles(ParticleTypes.SNEEZE, getX(), getY() + 0.8, getZ(), 4, spread * 0.8, 0.7, spread * 0.8, 0.02);
+			}
+			if (cloudRemaining % 10 == 0) {
+				Box box = getBoundingBox().expand(radius);
+				List<LivingEntity> targets = sw.getEntitiesByClass(LivingEntity.class, box,
+					e -> e.isAlive() && !e.isSpectator());
+				Vec3d origin = getPos();
+				for (LivingEntity target : targets) {
+					if (target.getPos().distanceTo(origin) > radius) {
+						continue;
+					}
+					if (!hasGasMaskProtection(target)) {
+						target.addStatusEffect(new StatusEffectInstance(StatusEffects.NAUSEA, 100, 0));
+						target.addStatusEffect(new StatusEffectInstance(StatusEffects.BLINDNESS, 60, 0));
+						target.addStatusEffect(new StatusEffectInstance(StatusEffects.POISON, 60, 0));
+						target.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 60, 0));
+					}
+				}
+			}
+		}
+	}
+
+	private float computeExposure(ServerWorld sw, Vec3d origin, LivingEntity target) {
+		Vec3d lowPoint = target.getPos().add(0.0, 0.5, 0.0);
+		Vec3d eyePoint = target.getEyePos();
+		boolean lowClear = sw.raycast(new RaycastContext(
+			origin, lowPoint, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, this
+		)).getType() == HitResult.Type.MISS;
+		boolean eyeClear = sw.raycast(new RaycastContext(
+			origin, eyePoint, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, this
+		)).getType() == HitResult.Type.MISS;
+
+		if (lowClear && eyeClear) return 1.0f;
+		if (lowClear || eyeClear) return 0.5f;
+		return 0.0f;
+	}
+
+	public static boolean hasGasMaskProtection(LivingEntity entity) {
+		if (!(entity instanceof PlayerLoadoutHolder holder)) {
+			return false;
+		}
+		return hasGasMaskProtection(holder.tarkovcraft$getLoadout());
+	}
+
+	public static boolean hasGasMaskProtection(PlayerLoadout loadout) {
+		if (loadout == null) {
+			return false;
+		}
+		ItemStack mask = loadout.getEquipment(EquipmentSlotType.FACE_MASK);
+		return !mask.isEmpty()
+			&& mask.getItem() instanceof com.tarkovcraft.item.TarkovArmorItem armor
+			&& armor.isGasProtection();
+	}
+
+	@Override
+	public void writeCustomDataToNbt(NbtCompound nbt) {
+		super.writeCustomDataToNbt(nbt);
+		nbt.putString("GrenadeType", grenadeType.name());
+		nbt.putInt("FuseRemaining", fuseRemaining);
+		nbt.putInt("CloudRemaining", cloudRemaining);
+		nbt.putBoolean("Detonated", detonated);
+		nbt.putBoolean("Emitting", emitting);
+		nbt.putBoolean("Resting", resting);
+	}
+
+	@Override
+	public void readCustomDataFromNbt(NbtCompound nbt) {
+		super.readCustomDataFromNbt(nbt);
+		if (nbt.contains("GrenadeType")) {
+			grenadeType = TarkovGrenadeItem.GrenadeType.fromString(nbt.getString("GrenadeType"));
+		}
+		if (nbt.contains("FuseRemaining")) {
+			fuseRemaining = nbt.getInt("FuseRemaining");
+		}
+		cloudRemaining = nbt.getInt("CloudRemaining");
+		detonated = nbt.getBoolean("Detonated");
+		emitting = nbt.getBoolean("Emitting");
+		resting = nbt.getBoolean("Resting");
+		if (resting || emitting) {
+			setNoGravity(true);
+		}
+	}
+}

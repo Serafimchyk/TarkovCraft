@@ -1,148 +1,2151 @@
 
-// ========== .\src\main\java\com\tarkovcraft\client\screen\TarkovInspectWindow.java ==========
+// ========== .\src\main\java\com\tarkovcraft\client\screen\TarkovInventoryScreen.java ==========
 package com.tarkovcraft.client.screen;
 
+import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.client.ClientLoadoutCache;
+import com.tarkovcraft.client.ClientNetworkSender;
+import com.tarkovcraft.client.TarkovCraftClient;
+import com.tarkovcraft.client.hud.BodyHealthHudHelper;
+import com.tarkovcraft.grid.ContainerItemHelper;
 import com.tarkovcraft.grid.ItemSize;
 import com.tarkovcraft.grid.ItemSizeRegistry;
+import com.tarkovcraft.health.BodyPart;
+import com.tarkovcraft.health.BodyPartHealth;
+import com.tarkovcraft.health.MedicalHelper;
+import com.tarkovcraft.item.BackpackItem;
+import com.tarkovcraft.item.MedicalType;
+import com.tarkovcraft.item.TacticalRigItem;
 import com.tarkovcraft.item.TarkovArmorItem;
+import com.tarkovcraft.item.TarkovCaseItem;
+import com.tarkovcraft.item.TarkovMedicalItem;
+import com.tarkovcraft.loadout.EquipmentSlotType;
 import com.tarkovcraft.loadout.PlayerLoadout;
-import com.tarkovcraft.search.ItemRarityRegistry;
-import com.tarkovcraft.search.ItemRarityTier;
+import com.tarkovcraft.network.TarkovNetworking;
+import com.tarkovcraft.screen.TarkovScreenHandler;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.screen.ingame.HandledScreen;
+import net.minecraft.client.gui.screen.ingame.InventoryScreen;
+import net.minecraft.client.item.TooltipContext;
+import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.item.ItemStack;
+import net.minecraft.text.Text;
+import org.jetbrains.annotations.Nullable;
+import org.joml.Quaternionf;
+import org.lwjgl.glfw.GLFW;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+
+/**
+ * Full-screen translucent Escape-from-Tarkov-style Inventory & Looting screen:
+ * - 3-column layout (Left: 3D Player + Equipment, Center: Rig/Pockets/Backpack, Right: External Loot when open)
+ * - Bottom Quick-Use bar (Melee, 1..3 weapons, 4..9 pockets)
+ * - Hold-and-Drag (>4px threshold), click-to-select, R rotate, F transfer, Ctrl+F equip/unequip, Del discard
+ * - Dynamic EFT RMB Context Menu, Draggable Inspect Window, and Split Stack Modal
+ */
+@Environment(EnvType.CLIENT)
+public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
+	private static final int TAB_GEAR = 0;
+	private static final int TAB_HEALTH = 1;
+	private static final int MAX_INSPECT_WINDOWS = 6;
+
+	private int activeTab = TAB_GEAR;
+	private final List<InteractiveRegion> regions = new ArrayList<>();
+	private final List<ActionButton> actionButtons = new ArrayList<>();
+	private final List<BodyHealthHudHelper.PartHitbox> healthPartHitboxes = new ArrayList<>();
+	private final List<BodyHealthHudHelper.QuickHealHitbox> quickHealHitboxes = new ArrayList<>();
+	private final List<HealthMedSlot> healthMedSlots = new ArrayList<>();
+
+	@Nullable
+	private SelectedMedRef selectedHealthMed;
+
+	@Nullable
+	private DragState drag;
+	@Nullable
+	private ContextMenu contextMenu;
+	private final List<TarkovInspectWindow> inspectWindows = new ArrayList<>();
+	private final Map<UUID, int[]> floatingWinPos = new HashMap<>();
+	private final List<FloatingWindowLayout> floatingLayouts = new ArrayList<>();
+	@Nullable
+	private UUID draggingFloatingUuid = null;
+	@Nullable
+	private TarkovSplitModal splitModal;
+	@Nullable
+	private SelectedTarget selectedTarget;
+
+	private record FloatingWindowLayout(
+		UUID uuid,
+		int windowIndex,
+		Rect bounds,
+		Rect headerRect,
+		Rect closeRect,
+		@Nullable Rect searchRect
+	) {
+	}
+
+	private Rect tabGearBtn;
+	private Rect tabHealthBtn;
+	private Rect closeBtn;
+	private Rect leftColumnArea;
+	@Nullable
+	private Rect centerScrollArea;
+	@Nullable
+	private Rect rightScrollArea;
+
+	private int cellSize = 22;
+	private int centerScrollY = 0;
+	private int centerMaxScroll = 0;
+	private int rightScrollY = 0;
+	private int rightMaxScroll = 0;
+	private int rigSectionOffsetY = 0;
+	private int backpackSectionOffsetY = 0;
+
+	private boolean rigCollapsed = false;
+	private boolean backpackCollapsed = false;
+
+	private float playerPreviewYaw = 18.0f;
+	private boolean rotatingPlayerModel = false;
+	private double lastMouseX, lastMouseY;
+
+	private record Rect(int x, int y, int w, int h) {
+		boolean contains(double mx, double my) {
+			return mx >= x && mx < x + w && my >= y && my < y + h;
+		}
+	}
+
+	private record ActionButton(Rect rect, @Nullable Rect clip, Runnable action) {
+		boolean hits(double mx, double my) {
+			return rect.contains(mx, my) && (clip == null || clip.contains(mx, my));
+		}
+	}
+
+	private record InteractiveRegion(
+		Rect rect,
+		@Nullable Rect clipBounds,
+		byte locType,
+		int containerIndex,
+		int gridWidth,
+		int gridHeight,
+		int regionCellSize,
+		@Nullable TarkovNetworking.GridView view
+	) {
+		boolean hits(double mx, double my) {
+			if (!rect.contains(mx, my)) return false;
+			return clipBounds == null || clipBounds.contains(mx, my);
+		}
+	}
+
+	private record HoveredTarget(
+		byte loc,
+		int idx,
+		@Nullable UUID entryId,
+		ItemStack stack,
+		boolean rotated,
+		@Nullable TarkovNetworking.GridView parentView
+	) {
+	}
+
+	private record SelectedTarget(byte loc, int idx, @Nullable UUID entryId) {
+		boolean matches(byte l, int i, @Nullable UUID e) {
+			return loc == l && idx == i && Objects.equals(entryId, e);
+		}
+	}
+
+	private record HealthMedSlot(byte loc, int idx, @Nullable UUID entryId, ItemStack stack, Rect rect) {
+	}
+
+	private record SelectedMedRef(byte loc, int idx, @Nullable UUID entryId) {
+		boolean matches(HealthMedSlot slot) {
+			return loc == slot.loc && idx == slot.idx && Objects.equals(entryId, slot.entryId);
+		}
+	}
+
+	private static final class DragState {
+		final byte srcLoc;
+		final int srcIdx;
+		@Nullable
+		final UUID srcEntryId;
+		final ItemStack stack;
+		final int moveCount;
+		final double startX;
+		final double startY;
+		boolean rotated;
+		boolean active;
+
+		DragState(
+			byte srcLoc, int srcIdx, @Nullable UUID srcEntryId,
+			ItemStack stack, boolean rotated, int moveCount,
+			double startX, double startY
+		) {
+			this.srcLoc = srcLoc;
+			this.srcIdx = srcIdx;
+			this.srcEntryId = srcEntryId;
+			this.stack = stack;
+			this.rotated = rotated;
+			this.moveCount = moveCount;
+			this.startX = startX;
+			this.startY = startY;
+			this.active = false;
+		}
+
+		boolean isSource(byte loc, int idx, @Nullable UUID entryId) {
+			return active && srcLoc == loc && srcIdx == idx && Objects.equals(srcEntryId, entryId);
+		}
+	}
+
+	private record MenuOption(String label, Runnable action) {
+	}
+
+	private static final class ContextMenu {
+		final int x;
+		final int y;
+		final int width;
+		final int rowH = 17;
+		final List<MenuOption> options;
+
+		ContextMenu(int x, int y, int width, List<MenuOption> options) {
+			this.x = x;
+			this.y = y;
+			this.width = width;
+			this.options = options;
+		}
+
+		int height() {
+			return options.size() * rowH + 2;
+		}
+
+		boolean contains(double mx, double my) {
+			return mx >= x && mx < x + width && my >= y && my < y + height();
+		}
+	}
+
+	public TarkovInventoryScreen(TarkovScreenHandler handler, PlayerInventory inventory, Text title) {
+		super(handler, inventory, title);
+	}
+
+	@Override
+	protected void init() {
+		super.init();
+		this.x = 0;
+		this.y = 0;
+		this.backgroundWidth = this.width;
+		this.backgroundHeight = this.height;
+	}
+
+	@Override
+	protected void drawBackground(DrawContext context, float delta, int mouseX, int mouseY) {
+	}
+
+	@Override
+	protected void drawForeground(DrawContext context, int mouseX, int mouseY) {
+	}
+
+	@Override
+	public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+		this.lastMouseX = mouseX;
+		this.lastMouseY = mouseY;
+		regions.clear();
+		actionButtons.clear();
+
+		// Translucent EFT world overlay (preserves live world behind inventory)
+		context.fill(0, 0, this.width, this.height, TarkovUiTheme.BG_WORLD_OVERLAY);
+
+		PlayerLoadout loadout = ClientLoadoutCache.getLoadout();
+		TarkovNetworking.ScreenStateSnapshot snap = ClientLoadoutCache.getScreenState();
+		boolean hasExternal = handler.getMode() != TarkovScreenHandler.MODE_OWN_INVENTORY;
+
+		renderTopBar(context, mouseX, mouseY);
+
+		int bodyY = TarkovUiTheme.TOP_BAR_H + TarkovUiTheme.OUTER_PAD;
+		int bodyH = Math.max(140, this.height - bodyY - TarkovUiTheme.QUICK_BAR_H - TarkovUiTheme.OUTER_PAD - 6);
+
+		floatingLayouts.clear();
+		if (activeTab == TAB_HEALTH && client != null && client.player != null) {
+			healthPartHitboxes.clear();
+			quickHealHitboxes.clear();
+			healthMedSlots.clear();
+			int hx = TarkovUiTheme.OUTER_PAD;
+			int hw = this.width - TarkovUiTheme.OUTER_PAD * 2;
+			context.fill(hx, bodyY, hx + hw, bodyY + bodyH, TarkovUiTheme.BG_PANEL);
+			context.drawBorder(hx, bodyY, hw, bodyH, TarkovUiTheme.BORDER_PANEL);
+
+			int medStripH = 38;
+			int medStripY = bodyY + bodyH - TarkovUiTheme.STATS_BAR_H - medStripH - 4;
+			List<HealthMedSlot> collectedMeds = collectOwnMedicalItems(loadout, snap);
+			ItemStack selectedMedStack = resolveSelectedMedStack(collectedMeds);
+			List<BodyHealthHudHelper.QuickHealMed> qMeds = new ArrayList<>(collectedMeds.size());
+			for (HealthMedSlot ms : collectedMeds) {
+				qMeds.add(new BodyHealthHudHelper.QuickHealMed(ms.loc(), ms.idx(), ms.entryId(), ms.stack()));
+			}
+
+			BodyHealthHudHelper.drawDetailedHealthTab(
+				context, textRenderer, client.player,
+				hx, bodyY, hw, medStripY - bodyY - 2,
+				selectedMedStack, healthPartHitboxes, qMeds, quickHealHitboxes, mouseX, mouseY
+			);
+			drawMedUseStripIfActive(context, hx + 8, bodyY + 6);
+			drawHealthMedicalStrip(context, hx + 6, medStripY, hw - 12, medStripH, collectedMeds, mouseX, mouseY);
+			drawBottomStatsStrip(context, loadout, hx + 6, bodyY + bodyH - TarkovUiTheme.STATS_BAR_H - 2, hw - 12);
+			leftColumnArea = null;
+			centerScrollArea = null;
+			rightScrollArea = null;
+		} else {
+			int availW = this.width - TarkovUiTheme.OUTER_PAD * 2 - TarkovUiTheme.COL_GAP * 2;
+			int leftW = Math.max(142, Math.round(availW * 0.31f));
+			int centerW = Math.max(150, Math.round(availW * 0.36f));
+			int rightW = Math.max(120, availW - leftW - centerW);
+			if (leftW + centerW + rightW > availW) {
+				centerW = Math.max(140, availW - leftW - rightW);
+			}
+			cellSize = Math.max(18, Math.min(28, (centerW - 22) / 6));
+
+			int leftX = TarkovUiTheme.OUTER_PAD;
+			int centerX = leftX + leftW + TarkovUiTheme.COL_GAP;
+			int rightX = centerX + centerW + TarkovUiTheme.COL_GAP;
+
+			leftColumnArea = new Rect(leftX, bodyY, leftW, bodyH);
+			renderEquipmentColumn(context, leftColumnArea, loadout, mouseX, mouseY);
+
+			centerScrollArea = new Rect(centerX, bodyY, centerW, bodyH);
+			renderStorageColumn(context, centerScrollArea, loadout, snap, mouseX, mouseY);
+
+			if (hasExternal && snap != null) {
+				rightScrollArea = new Rect(rightX, bodyY, rightW, bodyH);
+				renderExternalColumn(context, rightScrollArea, snap, mouseX, mouseY);
+			} else {
+				rightScrollArea = null;
+			}
+			drawMedUseStripIfActive(context, centerX + 6, bodyY + 3);
+		}
+
+		renderQuickUseBar(context, loadout, mouseX, mouseY);
+
+		if (activeTab == TAB_GEAR && snap != null && !snap.openContainers().isEmpty()) {
+			renderFloatingContainerWindows(context, snap, mouseX, mouseY);
+		}
+
+		// Floating layers (drag ghost z=320, modals z=420, context menu & tooltip z=500)
+		if (drag != null && drag.active) {
+			TarkovUiTheme.clearDepthBuffer(context);
+			renderDragPreview(context, mouseX, mouseY);
+		}
+		for (TarkovInspectWindow win : inspectWindows) {
+			win.render(context, textRenderer, mouseX, mouseY, this.width, this.height);
+		}
+		if (splitModal != null) {
+			TarkovUiTheme.clearDepthBuffer(context);
+			splitModal.render(context, textRenderer, mouseX, mouseY);
+		}
+		if (contextMenu != null) {
+			TarkovUiTheme.clearDepthBuffer(context);
+			renderContextMenu(context, mouseX, mouseY);
+		} else if ((drag == null || !drag.active)
+			&& !isOverAnyInspectWindow(mouseX, mouseY)
+			&& (splitModal == null || !splitModal.contains(mouseX, mouseY))) {
+			renderHoverTooltip(context, mouseX, mouseY);
+		}
+	}
+
+	private void renderTopBar(DrawContext context, int mouseX, int mouseY) {
+		context.fill(0, 0, this.width, TarkovUiTheme.TOP_BAR_H, TarkovUiTheme.BG_TOP_BAR);
+		context.fill(0, TarkovUiTheme.TOP_BAR_H, this.width, TarkovUiTheme.TOP_BAR_H + 1, TarkovUiTheme.BORDER_PANEL);
+
+		tabGearBtn = new Rect(8, 3, 86, TarkovUiTheme.TOP_BAR_H - 5);
+		tabHealthBtn = new Rect(98, 3, 86, TarkovUiTheme.TOP_BAR_H - 5);
+		String backTxt = Text.translatable("ui.tarkovcraft.back_esc").getString();
+		int backW = Math.max(66, Math.round(textRenderer.getWidth(backTxt) * TarkovUiTheme.TEXT_SCALE_HEADER) + 14);
+		closeBtn = new Rect(this.width - backW - 8, 3, backW, TarkovUiTheme.TOP_BAR_H - 5);
+
+		drawTopTab(context, tabGearBtn, Text.translatable("tab.tarkovcraft.gear").getString(), activeTab == TAB_GEAR, mouseX, mouseY);
+		drawTopTab(context, tabHealthBtn, Text.translatable("tab.tarkovcraft.health").getString(), activeTab == TAB_HEALTH, mouseX, mouseY);
+		drawTopTab(context, closeBtn, backTxt, false, mouseX, mouseY);
+
+		if (this.width >= 520) {
+			String interactLbl = TarkovCraftClient.getShortKeyLabel(TarkovCraftClient.interactKey);
+			String hint = (drag != null && drag.active)
+				? "[R] Rotate  |  Drop on valid cell"
+				: "[" + interactLbl + "] Quick  |  Ctrl+" + interactLbl + " Equip  |  RMB Menu  |  Del Drop";
+			TarkovUiTheme.drawCenteredFlatText(context, textRenderer, hint, this.width / 2, 9,
+				(drag != null && drag.active) ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.TEXT_MUTED,
+				TarkovUiTheme.TEXT_SCALE_SMALL);
+		}
+	}
+
+	private void drawTopTab(DrawContext context, Rect r, String label, boolean active, int mouseX, int mouseY) {
+		boolean hov = r.contains(mouseX, mouseY);
+		int bg = active ? 0xDD22262C : (hov ? 0xCC1B1F24 : 0x00000000);
+		int textCol = active ? TarkovUiTheme.ACCENT_SAND : (hov ? TarkovUiTheme.TEXT_PRIMARY : TarkovUiTheme.TEXT_SECONDARY);
+		if (bg != 0) {
+			context.fill(r.x, r.y, r.x + r.w, r.y + r.h, bg);
+		}
+		if (active) {
+			context.fill(r.x, r.y + r.h - 2, r.x + r.w, r.y + r.h, TarkovUiTheme.ACCENT_SAND);
+		}
+		TarkovUiTheme.drawCenteredFlatText(context, textRenderer, label, r.x + r.w / 2, r.y + 6, textCol, TarkovUiTheme.TEXT_SCALE_HEADER);
+	}
+
+	private void renderEquipmentColumn(DrawContext context, Rect area, PlayerLoadout loadout, int mouseX, int mouseY) {
+		context.fill(area.x, area.y, area.x + area.w, area.y + area.h, TarkovUiTheme.BG_PANEL);
+		context.drawBorder(area.x, area.y, area.w, area.h, TarkovUiTheme.BORDER_PANEL);
+
+		int pad = 6;
+		int weaponZoneH = 98;
+		int upperH = Math.max(74, area.h - TarkovUiTheme.STATS_BAR_H - weaponZoneH - pad * 2);
+
+		// Live 3D Player Model behind equipment slots
+		if (client != null && client.player != null) {
+			int modelSize = Math.max(28, Math.min(64, Math.round(upperH * 0.40f)));
+			int modelX = area.x + area.w / 2;
+			int modelY = area.y + Math.max(76, Math.round(upperH * 0.92f));
+
+			float savedBodyYaw = client.player.bodyYaw;
+			float savedYaw = client.player.getYaw();
+			float savedPitch = client.player.getPitch();
+			float savedPrevHeadYaw = client.player.prevHeadYaw;
+			float savedHeadYaw = client.player.headYaw;
+
+			context.enableScissor(area.x + 1, area.y + 1, area.x + area.w - 1, area.y + area.h - TarkovUiTheme.STATS_BAR_H - 2);
+			try {
+				float previewYaw = 180.0f + playerPreviewYaw;
+				client.player.bodyYaw = previewYaw;
+				client.player.setYaw(previewYaw);
+				client.player.setPitch(0.0f);
+				client.player.prevHeadYaw = previewYaw;
+				client.player.headYaw = previewYaw;
+				InventoryScreen.drawEntity(
+					context, modelX, modelY, modelSize,
+					new Quaternionf().rotateZ((float) Math.PI), null, client.player
+				);
+			} finally {
+				client.player.bodyYaw = savedBodyYaw;
+				client.player.setYaw(savedYaw);
+				client.player.setPitch(savedPitch);
+				client.player.prevHeadYaw = savedPrevHeadYaw;
+				client.player.headYaw = savedHeadYaw;
+				context.disableScissor();
+			}
+		}
+
+		// Render all equipment slots cleanly above the 3D player model
+		context.getMatrices().push();
+		context.getMatrices().translate(0.0f, 0.0f, TarkovUiTheme.Z_SLOTS);
+
+		int sideW = Math.max(48, Math.min(68, (area.w - 18) / 3));
+		int sqH = Math.max(32, Math.min(40, (upperH - 12) / 2));
+		int topY = area.y + pad;
+		int row2Y = topY + sqH + 4;
+		int rightColX = area.x + area.w - pad - sideW;
+
+		drawEquipSlot(context, area.x + pad, topY, sideW, sqH, EquipmentSlotType.HELMET, "HEADWEAR", null, loadout, false, null, mouseX, mouseY);
+		drawEquipSlot(context, rightColX, topY, sideW, sqH, EquipmentSlotType.FACE_MASK, "FACE COVER", null, loadout, false, null, mouseX, mouseY);
+		drawEquipSlot(context, area.x + pad, row2Y, sideW, sqH, EquipmentSlotType.BODY_ARMOR, "BODY ARMOR", null, loadout, false, null, mouseX, mouseY);
+		drawEquipSlot(context, rightColX, row2Y, sideW, sqH, EquipmentSlotType.RIG, "TACTICAL RIG", null, loadout, false, null, mouseX, mouseY);
+
+		int wY = area.y + pad + upperH + 4;
+		int headsetX = area.x + pad + sideW + 3;
+		int headsetWidth = rightColX - headsetX - 3;
+		drawEquipSlot(context, headsetX, topY, headsetWidth, sqH, EquipmentSlotType.HEADSET,
+			Text.translatable("ui.tarkovcraft.headset").getString(), null, loadout, false, null, mouseX, mouseY);
+		int fullW = area.w - pad * 2;
+		int halfW = (fullW - 4) / 2;
+		String k1 = client != null ? TarkovCraftClient.getShortKeyLabel(client.options.hotbarKeys[0]) : "1";
+		String k2 = client != null ? TarkovCraftClient.getShortKeyLabel(client.options.hotbarKeys[1]) : "2";
+		String k3 = client != null ? TarkovCraftClient.getShortKeyLabel(client.options.hotbarKeys[2]) : "3";
+		String kM = TarkovCraftClient.getShortKeyLabel(TarkovCraftClient.toggleMeleeKey);
+
+		drawEquipSlot(context, area.x + pad, wY, fullW, 28, EquipmentSlotType.PRIMARY_1, "ON SLING", k1, loadout, false, null, mouseX, mouseY);
+		drawEquipSlot(context, area.x + pad, wY + 31, fullW, 28, EquipmentSlotType.PRIMARY_2, "ON BACK", k2, loadout, false, null, mouseX, mouseY);
+		drawEquipSlot(context, area.x + pad, wY + 62, halfW, 28, EquipmentSlotType.PISTOL, "HOLSTER", k3, loadout, false, null, mouseX, mouseY);
+		drawEquipSlot(context, area.x + pad + halfW + 4, wY + 62, fullW - halfW - 4, 28, EquipmentSlotType.MELEE, "SCABBARD", kM, loadout, false, null, mouseX, mouseY);
+
+		drawBottomStatsStrip(context, loadout, area.x + 5, area.y + area.h - TarkovUiTheme.STATS_BAR_H - 3, area.w - 10);
+
+		context.getMatrices().pop();
+	}
+
+	private void drawBottomStatsStrip(DrawContext context, PlayerLoadout loadout, int x, int y, int w) {
+		context.fill(x, y, x + w, y + TarkovUiTheme.STATS_BAR_H, 0xCC0A0C0E);
+		context.drawBorder(x, y, w, TarkovUiTheme.STATS_BAR_H, TarkovUiTheme.BORDER_PANEL);
+		if (client == null || client.player == null) return;
+
+		var bodyHealth = ClientLoadoutCache.getBodyHealth();
+		int hpVal = Math.round(bodyHealth.getTotalHp());
+		int food = client.player.getHungerManager().getFoodLevel() * 5;
+		int sat = Math.round(client.player.getHungerManager().getSaturationLevel() * 5.0f);
+		String weight = String.format(Locale.ROOT, "%.1fkg", ClientLoadoutCache.getCachedWeightKg());
+
+		int ty = y + 6;
+		TarkovUiTheme.drawFlatText(context, textRenderer, weight, x + 4, ty, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+		TarkovUiTheme.drawFlatText(context, textRenderer, "+" + hpVal, x + Math.max(38, w / 4), ty,
+			BodyHealthHudHelper.hpToColor(bodyHealth.getTotalRatio()), TarkovUiTheme.TEXT_SCALE_SMALL);
+		TarkovUiTheme.drawFlatText(context, textRenderer, "E:" + food, x + Math.max(74, w / 2 + 4), ty,
+			0xFF63B3ED, TarkovUiTheme.TEXT_SCALE_SMALL);
+		if (w >= 132) {
+			TarkovUiTheme.drawRightAlignedFlatText(context, textRenderer, "S:" + sat, x + w - 4, ty,
+				0xFF9AE6B4, TarkovUiTheme.TEXT_SCALE_SMALL);
+		}
+	}
+
+	private void renderStorageColumn(
+		DrawContext context, Rect area, PlayerLoadout loadout,
+		@Nullable TarkovNetworking.ScreenStateSnapshot snap, int mouseX, int mouseY
+	) {
+		context.fill(area.x, area.y, area.x + area.w, area.y + area.h, TarkovUiTheme.BG_PANEL);
+		context.drawBorder(area.x, area.y, area.w, area.h, TarkovUiTheme.BORDER_PANEL);
+
+		context.enableScissor(area.x + 1, area.y + 1, area.x + area.w - 1, area.y + area.h - 1);
+
+		int pad = 6;
+		int curY = area.y + pad - centerScrollY;
+		int startY = curY;
+
+		// 1. TACTICAL RIG SECTION
+		ItemStack rigStack = loadout.getEquipment(EquipmentSlotType.RIG);
+		if (!rigStack.isEmpty() && snap != null && !snap.ownRigViews().isEmpty()) {
+			rigSectionOffsetY = curY - startY;
+			String rigTitle = Text.translatable("ui.tarkovcraft.rig").getString() + " // " + rigStack.getName().getString().toUpperCase();
+			curY = drawCollapsibleSectionHeader(
+				context, area, pad, curY, rigTitle, rigCollapsed,
+				() -> rigCollapsed = !rigCollapsed,
+				() -> ClientNetworkSender.sendQuickEquip(TarkovNetworking.LOC_EQUIPMENT, EquipmentSlotType.RIG.ordinal(), null),
+				mouseX, mouseY
+			);
+			if (!rigCollapsed) {
+				curY = drawRigViewsBody(context, area, pad, curY, TarkovNetworking.LOC_RIG_GRID, snap.ownRigViews(), snap, mouseX, mouseY);
+			} else {
+				curY += 4;
+			}
+		}
+
+		// 2. POCKETS SECTION
+		TarkovUiTheme.drawFlatText(context, textRenderer, Text.translatable("ui.tarkovcraft.pockets").getString(),
+			area.x + pad, curY + 1, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+		curY += 11;
+		int pCell = Math.min(cellSize, Math.max(18, (area.w - pad * 2 - 18) / PlayerLoadout.POCKET_COUNT));
+		for (int i = 0; i < PlayerLoadout.POCKET_COUNT; i++) {
+			int px = area.x + pad + i * (pCell + 3);
+			Rect r = new Rect(px, curY, pCell, pCell);
+			regions.add(new InteractiveRegion(r, area, TarkovNetworking.LOC_POCKET, i, 1, 1, pCell, null));
+			String keyBadge = client != null ? TarkovCraftClient.getShortKeyLabel(client.options.hotbarKeys[i + 3]) : String.valueOf(i + 4);
+			drawSingleCellSlot(context, r, TarkovNetworking.LOC_POCKET, i, loadout.getPocket(i), keyBadge, mouseX, mouseY);
+		}
+		curY += pCell + 10;
+
+		var secure = loadout.getSecureContainer();
+		var secureView = TarkovNetworking.GridView.fromContainer(secure, secure.getContainerId(), null, null, false);
+		int secureX = area.x + pad;
+		TarkovUiTheme.drawFlatText(context, textRenderer,
+			Text.translatable("ui.tarkovcraft.secure_container", secure.getWidth(), secure.getHeight()).getString(),
+			secureX, curY + 1, TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
+		curY += 11;
+		drawGridView(context, secureX, curY, area, TarkovNetworking.LOC_SECURE_CONTAINER, 0,
+			pCell, secureView, snap, true, mouseX, mouseY);
+		context.drawBorder(secureX - 1, curY - 1, secure.getWidth() * pCell + 2, secure.getHeight() * pCell + 2,
+			TarkovUiTheme.ACCENT_SAND);
+		curY += secure.getHeight() * pCell + 10;
+
+		// 3. BACKPACK SECTION
+		ItemStack bpStack = loadout.getEquipment(EquipmentSlotType.BACKPACK);
+		backpackSectionOffsetY = curY - startY;
+		if (!bpStack.isEmpty()) {
+			String bpTitle = Text.translatable("ui.tarkovcraft.backpack").getString() + " // " + bpStack.getName().getString().toUpperCase();
+			curY = drawCollapsibleSectionHeader(
+				context, area, pad, curY, bpTitle, backpackCollapsed,
+				() -> backpackCollapsed = !backpackCollapsed,
+				() -> ClientNetworkSender.sendQuickEquip(TarkovNetworking.LOC_EQUIPMENT, EquipmentSlotType.BACKPACK.ordinal(), null),
+				mouseX, mouseY
+			);
+		} else {
+			TarkovUiTheme.drawFlatText(context, textRenderer, Text.translatable("ui.tarkovcraft.backpack").getString(),
+				area.x + pad, curY + 1, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+			curY += 11;
+		}
+
+		if (bpStack.isEmpty() || !backpackCollapsed) {
+			int bpSlotSize = Math.max(32, Math.min(40, cellSize + 12));
+			drawEquipSlot(context, area.x + pad, curY, bpSlotSize, bpSlotSize, EquipmentSlotType.BACKPACK, "", null, loadout, false, area, mouseX, mouseY);
+
+			if (!bpStack.isEmpty() && snap != null && snap.ownBackpackView() != null) {
+				TarkovNetworking.GridView bpView = snap.ownBackpackView();
+				int gridX = area.x + pad + bpSlotSize + 6;
+				if (gridX + bpView.width() * cellSize > area.x + area.w - pad - 4) {
+					curY += bpSlotSize + 5;
+					drawGridView(context, area.x + pad, curY, area, TarkovNetworking.LOC_BACKPACK_GRID, 0, cellSize, bpView, snap, false, mouseX, mouseY);
+					curY += bpView.height() * cellSize + 10;
+				} else {
+					drawGridView(context, gridX, curY, area, TarkovNetworking.LOC_BACKPACK_GRID, 0, cellSize, bpView, snap, false, mouseX, mouseY);
+					curY += Math.max(bpSlotSize, bpView.height() * cellSize) + 10;
+				}
+			} else {
+				curY += bpSlotSize + 10;
+			}
+		} else {
+			curY += 4;
+		}
+
+		context.disableScissor();
+
+		int contentH = curY - startY;
+		centerMaxScroll = Math.max(0, contentH - area.h + pad);
+		centerScrollY = Math.max(0, Math.min(centerScrollY, centerMaxScroll));
+		drawScrollbar(context, area, centerScrollY, centerMaxScroll);
+	}
+
+	private int drawCollapsibleSectionHeader(
+		DrawContext context, Rect area, int pad, int curY,
+		String title, boolean collapsed, Runnable onToggle, Runnable onUnequip,
+		int mouseX, int mouseY
+	) {
+		int headerW = area.w - pad * 2 - 4;
+		context.fill(area.x + pad, curY, area.x + pad + headerW, curY + 13, 0xCC14171B);
+		context.drawBorder(area.x + pad, curY, headerW, 13, TarkovUiTheme.BORDER_PANEL);
+
+		String trimmed = textRenderer.trimToWidth(title, Math.round((headerW - 36) / TarkovUiTheme.TEXT_SCALE_SMALL));
+		TarkovUiTheme.drawFlatText(context, textRenderer, trimmed, area.x + pad + 4, curY + 3,
+			TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+
+		// [-] / [+] toggle button
+		Rect toggleRect = new Rect(area.x + pad + headerW - 28, curY + 1, 13, 11);
+		boolean tHov = toggleRect.contains(mouseX, mouseY) && area.contains(mouseX, mouseY);
+		context.fill(toggleRect.x, toggleRect.y, toggleRect.x + toggleRect.w, toggleRect.y + toggleRect.h,
+			tHov ? TarkovUiTheme.HOVER_MENU_BG : 0xFF1B1F24);
+		TarkovUiTheme.drawCenteredFlatText(context, textRenderer, collapsed ? "+" : "-", toggleRect.x + 6, toggleRect.y + 2,
+			tHov ? TarkovUiTheme.HOVER_MENU_TEXT : TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+		actionButtons.add(new ActionButton(toggleRect, area, onToggle));
+
+		// [X] unequip button
+		Rect unequipRect = new Rect(area.x + pad + headerW - 14, curY + 1, 13, 11);
+		boolean uHov = unequipRect.contains(mouseX, mouseY) && area.contains(mouseX, mouseY);
+		context.fill(unequipRect.x, unequipRect.y, unequipRect.x + unequipRect.w, unequipRect.y + unequipRect.h,
+			uHov ? TarkovUiTheme.HOVER_MENU_BG : 0xFF281A1A);
+		TarkovUiTheme.drawCenteredFlatText(context, textRenderer, "X", unequipRect.x + 6, unequipRect.y + 2,
+			uHov ? TarkovUiTheme.HOVER_MENU_TEXT : 0xFFE57373, TarkovUiTheme.TEXT_SCALE_SMALL);
+		actionButtons.add(new ActionButton(unequipRect, area, onUnequip));
+
+		return curY + 15;
+	}
+
+	private void renderExternalColumn(
+		DrawContext context, Rect area, TarkovNetworking.ScreenStateSnapshot snap, int mouseX, int mouseY
+	) {
+		context.fill(area.x, area.y, area.x + area.w, area.y + area.h, TarkovUiTheme.BG_PANEL);
+		context.drawBorder(area.x, area.y, area.w, area.h, TarkovUiTheme.BORDER_PANEL);
+
+		int pad = 6;
+		int headerH = 18;
+		context.fill(area.x + 1, area.y + 1, area.x + area.w - 1, area.y + headerH, 0xDD13161A);
+		context.fill(area.x + 1, area.y + headerH, area.x + area.w - 1, area.y + headerH + 1, TarkovUiTheme.BORDER_PANEL);
+
+		String header = snap.externalTitle().isEmpty() ? "LOOT" : snap.externalTitle().toUpperCase();
+		UUID firstUnsearched = findFirstUnsearchedTarget(snap);
+		int btnW = firstUnsearched != null ? 54 : 0;
+		String trimmedHeader = textRenderer.trimToWidth(header, Math.round((area.w - pad * 2 - btnW - 8) / TarkovUiTheme.TEXT_SCALE_SMALL));
+		TarkovUiTheme.drawFlatText(context, textRenderer, trimmedHeader, area.x + pad, area.y + 6,
+			TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
+
+		if (firstUnsearched != null) {
+			String btnTxt = Text.translatable("ui.tarkovcraft.search_btn").getString();
+			int bw = Math.max(48, Math.round(textRenderer.getWidth(btnTxt) * TarkovUiTheme.TEXT_SCALE_SMALL) + 8);
+			Rect searchBtn = new Rect(area.x + area.w - bw - 5, area.y + 3, bw, 12);
+			boolean sHov = searchBtn.contains(mouseX, mouseY);
+			context.fill(searchBtn.x, searchBtn.y, searchBtn.x + searchBtn.w, searchBtn.y + searchBtn.h,
+				sHov ? TarkovUiTheme.HOVER_MENU_BG : 0xFF283226);
+			context.drawBorder(searchBtn.x, searchBtn.y, searchBtn.w, searchBtn.h,
+				sHov ? TarkovUiTheme.BORDER_HOVER : TarkovUiTheme.ACCENT_SAND);
+			TarkovUiTheme.drawCenteredFlatText(context, textRenderer, btnTxt, searchBtn.x + searchBtn.w / 2, searchBtn.y + 3,
+				sHov ? TarkovUiTheme.HOVER_MENU_TEXT : TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
+			actionButtons.add(new ActionButton(searchBtn, area, () -> ClientNetworkSender.sendRequestSearch(firstUnsearched)));
+		}
+
+		Rect scrollClip = new Rect(area.x, area.y + headerH + 1, area.w, area.h - headerH - 1);
+		context.enableScissor(scrollClip.x + 1, scrollClip.y, scrollClip.x + scrollClip.w - 1, scrollClip.y + scrollClip.h - 1);
+
+		int curY = scrollClip.y + pad - rightScrollY;
+		int startY = curY;
+
+		int maxCols = snap.externalGridView() != null ? Math.max(6, snap.externalGridView().width()) : 6;
+		int minCell = maxCols > 6 ? 10 : 12;
+		int extCell = Math.max(minCell, Math.min(cellSize, (area.w - pad * 2 - 8) / maxCols));
+
+		if (handler.getMode() == TarkovScreenHandler.MODE_CORPSE && snap.corpseLoadout() != null) {
+			PlayerLoadout corpseLo = snap.corpseLoadout();
+			int halfW = (area.w - pad * 2 - 8) / 2;
+
+			drawEquipSlot(context, area.x + pad, curY, halfW, 26, EquipmentSlotType.HELMET, "HELM", null, corpseLo, true, scrollClip, mouseX, mouseY);
+			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 26, EquipmentSlotType.FACE_MASK, "FACE COVER", null, corpseLo, true, scrollClip, mouseX, mouseY);
+			curY += 29;
+			drawEquipSlot(context, area.x + pad, curY, halfW, 26, EquipmentSlotType.BODY_ARMOR, "ARMOR", null, corpseLo, true, scrollClip, mouseX, mouseY);
+			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 26, EquipmentSlotType.RIG, "RIG", null, corpseLo, true, scrollClip, mouseX, mouseY);
+			curY += 29;
+			drawEquipSlot(context, area.x + pad, curY, halfW, 26, EquipmentSlotType.BACKPACK, "BACKPACK", null, corpseLo, true, scrollClip, mouseX, mouseY);
+			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 26, EquipmentSlotType.MELEE, "MELEE", null, corpseLo, true, scrollClip, mouseX, mouseY);
+			curY += 29;
+			drawEquipSlot(context, area.x + pad, curY, halfW, 26, EquipmentSlotType.PRIMARY_1, "PRIMARY 1", null, corpseLo, true, scrollClip, mouseX, mouseY);
+			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 26, EquipmentSlotType.PRIMARY_2, "PRIMARY 2", null, corpseLo, true, scrollClip, mouseX, mouseY);
+			curY += 29;
+			drawEquipSlot(context, area.x + pad, curY, halfW, 26, EquipmentSlotType.PISTOL, "HOLSTER", null, corpseLo, true, scrollClip, mouseX, mouseY);
+			drawEquipSlot(context, area.x + pad + halfW + 4, curY, halfW, 26, EquipmentSlotType.HEADSET,
+				Text.translatable("ui.tarkovcraft.headset").getString(), null, corpseLo, true, scrollClip, mouseX, mouseY);
+			curY += 32;
+
+			if (snap.externalGridView() != null) {
+				TarkovUiTheme.drawFlatText(context, textRenderer, Text.translatable("ui.tarkovcraft.pockets").getString(),
+					area.x + pad, curY, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+				curY += 10;
+				drawGridView(context, area.x + pad, curY, scrollClip, TarkovNetworking.LOC_EXTERNAL_GRID, 0, extCell, snap.externalGridView(), snap, false, mouseX, mouseY);
+				curY += snap.externalGridView().height() * extCell + 8;
+			}
+
+			if (!snap.corpseRigViews().isEmpty()) {
+				ItemStack cRig = corpseLo.getEquipment(EquipmentSlotType.RIG);
+				TarkovUiTheme.drawFlatText(context, textRenderer,
+					Text.translatable("ui.tarkovcraft.rig").getString() + " // " + cRig.getName().getString().toUpperCase(),
+					area.x + pad, curY, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+				curY += 10;
+				curY = drawRigViewsBody(context, scrollClip, pad, curY, TarkovNetworking.LOC_CORPSE_RIG_GRID, snap.corpseRigViews(), snap, mouseX, mouseY);
+			}
+
+			if (snap.corpseBackpackView() != null) {
+				ItemStack cBp = corpseLo.getEquipment(EquipmentSlotType.BACKPACK);
+				TarkovUiTheme.drawFlatText(context, textRenderer,
+					Text.translatable("ui.tarkovcraft.backpack").getString() + " // " + cBp.getName().getString().toUpperCase(),
+					area.x + pad, curY, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+				curY += 10;
+				drawGridView(context, area.x + pad, curY, scrollClip, TarkovNetworking.LOC_CORPSE_BACKPACK_GRID, 0, extCell, snap.corpseBackpackView(), snap, false, mouseX, mouseY);
+				curY += snap.corpseBackpackView().height() * extCell + 10;
+			}
+		} else if (handler.getMode() == TarkovScreenHandler.MODE_GROUND_ITEM) {
+			if (snap.externalGridView() != null) {
+				drawGridView(context, area.x + pad, curY, scrollClip, TarkovNetworking.LOC_EXTERNAL_GRID, 0, extCell, snap.externalGridView(), snap, false, mouseX, mouseY);
+				curY += snap.externalGridView().height() * extCell + 10;
+			} else if (!snap.corpseRigViews().isEmpty()) {
+				curY = drawRigViewsBody(context, scrollClip, pad, curY, TarkovNetworking.LOC_CORPSE_RIG_GRID, snap.corpseRigViews(), snap, mouseX, mouseY);
+			}
+		} else if (snap.externalGridView() != null) {
+			drawGridView(context, area.x + pad, curY, scrollClip, TarkovNetworking.LOC_EXTERNAL_GRID, 0, extCell, snap.externalGridView(), snap, false, mouseX, mouseY);
+			curY += snap.externalGridView().height() * extCell + 10;
+		}
+
+		context.disableScissor();
+
+		int contentH = curY - startY;
+		rightMaxScroll = Math.max(0, contentH - scrollClip.h + pad);
+		rightScrollY = Math.max(0, Math.min(rightScrollY, rightMaxScroll));
+		drawScrollbar(context, scrollClip, rightScrollY, rightMaxScroll);
+	}
+
+	private int drawRigViewsBody(
+		DrawContext context, Rect clip, int pad, int curY,
+		byte locType, List<TarkovNetworking.GridView> rigViews,
+		TarkovNetworking.ScreenStateSnapshot snap, int mouseX, int mouseY
+	) {
+		TarkovNetworking.GridView first = rigViews.get(0);
+		if (!first.gridRevealed()) {
+			boolean scanningRig = snap.searchStage() == 1 && first.searchTargetId().equals(snap.searchTargetId());
+			int barW = clip.w - pad * 2 - 6;
+			context.fill(clip.x + pad, curY, clip.x + pad + barW, curY + 11, 0xFF111418);
+			context.drawBorder(clip.x + pad, curY, barW, 11, scanningRig ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.BORDER_SLOT);
+			if (scanningRig) {
+				context.fill(clip.x + pad + 1, curY + 1, clip.x + pad + 1 + Math.round((barW - 2) * snap.searchProgress()), curY + 10, 0xAA8A733E);
+				TarkovUiTheme.drawCenteredFlatText(context, textRenderer, Text.translatable("ui.tarkovcraft.searching").getString(),
+					clip.x + pad + barW / 2, curY + 3, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+			} else {
+				TarkovUiTheme.drawCenteredFlatText(context, textRenderer, Text.translatable("ui.tarkovcraft.unsearched").getString(),
+					clip.x + pad + barW / 2, curY + 3, TarkovUiTheme.TEXT_MUTED, TarkovUiTheme.TEXT_SCALE_SMALL);
+			}
+			curY += 14;
+		}
+
+		int rCell = Math.max(18, Math.min(cellSize, (clip.w - pad * 2 - 10) / 5));
+		int rx = clip.x + pad;
+		int rowMaxH = 0;
+		for (int i = 0; i < rigViews.size(); i++) {
+			TarkovNetworking.GridView gv = rigViews.get(i);
+			int gw = gv.width() * rCell;
+			int gh = gv.height() * rCell;
+			if (rx + gw > clip.x + clip.w - pad - 4 && rx > clip.x + pad) {
+				rx = clip.x + pad;
+				curY += rowMaxH + 4;
+				rowMaxH = 0;
+			}
+			drawGridView(context, rx, curY, clip, locType, i, rCell, gv, snap, true, mouseX, mouseY);
+			rx += gw + 4;
+			rowMaxH = Math.max(rowMaxH, gh);
+		}
+		return curY + rowMaxH + 8;
+	}
+
+	private void renderQuickUseBar(DrawContext context, PlayerLoadout loadout, int mouseX, int mouseY) {
+		int qSlot = Math.max(18, Math.min(24, (this.width - 60) / 11));
+		int gap = 2;
+		int groupGap = 8;
+		int slotsW = qSlot + groupGap + (3 * qSlot + 2 * gap) + groupGap + (6 * qSlot + 5 * gap);
+		int labelW = this.width >= 480 ? 64 : 0;
+		int barW = slotsW + labelW + 14;
+		int barH = TarkovUiTheme.QUICK_BAR_H;
+		int barX = (this.width - barW) / 2;
+		int barY = this.height - barH - 4;
+
+		context.fill(barX, barY, barX + barW, barY + barH, TarkovUiTheme.BG_QUICK_BAR);
+		context.drawBorder(barX, barY, barW, barH, TarkovUiTheme.BORDER_PANEL);
+
+		int sx = barX + 6;
+		if (labelW > 0) {
+			TarkovUiTheme.drawFlatText(context, textRenderer, Text.translatable("ui.tarkovcraft.quick_use").getString(),
+				sx, barY + 11, TarkovUiTheme.TEXT_MUTED, TarkovUiTheme.TEXT_SCALE_SMALL);
+			sx += labelW;
+		}
+		int sy = barY + (barH - qSlot) / 2;
+
+		String meleeKey = TarkovCraftClient.getShortKeyLabel(TarkovCraftClient.toggleMeleeKey);
+		Rect meleeRect = new Rect(sx, sy, qSlot, qSlot);
+		regions.add(new InteractiveRegion(meleeRect, null, TarkovNetworking.LOC_EQUIPMENT, EquipmentSlotType.MELEE.ordinal(), 1, 1, qSlot, null));
+		drawSingleCellSlot(context, meleeRect, TarkovNetworking.LOC_EQUIPMENT, EquipmentSlotType.MELEE.ordinal(),
+			loadout.getEquipment(EquipmentSlotType.MELEE), meleeKey, mouseX, mouseY);
+		sx += qSlot + groupGap;
+
+		EquipmentSlotType[] weaponSlots = {EquipmentSlotType.PRIMARY_1, EquipmentSlotType.PRIMARY_2, EquipmentSlotType.PISTOL};
+		for (int i = 0; i < 3; i++) {
+			Rect wr = new Rect(sx, sy, qSlot, qSlot);
+			int slotOrd = weaponSlots[i].ordinal();
+			regions.add(new InteractiveRegion(wr, null, TarkovNetworking.LOC_EQUIPMENT, slotOrd, 1, 1, qSlot, null));
+			String keyLbl = client != null ? TarkovCraftClient.getShortKeyLabel(client.options.hotbarKeys[i]) : String.valueOf(i + 1);
+			drawSingleCellSlot(context, wr, TarkovNetworking.LOC_EQUIPMENT, slotOrd,
+				loadout.getEquipment(weaponSlots[i]), keyLbl, mouseX, mouseY);
+			sx += qSlot + gap;
+		}
+		sx += groupGap - gap;
+
+		for (int i = 0; i < PlayerLoadout.POCKET_COUNT; i++) {
+			Rect pr = new Rect(sx, sy, qSlot, qSlot);
+			regions.add(new InteractiveRegion(pr, null, TarkovNetworking.LOC_POCKET, i, 1, 1, qSlot, null));
+			String keyLbl = client != null ? TarkovCraftClient.getShortKeyLabel(client.options.hotbarKeys[i + 3]) : String.valueOf(i + 4);
+			drawSingleCellSlot(context, pr, TarkovNetworking.LOC_POCKET, i, loadout.getPocket(i), keyLbl, mouseX, mouseY);
+			sx += qSlot + gap;
+		}
+	}
+
+	private void drawSingleCellSlot(
+		DrawContext context, Rect r, byte locType, int idx, ItemStack stack,
+		@Nullable String keyBadge, int mouseX, int mouseY
+	) {
+		boolean hovered = r.contains(mouseX, mouseY) && (drag == null || !drag.active);
+		boolean selected = selectedTarget != null && selectedTarget.matches(locType, idx, null);
+		boolean isDragSrc = drag != null && drag.isSource(locType, idx, null);
+
+		int bg = stack.isEmpty() ? TarkovUiTheme.BG_CELL_EMPTY : TarkovUiTheme.itemCategoryTint(stack);
+		int border = (hovered || selected) ? TarkovUiTheme.BORDER_HOVER
+			: (stack.isEmpty() ? TarkovUiTheme.BORDER_CELL : TarkovUiTheme.BORDER_OCCUPIED);
+
+		context.fill(r.x, r.y, r.x + r.w, r.y + r.h, bg);
+		context.drawBorder(r.x, r.y, r.w, r.h, border);
+
+		if (!stack.isEmpty()) {
+			TarkovUiTheme.drawScaledItem(context, stack, r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+			drawCellCornerTags(context, r.x, r.y, r.w, r.h, stack);
+		}
+		if (keyBadge != null && !keyBadge.isEmpty()) {
+			TarkovUiTheme.drawFlatText(context, textRenderer, keyBadge, r.x + 2, r.y + 2,
+				TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
+		}
+		if (isDragSrc) {
+			context.fill(r.x + 1, r.y + 1, r.x + r.w - 1, r.y + r.h - 1, TarkovUiTheme.BG_DIM_DRAG_SOURCE);
+		}
+	}
+
+	private void drawEquipSlot(
+		DrawContext context, int x, int y, int w, int h,
+		EquipmentSlotType slot, String label, @Nullable String keyBadge,
+		PlayerLoadout loadout, boolean isCorpse, @Nullable Rect clip, int mouseX, int mouseY
+	) {
+		Rect r = new Rect(x, y, w, h);
+		byte loc = isCorpse ? TarkovNetworking.LOC_CORPSE_EQUIPMENT : TarkovNetworking.LOC_EQUIPMENT;
+		regions.add(new InteractiveRegion(r, clip, loc, slot.ordinal(), 1, 1, Math.min(w, h), null));
+
+		ItemStack stack = loadout.getEquipment(slot);
+		TarkovArmorItem armor = (!stack.isEmpty() && stack.getItem() instanceof TarkovArmorItem a && a.getArmorClass() > 0) ? a : null;
+		boolean brokenArmor = armor != null && TarkovArmorItem.isBroken(stack);
+		boolean hovered = r.contains(mouseX, mouseY) && (clip == null || clip.contains(mouseX, mouseY)) && (drag == null || !drag.active);
+		boolean selected = selectedTarget != null && selectedTarget.matches(loc, slot.ordinal(), null);
+		boolean isDragSrc = drag != null && drag.isSource(loc, slot.ordinal(), null);
+
+		int borderCol = brokenArmor ? TarkovUiTheme.BORDER_BROKEN
+			: ((hovered || selected) ? TarkovUiTheme.BORDER_HOVER : TarkovUiTheme.BORDER_SLOT);
+
+		context.fill(x, y, x + w, y + h, TarkovUiTheme.BG_SLOT);
+		context.drawBorder(x, y, w, h, borderCol);
+
+		if (label != null && !label.isEmpty()) {
+			int rightReserve = 0;
+			if (keyBadge != null && !keyBadge.isEmpty()) {
+				rightReserve = Math.max(11, Math.round(textRenderer.getWidth(keyBadge) * TarkovUiTheme.TEXT_SCALE_SMALL) + 4) + 3;
+			} else if (armor != null) {
+				rightReserve = Math.max(18, Math.round(textRenderer.getWidth("CL." + armor.getArmorClass()) * TarkovUiTheme.TEXT_SCALE_SMALL) + 4) + 3;
+			}
+			int availW = Math.max(12, w - 6 - rightReserve);
+			float lblScale = Math.min(0.68f, availW / (float) Math.max(1, textRenderer.getWidth(label)));
+			lblScale = Math.max(0.48f, lblScale);
+			String trimmedLbl = TarkovUiTheme.trimWithEllipsis(textRenderer, label, availW, lblScale);
+			TarkovUiTheme.drawFlatText(context, textRenderer, trimmedLbl, x + 3, y + 2,
+				TarkovUiTheme.TEXT_SECONDARY, lblScale);
+		}
+		if (keyBadge != null && !keyBadge.isEmpty()) {
+			int kw = Math.max(11, Math.round(textRenderer.getWidth(keyBadge) * TarkovUiTheme.TEXT_SCALE_SMALL) + 4);
+			context.fill(x + w - kw - 1, y + 1, x + w - 1, y + 10, 0xCC0A0C0E);
+			TarkovUiTheme.drawCenteredFlatText(context, textRenderer, keyBadge, x + w - kw / 2 - 1, y + 2,
+				TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
+		} else if (armor != null) {
+			String clTxt = "CL." + armor.getArmorClass();
+			int cw = Math.max(18, Math.round(textRenderer.getWidth(clTxt) * TarkovUiTheme.TEXT_SCALE_SMALL) + 4);
+			context.fill(x + w - cw - 1, y + 1, x + w - 1, y + 10, 0xCC0A0C0E);
+			TarkovUiTheme.drawCenteredFlatText(context, textRenderer, clTxt, x + w - cw / 2 - 1, y + 2,
+				brokenArmor ? 0xFFFF5555 : 0xFF63D2FF, TarkovUiTheme.TEXT_SCALE_SMALL);
+		}
+
+		if (!stack.isEmpty()) {
+			int iconPadTop = (label != null && !label.isEmpty()) ? 8 : 2;
+			TarkovUiTheme.drawScaledItem(context, stack, x + 2, y + iconPadTop, w - 4, h - iconPadTop - 2);
+		}
+
+		if (armor != null) {
+			int maxDur = Math.max(1, TarkovArmorItem.getEffectiveMaxDurability(stack));
+			int curDur = TarkovArmorItem.getRemainingDurability(stack);
+			float ratio = curDur / (float) maxDur;
+			int durCol = curDur <= 0 ? 0xFFFF5555
+				: (ratio < 0.25f ? 0xFFE53935 : (ratio < 0.50f ? 0xFFE0B23B : 0xFF77B85A));
+			TarkovUiTheme.drawFlatText(context, textRenderer, TarkovArmorItem.formatDurability(stack), x + 3, y + h - 8,
+				durCol, TarkovUiTheme.TEXT_SCALE_SMALL);
+		} else if (!stack.isEmpty() && stack.getCount() > 1) {
+			TarkovUiTheme.drawRightAlignedFlatText(context, textRenderer, String.valueOf(stack.getCount()),
+				x + w - 3, y + h - 8, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+		}
+
+		if (isDragSrc) {
+			context.fill(x + 1, y + 1, x + w - 1, y + h - 1, TarkovUiTheme.BG_DIM_DRAG_SOURCE);
+		}
+	}
+
+	private void drawGridView(
+		DrawContext context, int x, int y, Rect clip,
+		byte locType, int containerIndex, int gCell,
+		TarkovNetworking.GridView view,
+		@Nullable TarkovNetworking.ScreenStateSnapshot snap,
+		boolean suppressStage1Bar,
+		int mouseX, int mouseY
+	) {
+		int gw = view.width() * gCell;
+		int gh = view.height() * gCell;
+		Rect r = new Rect(x, y, gw, gh);
+		regions.add(new InteractiveRegion(r, clip, locType, containerIndex, view.width(), view.height(), gCell, view));
+
+		for (int gx = 0; gx < view.width(); gx++) {
+			for (int gy = 0; gy < view.height(); gy++) {
+				int cx = x + gx * gCell;
+				int cy = y + gy * gCell;
+				context.fill(cx, cy, cx + gCell, cy + gCell, TarkovUiTheme.BG_CELL_EMPTY);
+				context.drawBorder(cx, cy, gCell, gCell, TarkovUiTheme.BORDER_CELL);
+			}
+		}
+
+		if (!view.gridRevealed()) {
+			context.fill(x, y, x + gw, y + gh, 0xDD090B0E);
+			context.drawBorder(x, y, gw, gh, suppressStage1Bar ? TarkovUiTheme.BORDER_SLOT : TarkovUiTheme.ACCENT_SAND);
+			if (!suppressStage1Bar) {
+				boolean isScanningThis = snap != null
+					&& snap.searchStage() == 1
+					&& view.searchTargetId().equals(snap.searchTargetId());
+				String msg = Text.translatable(isScanningThis ? "ui.tarkovcraft.searching" : "ui.tarkovcraft.unsearched").getString();
+				if (gw >= 36) {
+					TarkovUiTheme.drawCenteredFlatText(context, textRenderer, msg, x + gw / 2, y + gh / 2 - 5,
+						isScanningThis ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.TEXT_MUTED, TarkovUiTheme.TEXT_SCALE_SMALL);
+				}
+				if (isScanningThis) {
+					int barW = Math.max(14, gw - 8);
+					int bx = x + (gw - barW) / 2;
+					int by = y + gh / 2 + 3;
+					context.fill(bx, by, bx + barW, by + 4, 0xFF20252A);
+					context.fill(bx, by, bx + Math.round(barW * snap.searchProgress()), by + 4, TarkovUiTheme.ACCENT_SAND);
+				}
+			}
+			return;
+		}
+
+		for (TarkovNetworking.ViewEntry entry : view.entries()) {
+			int ex = x + entry.x() * gCell;
+			int ey = y + entry.y() * gCell;
+			int ew = entry.width() * gCell;
+			int eh = entry.height() * gCell;
+
+			if (!entry.discovered()) {
+				context.fill(ex + 1, ey + 1, ex + ew - 1, ey + eh - 1, TarkovUiTheme.BG_CELL_SILHOUETTE);
+				// Dark tactical item silhouette block (Tarkov-style unrevealed item shape)
+				int padX = Math.max(3, ew / 6);
+				int padY = Math.max(3, eh / 6);
+				if (ew - padX * 2 >= 4 && eh - padY * 2 >= 4) {
+					context.fill(ex + padX, ey + padY, ex + ew - padX, ey + eh - padY, 0xFF171C22);
+					context.fill(ex + padX + 1, ey + padY + 1, ex + ew - padX - 1, Math.min(ey + eh - padY - 1, ey + padY + Math.max(2, eh / 4)), 0xFF202730);
+				}
+				context.drawBorder(ex + 1, ey + 1, ew - 2, eh - 2, TarkovUiTheme.BORDER_SLOT);
+
+				boolean isSearchingItem = snap != null
+					&& snap.searchStage() == 2
+					&& entry.entryId().equals(snap.searchEntryId());
+				if (isSearchingItem) {
+					context.drawBorder(ex + 1, ey + 1, ew - 2, eh - 2, TarkovUiTheme.ACCENT_SAND);
+					int sweepH = Math.max(2, Math.round((eh - 4) * snap.searchProgress()));
+					context.fill(ex + 2, ey + 2, ex + ew - 2, ey + 2 + sweepH, 0x33D4AF6A);
+					int bw = Math.max(8, ew - 6);
+					int bx = ex + 3;
+					int by = ey + eh - 5;
+					context.fill(bx, by, bx + bw, by + 3, 0xFF20252A);
+					context.fill(bx, by, bx + Math.round(bw * snap.searchProgress()), by + 3, TarkovUiTheme.ACCENT_SAND);
+					TarkovUiTheme.drawCenteredFlatText(context, textRenderer, "?", ex + ew / 2, ey + (eh - 6) / 2,
+						TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
+				} else {
+					TarkovUiTheme.drawCenteredFlatText(context, textRenderer, "?", ex + ew / 2, ey + (eh - 6) / 2,
+						TarkovUiTheme.TEXT_MUTED, TarkovUiTheme.TEXT_SCALE_SMALL);
+				}
+			} else {
+				boolean hovered = mouseX >= ex && mouseX < ex + ew && mouseY >= ey && mouseY < ey + eh
+					&& clip.contains(mouseX, mouseY) && (drag == null || !drag.active);
+				boolean selected = selectedTarget != null && selectedTarget.matches(locType, containerIndex, entry.entryId());
+				boolean isDragSrc = drag != null && drag.isSource(locType, containerIndex, entry.entryId());
+
+				int fillCol = TarkovUiTheme.itemCategoryTint(entry.stack());
+				int borderCol = (hovered || selected) ? TarkovUiTheme.BORDER_HOVER : TarkovUiTheme.BORDER_OCCUPIED;
+
+				context.fill(ex + 1, ey + 1, ex + ew - 1, ey + eh - 1, fillCol);
+				context.drawBorder(ex + 1, ey + 1, ew - 2, eh - 2, borderCol);
+
+				TarkovUiTheme.drawScaledItem(context, entry.stack(), ex + 2, ey + 2, ew - 4, eh - 4, entry.rotated());
+
+				if (ew >= 34) {
+					float nameScale = 0.60f;
+					String shortName = TarkovUiTheme.trimWithEllipsis(textRenderer, entry.stack().getName().getString(), ew - 6, nameScale);
+					TarkovUiTheme.drawRightAlignedFlatText(context, textRenderer, shortName, ex + ew - 3, ey + 2,
+						TarkovUiTheme.TEXT_SECONDARY, nameScale);
+				}
+				drawCellCornerTags(context, ex, ey, ew, eh, entry.stack());
+
+				if (isDragSrc) {
+					context.fill(ex + 1, ey + 1, ex + ew - 1, ey + eh - 1, TarkovUiTheme.BG_DIM_DRAG_SOURCE);
+				}
+			}
+		}
+	}
+
+	private void drawCellCornerTags(DrawContext context, int x, int y, int w, int h, ItemStack stack) {
+		if (stack.getItem() instanceof TarkovArmorItem armor && armor.getArmorClass() > 0) {
+			int maxDur = Math.max(1, TarkovArmorItem.getEffectiveMaxDurability(stack));
+			int curDur = TarkovArmorItem.getRemainingDurability(stack);
+			float ratio = curDur / (float) maxDur;
+			int durCol = curDur <= 0 ? 0xFFFF5555
+				: (ratio < 0.25f ? 0xFFE53935 : (ratio < 0.50f ? 0xFFE0B23B : 0xFF77B85A));
+			TarkovUiTheme.drawCellCornerBadge(context, textRenderer, TarkovArmorItem.formatDurability(stack), x, y, w, h, durCol);
+		} else if (stack.getItem() instanceof TarkovMedicalItem med) {
+			int max = med.getMedicalType().getMaxCapacity();
+			int cur = TarkovMedicalItem.getRemaining(stack);
+			float ratio = cur / (float) Math.max(1, max);
+			int medCol = ratio >= 0.50f ? 0xFF77B85A : (ratio >= 0.25f ? 0xFFE0B23B : 0xFFE53935);
+			TarkovUiTheme.drawCellCornerBadge(context, textRenderer, cur + "/" + max, x, y, w, h, medCol);
+		} else if (AmmoTier.isTaczAmmoStack(stack)) {
+			AmmoTier tier = AmmoTier.getFromAmmoStack(stack);
+			String badge = stack.getCount() > 1 ? (tier.getBadge() + " " + stack.getCount()) : tier.getBadge();
+			TarkovUiTheme.drawCellCornerBadge(context, textRenderer, badge,
+				x, y, w, h, tier.getArgbColor());
+		} else if (stack.getCount() > 1) {
+			TarkovUiTheme.drawCellCornerBadge(context, textRenderer, String.valueOf(stack.getCount()),
+				x, y, w, h, TarkovUiTheme.TEXT_PRIMARY);
+		}
+	}
+
+	private void drawScrollbar(DrawContext context, Rect area, int scrollY, int maxScroll) {
+		if (maxScroll <= 0) return;
+		int barX = area.x + area.w - 4;
+		int trackH = area.h - 6;
+		int thumbH = Math.max(18, Math.round(trackH * (area.h / (float) (area.h + maxScroll))));
+		int thumbY = area.y + 3 + Math.round((trackH - thumbH) * (scrollY / (float) maxScroll));
+		context.fill(barX, area.y + 3, barX + 3, area.y + area.h - 3, 0x33FFFFFF);
+		context.fill(barX, thumbY, barX + 3, thumbY + thumbH, TarkovUiTheme.ACCENT_SAND);
+	}
+
+	private void renderContextMenu(DrawContext context, int mouseX, int mouseY) {
+		if (contextMenu == null) return;
+		int mx = contextMenu.x;
+		int my = contextMenu.y;
+		int mw = contextMenu.width;
+		int mh = contextMenu.height();
+
+		context.getMatrices().push();
+		context.getMatrices().translate(0.0f, 0.0f, TarkovUiTheme.Z_POPUP);
+		context.fill(mx, my, mx + mw, my + mh, TarkovUiTheme.BG_CONTEXT_MENU);
+		context.drawBorder(mx, my, mw, mh, TarkovUiTheme.BORDER_POPUP);
+
+		for (int i = 0; i < contextMenu.options.size(); i++) {
+			int ry = my + 1 + i * contextMenu.rowH;
+			boolean hov = mouseX >= mx + 1 && mouseX < mx + mw - 1 && mouseY >= ry && mouseY < ry + contextMenu.rowH;
+			if (hov) {
+				context.fill(mx + 1, ry, mx + mw - 1, ry + contextMenu.rowH, TarkovUiTheme.HOVER_MENU_BG);
+			}
+			int textCol = hov ? TarkovUiTheme.HOVER_MENU_TEXT : TarkovUiTheme.TEXT_PRIMARY;
+			TarkovUiTheme.drawFlatText(context, textRenderer, contextMenu.options.get(i).label(),
+				mx + 6, ry + 5, textCol, TarkovUiTheme.TEXT_SCALE_SMALL);
+		}
+		context.getMatrices().pop();
+	}
+
+	private void renderDragPreview(DrawContext context, int mouseX, int mouseY) {
+		if (drag == null || !drag.active) return;
+
+		InteractiveRegion hovered = findRegionAt(mouseX, mouseY);
+		int previewCell = hovered != null ? hovered.regionCellSize : cellSize;
+		ItemSize sz = ItemSizeRegistry.getSize(drag.stack).oriented(drag.rotated);
+		int pw = sz.width() * previewCell;
+		int ph = sz.height() * previewCell;
+
+		if (hovered != null) {
+			DropEvaluation eval = evaluateDrop(hovered, mouseX, mouseY);
+			int fillCol = eval.valid ? TarkovUiTheme.DROP_VALID_FILL : TarkovUiTheme.DROP_INVALID_FILL;
+			int borderCol = eval.valid ? TarkovUiTheme.DROP_VALID_BORDER : TarkovUiTheme.DROP_INVALID_BORDER;
+			context.getMatrices().push();
+			context.getMatrices().translate(0.0f, 0.0f, TarkovUiTheme.Z_DRAG_HIGHLIGHT);
+			if (hovered.view != null) {
+				int hx = hovered.rect.x + eval.dstX * previewCell;
+				int hy = hovered.rect.y + eval.dstY * previewCell;
+				int hw = eval.highlightW * previewCell;
+				int hh = eval.highlightH * previewCell;
+				context.fill(hx, hy, hx + hw, hy + hh, fillCol);
+				context.drawBorder(hx, hy, hw, hh, borderCol);
+			} else {
+				context.fill(hovered.rect.x + 1, hovered.rect.y + 1,
+					hovered.rect.x + hovered.rect.w - 1, hovered.rect.y + hovered.rect.h - 1, fillCol);
+				context.drawBorder(hovered.rect.x, hovered.rect.y, hovered.rect.w, hovered.rect.h, borderCol);
+			}
+			context.getMatrices().pop();
+		}
+
+		int fx = mouseX - pw / 2;
+		int fy = mouseY - ph / 2;
+		context.getMatrices().push();
+		context.getMatrices().translate(0.0f, 0.0f, TarkovUiTheme.Z_DRAG_GHOST);
+		context.fill(fx, fy, fx + pw, fy + ph, 0xCC1B2127);
+		context.drawBorder(fx, fy, pw, ph, TarkovUiTheme.ACCENT_SAND);
+
+		ItemStack previewStack = drag.stack.copy();
+		if (drag.moveCount > 0) {
+			previewStack.setCount(drag.moveCount);
+		}
+		TarkovUiTheme.drawScaledItem(context, previewStack, fx + 2, fy + 2, pw - 4, ph - 4, drag.rotated);
+		if (previewStack.getCount() > 1) {
+			TarkovUiTheme.drawRightAlignedFlatText(context, textRenderer, String.valueOf(previewStack.getCount()),
+				fx + pw - 3, fy + ph - 8, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+		}
+		context.getMatrices().pop();
+	}
+
+	private void renderHoverTooltip(DrawContext context, int mouseX, int mouseY) {
+		if (activeTab == TAB_HEALTH) {
+			for (BodyHealthHudHelper.QuickHealHitbox qh : quickHealHitboxes) {
+				if (qh.contains(mouseX, mouseY)) {
+					Text tip = Text.translatable("tooltip.tarkovcraft.quick_heal",
+						qh.med().stack().getName(),
+						Text.translatable(qh.part().getTranslationKey()));
+					TarkovUiTheme.drawFlatTooltip(context, textRenderer, List.of(tip), mouseX, mouseY, this.width, this.height);
+					return;
+				}
+			}
+			for (HealthMedSlot slot : healthMedSlots) {
+				if (slot.rect().contains(mouseX, mouseY)) {
+					TooltipContext ctx = (client != null && client.options.advancedItemTooltips)
+						? TooltipContext.ADVANCED
+						: TooltipContext.BASIC;
+					List<Text> lines = slot.stack().getTooltip(client != null ? client.player : null, ctx);
+					TarkovUiTheme.drawFlatTooltip(context, textRenderer, lines, mouseX, mouseY, this.width, this.height);
+					return;
+				}
+			}
+		}
+		InteractiveRegion hovered = findRegionAt(mouseX, mouseY);
+		if (hovered == null) return;
+
+		if (hovered.view != null && hovered.view.gridRevealed()) {
+			int gx = (mouseX - hovered.rect.x) / hovered.regionCellSize;
+			int gy = (mouseY - hovered.rect.y) / hovered.regionCellSize;
+			TarkovNetworking.ViewEntry entry = findEntryAt(hovered.view, gx, gy);
+			if (entry != null && !entry.discovered()) {
+				TarkovUiTheme.drawFlatTooltip(context, textRenderer,
+					List.of(Text.translatable("tooltip.tarkovcraft.unsearched_item")),
+					mouseX, mouseY, this.width, this.height);
+				return;
+			}
+		}
+
+		HoveredTarget target = resolveHoveredTarget(mouseX, mouseY);
+		if (target != null && !target.stack().isEmpty()) {
+			TooltipContext ctx = (client != null && client.options.advancedItemTooltips)
+				? TooltipContext.ADVANCED
+				: TooltipContext.BASIC;
+			List<Text> lines = target.stack().getTooltip(client != null ? client.player : null, ctx);
+			TarkovUiTheme.drawFlatTooltip(context, textRenderer, lines, mouseX, mouseY, this.width, this.height);
+		}
+	}
+
+	@Override
+	public boolean mouseScrolled(double mouseX, double mouseY, double amount) {
+		if (contextMenu != null) {
+			contextMenu = null;
+			return true;
+		}
+		for (int i = inspectWindows.size() - 1; i >= 0; i--) {
+			TarkovInspectWindow win = inspectWindows.get(i);
+			if (win.contains(mouseX, mouseY)) {
+				win.handleMouseScrolled(mouseX, mouseY, amount);
+				return true;
+			}
+		}
+		int step = (int) (-amount * 18);
+		if (centerScrollArea != null && centerScrollArea.contains(mouseX, mouseY)) {
+			centerScrollY = Math.max(0, Math.min(centerMaxScroll, centerScrollY + step));
+			return true;
+		}
+		if (rightScrollArea != null && rightScrollArea.contains(mouseX, mouseY)) {
+			rightScrollY = Math.max(0, Math.min(rightMaxScroll, rightScrollY + step));
+			return true;
+		}
+		return super.mouseScrolled(mouseX, mouseY, amount);
+	}
+
+	@Override
+	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		// 1. Split Modal intercepts first
+		if (splitModal != null) {
+			boolean close = splitModal.handleMouseClicked(mouseX, mouseY, button);
+			if (close || button == 1) {
+				splitModal = null;
+			}
+			return true;
+		}
+
+		// 2. RMB Context Menu
+		if (contextMenu != null) {
+			if (button == 0 && contextMenu.contains(mouseX, mouseY)) {
+				int idx = (int) ((mouseY - contextMenu.y - 1) / contextMenu.rowH);
+				if (idx >= 0 && idx < contextMenu.options.size()) {
+					MenuOption opt = contextMenu.options.get(idx);
+					contextMenu = null;
+					opt.action().run();
+					return true;
+				}
+			}
+			contextMenu = null;
+			return true;
+		}
+
+		// 3. Inspect Windows (topmost first, brings clicked window to front)
+		for (int i = inspectWindows.size() - 1; i >= 0; i--) {
+			TarkovInspectWindow win = inspectWindows.get(i);
+			if (win.contains(mouseX, mouseY)) {
+				if (button == 1 || win.handleMouseClicked(mouseX, mouseY, button)) {
+					inspectWindows.remove(i);
+				} else if (i != inspectWindows.size() - 1) {
+					inspectWindows.remove(i);
+					inspectWindows.add(win);
+				}
+				return true;
+			}
+		}
+
+		FloatingWindowLayout floatingWindow = findFloatingWindowAt(mouseX, mouseY);
+		if (floatingWindow != null && button != 1) {
+			if (button == 0) {
+				if (floatingWindow.closeRect().contains(mouseX, mouseY)) {
+					ClientNetworkSender.sendCloseCase(floatingWindow.uuid());
+				} else if (floatingWindow.searchRect() != null && floatingWindow.searchRect().contains(mouseX, mouseY)) {
+					ClientNetworkSender.sendRequestSearch(floatingWindow.uuid());
+				} else if (floatingWindow.headerRect().contains(mouseX, mouseY)) {
+					draggingFloatingUuid = floatingWindow.uuid();
+				} else {
+					clickGearItem(mouseX, mouseY);
+				}
+			}
+			return true;
+		}
+
+		// 4. Right-click: cancel drag OR clear selected med OR open dynamic EFT Context Menu
+		if (button == 1) {
+			if (drag != null) {
+				drag = null;
+				return true;
+			}
+			if (activeTab == TAB_HEALTH) {
+				selectedHealthMed = null;
+				return true;
+			}
+			if (activeTab == TAB_GEAR) {
+				HoveredTarget target = resolveHoveredTarget(mouseX, mouseY);
+				if (target != null && !target.stack().isEmpty()) {
+					selectedTarget = new SelectedTarget(target.loc(), target.idx(), target.entryId());
+					openContextMenu((int) mouseX, (int) mouseY, target);
+					return true;
+				}
+			}
+			return true;
+		}
+
+		if (button != 0) {
+			return super.mouseClicked(mouseX, mouseY, button);
+		}
+
+		// 5. Top bar tabs & Back button
+		if (tabGearBtn != null && tabGearBtn.contains(mouseX, mouseY)) {
+			activeTab = TAB_GEAR;
+			return true;
+		}
+		if (tabHealthBtn != null && tabHealthBtn.contains(mouseX, mouseY)) {
+			activeTab = TAB_HEALTH;
+			drag = null;
+			return true;
+		}
+		if (closeBtn != null && closeBtn.contains(mouseX, mouseY)) {
+			this.close();
+			return true;
+		}
+		if (activeTab == TAB_HEALTH) {
+			return handleHealthTabClick(mouseX, mouseY);
+		}
+		if (activeTab != TAB_GEAR) {
+			return true;
+		}
+
+		// 6. Section action buttons ([-]/[+], [X], SEARCH)
+		for (int i = actionButtons.size() - 1; i >= 0; i--) {
+			ActionButton btn = actionButtons.get(i);
+			if (btn.hits(mouseX, mouseY)) {
+				btn.action().run();
+				return true;
+			}
+		}
+
+		if (clickGearItem(mouseX, mouseY)) {
+			return true;
+		}
+
+		// Empty space in the left column starts 3D player rotation.
+		if (leftColumnArea != null && leftColumnArea.contains(mouseX, mouseY) && findRegionAt(mouseX, mouseY) == null) {
+			rotatingPlayerModel = true;
+		}
+		selectedTarget = null;
+		return true;
+	}
+
+	private boolean clickGearItem(double mouseX, double mouseY) {
+		HoveredTarget target = resolveHoveredTarget(mouseX, mouseY);
+		if (target == null || target.stack().isEmpty()) {
+			return false;
+		}
+		if (Screen.hasShiftDown()) {
+			TarkovNetworking.sendQuickTransfer(target.loc(), target.idx(), target.entryId());
+			return true;
+		}
+		int moveCount = 0;
+		if (target.stack().getCount() > 1) {
+			if (Screen.hasControlDown()) {
+				moveCount = Math.max(1, target.stack().getCount() / 2);
+			} else if (Screen.hasAltDown()) {
+				moveCount = 1;
+			}
+		}
+		drag = new DragState(target.loc(), target.idx(), target.entryId(),
+			target.stack().copy(), target.rotated(), moveCount, mouseX, mouseY);
+		return true;
+	}
+
+	@Override
+	public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+		if (button == 0) {
+			if (splitModal != null && splitModal.handleMouseDragged(mouseX)) {
+				return true;
+			}
+			for (int i = inspectWindows.size() - 1; i >= 0; i--) {
+				if (inspectWindows.get(i).handleMouseDragged(deltaX, deltaY, this.width, this.height)) {
+					return true;
+				}
+			}
+			if (draggingFloatingUuid != null) {
+				int[] pos = floatingWinPos.get(draggingFloatingUuid);
+				if (pos != null) {
+					pos[0] = Math.max(4, Math.min(this.width - 60, pos[0] + (int) Math.round(deltaX)));
+					pos[1] = Math.max(TarkovUiTheme.TOP_BAR_H + 2, Math.min(this.height - 40, pos[1] + (int) Math.round(deltaY)));
+				}
+				return true;
+			}
+			if (rotatingPlayerModel) {
+				playerPreviewYaw += (float) (deltaX * 1.4);
+				return true;
+			}
+			if (drag != null && !drag.active) {
+				if (Math.hypot(mouseX - drag.startX, mouseY - drag.startY) > TarkovUiTheme.DRAG_THRESHOLD_PX) {
+					drag.active = true;
+				}
+				return true;
+			}
+		}
+		return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+	}
+
+	@Override
+	public boolean mouseReleased(double mouseX, double mouseY, int button) {
+		if (button == 0) {
+			rotatingPlayerModel = false;
+			draggingFloatingUuid = null;
+			for (TarkovInspectWindow win : inspectWindows) {
+				win.handleMouseReleased();
+			}
+			if (splitModal != null) splitModal.handleMouseReleased();
+
+			if (drag != null) {
+				if (!drag.active) {
+					// Short click (<= 4px): select item cleanly without moving or dropping
+					selectedTarget = new SelectedTarget(drag.srcLoc, drag.srcIdx, drag.srcEntryId);
+				} else {
+					InteractiveRegion region = findRegionAt(mouseX, mouseY);
+					if (region != null) {
+						DropEvaluation eval = evaluateDrop(region, mouseX, mouseY);
+						if (region.locType == TarkovNetworking.LOC_EQUIPMENT
+							&& region.containerIndex == EquipmentSlotType.HEADSET.ordinal()
+							&& EquipmentSlotType.HEADSET.accepts(drag.stack)
+							&& ClientLoadoutCache.getLoadout().blocksHeadset() && client != null && client.player != null) {
+							client.player.sendMessage(Text.translatable("message.tarkovcraft.headset_blocked"), true);
+						}
+						if (eval.valid) {
+							TarkovNetworking.sendMoveItem(
+								drag.srcLoc, drag.srcIdx, drag.srcEntryId,
+								region.locType, region.containerIndex,
+								eval.dstX, eval.dstY, drag.rotated, drag.moveCount
+							);
+						}
+					}
+					// Invalid or outside panels: silently cancel drag without dropping!
+				}
+				drag = null;
+				return true;
+			}
+		}
+		return super.mouseReleased(mouseX, mouseY, button);
+	}
+
+	@Override
+	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+			if (splitModal != null) {
+				splitModal = null;
+				return true;
+			}
+			if (contextMenu != null) {
+				contextMenu = null;
+				return true;
+			}
+			if (!inspectWindows.isEmpty()) {
+				inspectWindows.remove(inspectWindows.size() - 1);
+				return true;
+			}
+			TarkovNetworking.ScreenStateSnapshot snap = ClientLoadoutCache.getScreenState();
+			if (snap != null && !snap.openContainers().isEmpty()) {
+				UUID lastId = snap.openContainers().get(snap.openContainers().size() - 1).containerUuid();
+				ClientNetworkSender.sendCloseCase(lastId);
+				return true;
+			}
+			this.close();
+			return true;
+		}
+
+		if (splitModal != null) {
+			if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+				splitModal.confirm();
+				splitModal = null;
+				return true;
+			}
+			return true;
+		}
+
+		if (keyCode == GLFW.GLFW_KEY_R && drag != null && drag.active) {
+			drag.rotated = !drag.rotated;
+			return true;
+		}
+
+		if (activeTab == TAB_GEAR && (drag == null || !drag.active)) {
+			HoveredTarget target = resolveHoveredTarget(lastMouseX, lastMouseY);
+			if (target != null && !target.stack().isEmpty()) {
+				boolean isInteractKey = keyCode == GLFW.GLFW_KEY_F || TarkovCraftClient.interactKey.matchesKey(keyCode, scanCode);
+				// Ctrl+F -> Quick Equip / Unequip (checked BEFORE plain F!)
+				if (Screen.hasControlDown() && isInteractKey) {
+					contextMenu = null;
+					ClientNetworkSender.sendQuickEquip(target.loc(), target.idx(), target.entryId());
+					return true;
+				}
+				// F -> Quick Transfer
+				if (!Screen.hasControlDown() && isInteractKey) {
+					contextMenu = null;
+					TarkovNetworking.sendQuickTransfer(target.loc(), target.idx(), target.entryId());
+					return true;
+				}
+				// Delete -> Discard full stack
+				if (keyCode == GLFW.GLFW_KEY_DELETE) {
+					contextMenu = null;
+					TarkovNetworking.sendMoveItem(target.loc(), target.idx(), target.entryId(),
+						TarkovNetworking.LOC_DROP, 0, 0, 0, false, 0);
+					return true;
+				}
+				// Q -> Drop 1 (or Ctrl+Q -> Drop all)
+				if (client != null && client.options.dropKey.matchesKey(keyCode, scanCode)) {
+					contextMenu = null;
+					int count = Screen.hasControlDown() ? 0 : 1;
+					TarkovNetworking.sendMoveItem(target.loc(), target.idx(), target.entryId(),
+						TarkovNetworking.LOC_DROP, 0, 0, 0, false, count);
+					return true;
+				}
+			}
+		}
+
+		if (client != null && client.options.inventoryKey.matchesKey(keyCode, scanCode)) {
+			this.close();
+			return true;
+		}
+		return super.keyPressed(keyCode, scanCode, modifiers);
+	}
+
+	private void openContextMenu(int mx, int my, HoveredTarget target) {
+		List<MenuOption> opts = new ArrayList<>();
+		ItemStack stack = target.stack();
+
+		if (TarkovScreenHandler.isConsumableItem(stack)) {
+			opts.add(new MenuOption(Text.translatable("ctx.tarkovcraft.use").getString(), () ->
+				ClientNetworkSender.sendUseItem(target.loc(), target.idx(), target.entryId())
+			));
+		}
+
+		if (target.loc() == TarkovNetworking.LOC_EQUIPMENT) {
+			opts.add(new MenuOption(Text.translatable("ctx.tarkovcraft.unequip").getString(), () ->
+				ClientNetworkSender.sendQuickEquip(target.loc(), target.idx(), target.entryId())
+			));
+		} else if (TarkovScreenHandler.canEquipItem(stack)) {
+			opts.add(new MenuOption(Text.translatable("ctx.tarkovcraft.equip").getString(), () ->
+				ClientNetworkSender.sendQuickEquip(target.loc(), target.idx(), target.entryId())
+			));
+		}
+
+		boolean isOwnWornContainer = target.loc() == TarkovNetworking.LOC_EQUIPMENT
+			&& (stack.getItem() instanceof BackpackItem || stack.getItem() instanceof TacticalRigItem);
+		if (stack.getItem() instanceof TarkovCaseItem
+			|| ((stack.getItem() instanceof BackpackItem || stack.getItem() instanceof TacticalRigItem) && !isOwnWornContainer)) {
+			opts.add(new MenuOption(Text.translatable("ctx.tarkovcraft.open").getString(), () ->
+				ClientNetworkSender.sendOpenCase(target.loc(), target.idx(), target.entryId())
+			));
+		}
+
+		if (stack.getItem() instanceof BackpackItem || stack.getItem() instanceof TacticalRigItem) {
+			if (ContainerItemHelper.requiresSearch(stack)) {
+				UUID containerId = ContainerItemHelper.getContainerUuid(stack);
+				if (containerId != null) {
+					opts.add(new MenuOption(Text.translatable("ctx.tarkovcraft.search").getString(), () ->
+						ClientNetworkSender.sendRequestSearch(containerId)
+					));
+				}
+			} else if (target.loc() == TarkovNetworking.LOC_EQUIPMENT) {
+				opts.add(new MenuOption(Text.translatable("ctx.tarkovcraft.open").getString(), () -> {
+					if (stack.getItem() instanceof TacticalRigItem) {
+						rigCollapsed = false;
+						centerScrollY = Math.max(0, Math.min(centerMaxScroll, rigSectionOffsetY));
+					} else {
+						backpackCollapsed = false;
+						centerScrollY = Math.max(0, Math.min(centerMaxScroll, backpackSectionOffsetY));
+					}
+				}));
+			}
+		}
+
+		if (stack.getCount() > 1) {
+			opts.add(new MenuOption(Text.translatable("ctx.tarkovcraft.split").getString(), () ->
+				splitModal = new TarkovSplitModal(stack, mx, my, this.width, this.height, amount ->
+					ClientNetworkSender.sendSplitStack(target.loc(), target.idx(), target.entryId(), amount)
+				)
+			));
+		}
+
+		opts.add(new MenuOption(Text.translatable("ctx.tarkovcraft.inspect").getString(), () -> {
+			if (inspectWindows.size() >= MAX_INSPECT_WINDOWS) {
+				inspectWindows.remove(0);
+			}
+			inspectWindows.add(new TarkovInspectWindow(stack, this.width, this.height, inspectWindows.size()));
+		}));
+
+		opts.add(new MenuOption(Text.translatable("ctx.tarkovcraft.discard").getString(), () ->
+			TarkovNetworking.sendMoveItem(target.loc(), target.idx(), target.entryId(),
+				TarkovNetworking.LOC_DROP, 0, 0, 0, false, 0)
+		));
+
+		int menuW = 124;
+		for (MenuOption opt : opts) {
+			menuW = Math.max(menuW, Math.round(textRenderer.getWidth(opt.label()) * TarkovUiTheme.TEXT_SCALE_SMALL) + 18);
+		}
+		int mh = opts.size() * 17 + 2;
+		int clampedX = Math.max(4, Math.min(mx, this.width - menuW - 4));
+		int clampedY = Math.max(4, Math.min(my, this.height - mh - 4));
+		contextMenu = new ContextMenu(clampedX, clampedY, menuW, opts);
+	}
+
+	private record DropEvaluation(boolean valid, int dstX, int dstY, int highlightW, int highlightH) {
+	}
+
+	private DropEvaluation evaluateDrop(InteractiveRegion region, double mouseX, double mouseY) {
+		if (drag == null) {
+			return new DropEvaluation(false, 0, 0, 1, 1);
+		}
+		ItemStack moving = drag.stack;
+		int movingCount = drag.moveCount > 0 ? drag.moveCount : moving.getCount();
+		PlayerLoadout loadout = ClientLoadoutCache.getLoadout();
+
+		if (region.locType == TarkovNetworking.LOC_EQUIPMENT) {
+			EquipmentSlotType slot = EquipmentSlotType.values()[region.containerIndex];
+			boolean sameEquipSlot = drag.srcLoc == TarkovNetworking.LOC_EQUIPMENT && drag.srcIdx == region.containerIndex;
+			boolean ok = !sameEquipSlot && drag.moveCount <= 0 && loadout.canEquip(slot, moving);
+			return new DropEvaluation(ok, 0, 0, 1, 1);
+		}
+
+		if (region.locType == TarkovNetworking.LOC_POCKET) {
+			boolean is1x1 = loadout.canPlaceInPocket(moving);
+			ItemStack pocket = loadout.getPocket(region.containerIndex);
+			boolean ok = is1x1 && (pocket.isEmpty() || canClientStackInto(pocket, moving, movingCount));
+			return new DropEvaluation(ok, 0, 0, 1, 1);
+		}
+
+		if (region.view != null) {
+			if (!region.view.gridRevealed() || (region.locType == TarkovNetworking.LOC_SECURE_CONTAINER
+				&& !PlayerLoadout.canPlaceInSecureContainer(moving))) {
+				return new DropEvaluation(false, 0, 0, 1, 1);
+			}
+			// Prevent container recursion on client preview
+			if (ContainerItemHelper.containsContainerId(moving, region.view.containerId())) {
+				return new DropEvaluation(false, 0, 0, 1, 1);
+			}
+
+			int gx = Math.max(0, (int) ((mouseX - region.rect.x) / region.regionCellSize));
+			int gy = Math.max(0, (int) ((mouseY - region.rect.y) / region.regionCellSize));
+
+			// Check stack-merge onto an existing discovered entry under cursor
+			TarkovNetworking.ViewEntry targetEntry = findEntryAt(region.view, gx, gy);
+			if (targetEntry != null && !Objects.equals(targetEntry.entryId(), drag.srcEntryId)) {
+				boolean canStack = targetEntry.discovered() && canClientStackInto(targetEntry.stack(), moving, movingCount);
+				return new DropEvaluation(canStack, targetEntry.x(), targetEntry.y(), targetEntry.width(), targetEntry.height());
+			}
+
+			ItemSize sz = ItemSizeRegistry.getSize(moving).oriented(drag.rotated);
+			if (gx + sz.width() > region.gridWidth || gy + sz.height() > region.gridHeight) {
+				return new DropEvaluation(false, gx, gy, sz.width(), sz.height());
+			}
+
+			boolean sameGrid = region.locType == drag.srcLoc && region.containerIndex == drag.srcIdx;
+			boolean isPartial = drag.moveCount > 0 && drag.moveCount < moving.getCount();
+			for (TarkovNetworking.ViewEntry e : region.view.entries()) {
+				if (sameGrid && !isPartial && Objects.equals(e.entryId(), drag.srcEntryId)) {
+					continue;
+				}
+				boolean overlapX = gx < e.x() + e.width() && gx + sz.width() > e.x();
+				boolean overlapY = gy < e.y() + e.height() && gy + sz.height() > e.y();
+				if (overlapX && overlapY) {
+					return new DropEvaluation(false, gx, gy, sz.width(), sz.height());
+				}
+			}
+
+			// Ground rig/backpack or external crate/own grid validation
+			boolean supportedLoc = region.locType == TarkovNetworking.LOC_RIG_GRID
+				|| region.locType == TarkovNetworking.LOC_BACKPACK_GRID
+				|| region.locType == TarkovNetworking.LOC_EXTERNAL_GRID
+				|| region.locType == TarkovNetworking.LOC_FLOATING_CONTAINER
+				|| region.locType == TarkovNetworking.LOC_SECURE_CONTAINER
+				|| (region.locType == TarkovNetworking.LOC_CORPSE_RIG_GRID
+				&& handler.getMode() == TarkovScreenHandler.MODE_GROUND_ITEM);
+			return new DropEvaluation(supportedLoc, gx, gy, sz.width(), sz.height());
+		}
+
+		return new DropEvaluation(false, 0, 0, 1, 1);
+	}
+
+	private static boolean canClientStackInto(ItemStack target, ItemStack incoming, int incomingCount) {
+		return target.isStackable()
+			&& ItemStack.canCombine(target, incoming)
+			&& target.getCount() + incomingCount <= target.getMaxCount();
+	}
+
+	@Nullable
+	private static UUID findFirstUnsearchedTarget(TarkovNetworking.ScreenStateSnapshot snap) {
+		if (snap.externalGridView() != null && !isGridFullySearched(snap.externalGridView())) {
+			return snap.externalGridView().searchTargetId();
+		}
+		for (TarkovNetworking.GridView v : snap.corpseRigViews()) {
+			if (!isGridFullySearched(v)) {
+				return v.searchTargetId();
+			}
+		}
+		if (snap.corpseBackpackView() != null && !isGridFullySearched(snap.corpseBackpackView())) {
+			return snap.corpseBackpackView().searchTargetId();
+		}
+		return null;
+	}
+
+	private static boolean isGridFullySearched(TarkovNetworking.GridView view) {
+		if (!view.gridRevealed()) return false;
+		for (TarkovNetworking.ViewEntry e : view.entries()) {
+			if (!e.discovered()) return false;
+		}
+		return true;
+	}
+
+	@Nullable
+	private HoveredTarget resolveHoveredTarget(double mx, double my) {
+		InteractiveRegion region = findRegionAt(mx, my);
+		if (region == null) return null;
+
+		if (region.locType == TarkovNetworking.LOC_EQUIPMENT) {
+			ItemStack st = ClientLoadoutCache.getLoadout().getEquipment(EquipmentSlotType.values()[region.containerIndex]);
+			return st.isEmpty() ? null : new HoveredTarget(region.locType, region.containerIndex, null, st, false, null);
+		}
+		if (region.locType == TarkovNetworking.LOC_CORPSE_EQUIPMENT) {
+			TarkovNetworking.ScreenStateSnapshot snap = ClientLoadoutCache.getScreenState();
+			if (snap != null && snap.corpseLoadout() != null) {
+				ItemStack st = snap.corpseLoadout().getEquipment(EquipmentSlotType.values()[region.containerIndex]);
+				return st.isEmpty() ? null : new HoveredTarget(region.locType, region.containerIndex, null, st, false, null);
+			}
+			return null;
+		}
+		if (region.locType == TarkovNetworking.LOC_POCKET) {
+			ItemStack st = ClientLoadoutCache.getLoadout().getPocket(region.containerIndex);
+			return st.isEmpty() ? null : new HoveredTarget(region.locType, region.containerIndex, null, st, false, null);
+		}
+		if (region.view != null && region.view.gridRevealed()) {
+			int gx = (int) ((mx - region.rect.x) / region.regionCellSize);
+			int gy = (int) ((my - region.rect.y) / region.regionCellSize);
+			TarkovNetworking.ViewEntry entry = findEntryAt(region.view, gx, gy);
+			if (entry != null && entry.discovered() && !entry.stack().isEmpty()) {
+				return new HoveredTarget(region.locType, region.containerIndex, entry.entryId(), entry.stack(), entry.rotated(), region.view);
+			}
+		}
+		return null;
+	}
+
+	private List<HealthMedSlot> collectOwnMedicalItems(
+		PlayerLoadout loadout,
+		@Nullable TarkovNetworking.ScreenStateSnapshot snap
+	) {
+		List<HealthMedSlot> out = new ArrayList<>();
+		for (int i = 0; i < PlayerLoadout.POCKET_COUNT; i++) {
+			ItemStack st = loadout.getPocket(i);
+			if (!st.isEmpty() && st.getItem() instanceof TarkovMedicalItem) {
+				out.add(new HealthMedSlot(TarkovNetworking.LOC_POCKET, i, null, st, new Rect(0, 0, 0, 0)));
+			}
+		}
+		for (var entry : loadout.getSecureContainer().getEntries()) {
+			ItemStack stack = entry.getStack();
+			if (stack.getItem() instanceof TarkovMedicalItem) {
+				out.add(new HealthMedSlot(TarkovNetworking.LOC_SECURE_CONTAINER, 0, entry.getEntryId(), stack, new Rect(0, 0, 0, 0)));
+			}
+		}
+		if (snap != null) {
+			for (int ri = 0; ri < snap.ownRigViews().size(); ri++) {
+				TarkovNetworking.GridView gv = snap.ownRigViews().get(ri);
+				if (!gv.gridRevealed()) continue;
+				for (TarkovNetworking.ViewEntry e : gv.entries()) {
+					if (e.discovered() && !e.stack().isEmpty() && e.stack().getItem() instanceof TarkovMedicalItem) {
+						out.add(new HealthMedSlot(TarkovNetworking.LOC_RIG_GRID, ri, e.entryId(), e.stack(), new Rect(0, 0, 0, 0)));
+					}
+				}
+			}
+			TarkovNetworking.GridView bpView = snap.ownBackpackView();
+			if (bpView != null && bpView.gridRevealed()) {
+				for (TarkovNetworking.ViewEntry e : bpView.entries()) {
+					if (e.discovered() && !e.stack().isEmpty() && e.stack().getItem() instanceof TarkovMedicalItem) {
+						out.add(new HealthMedSlot(TarkovNetworking.LOC_BACKPACK_GRID, 0, e.entryId(), e.stack(), new Rect(0, 0, 0, 0)));
+					}
+				}
+			}
+		}
+		return out;
+	}
+
+	@Nullable
+	private ItemStack resolveSelectedMedStack(List<HealthMedSlot> meds) {
+		if (selectedHealthMed == null) {
+			return null;
+		}
+		for (HealthMedSlot s : meds) {
+			if (selectedHealthMed.matches(s)) {
+				return s.stack();
+			}
+		}
+		selectedHealthMed = null;
+		return null;
+	}
+
+	private void drawHealthMedicalStrip(
+		DrawContext context, int x, int y, int w, int h,
+		List<HealthMedSlot> collectedMeds, int mouseX, int mouseY
+	) {
+		context.fill(x, y, x + w, y + h, 0xCC0C0E11);
+		context.drawBorder(x, y, w, h, TarkovUiTheme.BORDER_PANEL);
+
+		String hdr = Text.translatable("ui.tarkovcraft.medical_strip").getString();
+		String hint = Text.translatable("ui.tarkovcraft.medical_hint").getString();
+		TarkovUiTheme.drawFlatText(context, textRenderer, hdr, x + 5, y + 3,
+			TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
+		TarkovUiTheme.drawRightAlignedFlatText(context, textRenderer, hint, x + w - 5, y + 3,
+			TarkovUiTheme.TEXT_MUTED, TarkovUiTheme.TEXT_SCALE_SMALL);
+
+		if (collectedMeds.isEmpty()) {
+			TarkovUiTheme.drawCenteredFlatText(context, textRenderer, Text.translatable("ui.tarkovcraft.no_meds").getString(),
+				x + w / 2, y + 19, TarkovUiTheme.TEXT_MUTED, TarkovUiTheme.TEXT_SCALE_SMALL);
+			return;
+		}
+
+		int slotSize = 22;
+		int gap = 4;
+		int sx = x + 6;
+		int sy = y + 13;
+		for (HealthMedSlot raw : collectedMeds) {
+			if (sx + slotSize > x + w - 4) break;
+			Rect r = new Rect(sx, sy, slotSize, slotSize);
+			HealthMedSlot slot = new HealthMedSlot(raw.loc(), raw.idx(), raw.entryId(), raw.stack(), r);
+			healthMedSlots.add(slot);
+
+			boolean isSel = selectedHealthMed != null && selectedHealthMed.matches(slot);
+			boolean hov = r.contains(mouseX, mouseY);
+			context.fill(r.x, r.y, r.x + r.w, r.y + r.h, TarkovUiTheme.itemCategoryTint(slot.stack()));
+			context.drawBorder(r.x, r.y, r.w, r.h,
+				isSel ? TarkovUiTheme.ACCENT_SAND : (hov ? TarkovUiTheme.BORDER_HOVER : TarkovUiTheme.BORDER_OCCUPIED));
+
+			TarkovUiTheme.drawScaledItem(context, slot.stack(), r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+			drawCellCornerTags(context, r.x, r.y, r.w, r.h, slot.stack());
+			sx += slotSize + gap;
+		}
+	}
+
+	private boolean handleHealthTabClick(double mouseX, double mouseY) {
+		for (BodyHealthHudHelper.QuickHealHitbox qh : quickHealHitboxes) {
+			if (qh.contains(mouseX, mouseY)) {
+				ClientNetworkSender.sendHealPart(qh.med().loc(), qh.med().idx(), qh.med().entryId(), qh.part());
+				return true;
+			}
+		}
+		for (HealthMedSlot slot : healthMedSlots) {
+			if (slot.rect().contains(mouseX, mouseY)) {
+				boolean isPainkillerOnly = slot.stack().getItem() instanceof TarkovMedicalItem med
+					&& med.getMedicalType().isPainkillerOnly();
+				if (Screen.hasShiftDown() || isPainkillerOnly) {
+					ClientNetworkSender.sendHealPart(slot.loc(), slot.idx(), slot.entryId(), null);
+					selectedHealthMed = null;
+				} else if (selectedHealthMed != null && selectedHealthMed.matches(slot)) {
+					selectedHealthMed = null;
+				} else {
+					selectedHealthMed = new SelectedMedRef(slot.loc(), slot.idx(), slot.entryId());
+				}
+				return true;
+			}
+		}
+
+		if (selectedHealthMed != null) {
+			ItemStack selStack = resolveSelectedMedStack(healthMedSlots);
+			if (selStack != null) {
+				for (BodyHealthHudHelper.PartHitbox hit : healthPartHitboxes) {
+					if (hit.contains(mouseX, mouseY)) {
+						if (MedicalHelper.canApplyToPart(ClientLoadoutCache.getBodyHealth(), selStack, hit.part())) {
+							ClientNetworkSender.sendHealPart(
+								selectedHealthMed.loc(), selectedHealthMed.idx(), selectedHealthMed.entryId(), hit.part()
+							);
+						}
+						return true;
+					}
+				}
+			}
+		}
+		return true;
+	}
+
+	@Nullable
+	private InteractiveRegion findRegionAt(double mx, double my) {
+		FloatingWindowLayout window = findFloatingWindowAt(mx, my);
+		for (int i = regions.size() - 1; i >= 0; i--) {
+			InteractiveRegion region = regions.get(i);
+			if (window != null && (region.locType != TarkovNetworking.LOC_FLOATING_CONTAINER
+				|| (region.containerIndex >> 8) != window.windowIndex())) {
+				continue;
+			}
+			if (region.hits(mx, my)) {
+				return region;
+			}
+		}
+		return null;
+	}
+
+	@Nullable
+	private FloatingWindowLayout findFloatingWindowAt(double mouseX, double mouseY) {
+		if (activeTab == TAB_GEAR) {
+			for (int index = floatingLayouts.size() - 1; index >= 0; index--) {
+				FloatingWindowLayout window = floatingLayouts.get(index);
+				if (window.bounds().contains(mouseX, mouseY)) return window;
+			}
+		}
+		return null;
+	}
+
+	private boolean isOverAnyInspectWindow(double mx, double my) {
+		for (TarkovInspectWindow win : inspectWindows) {
+			if (win.contains(mx, my)) return true;
+		}
+		return false;
+	}
+
+	private void drawMedUseStripIfActive(DrawContext context, int x, int y) {
+		BodyPartHealth health = ClientLoadoutCache.getBodyHealth();
+		if (!health.isMedUseActive()) return;
+		net.minecraft.util.Identifier id = net.minecraft.util.Identifier.tryParse(health.getActiveMedItemId());
+		ItemStack icon = (id != null && net.minecraft.registry.Registries.ITEM.containsId(id))
+			? new ItemStack(net.minecraft.registry.Registries.ITEM.get(id))
+			: ItemStack.EMPTY;
+		String name = icon.isEmpty() ? "Med" : icon.getName().getString();
+		String secStr = String.format(Locale.ROOT, "%.1f", health.getActiveMedRemainingSeconds());
+		String label = Text.translatable("ui.tarkovcraft.med_using", name, secStr).getString();
+
+		int w = 136;
+		int h = 15;
+		context.fill(x, y, x + w, y + h, 0xE00C0F13);
+		context.drawBorder(x, y, w, h, 0xFF4CAF50);
+		context.fill(x + 2, y + h - 4, x + 2 + Math.round((w - 4) * health.getActiveMedProgress()), y + h - 2, 0xFF4CAF50);
+		TarkovUiTheme.drawFlatText(context, textRenderer,
+			TarkovUiTheme.trimWithEllipsis(textRenderer, label, w - 8, TarkovUiTheme.TEXT_SCALE_SMALL),
+			x + 4, y + 3, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+	}
+
+	private void renderFloatingContainerWindows(
+		DrawContext context, TarkovNetworking.ScreenStateSnapshot snap, int mouseX, int mouseY
+	) {
+		List<TarkovNetworking.OpenContainerView> open = snap.openContainers();
+		int fCell = Math.max(16, Math.min(22, cellSize));
+		int pad = 6;
+		int headerH = 18;
+
+		for (int winIdx = 0; winIdx < open.size(); winIdx++) {
+			TarkovNetworking.OpenContainerView view = open.get(winIdx);
+			List<TarkovNetworking.GridView> grids = view.grids();
+			if (grids.isEmpty()) continue;
+
+			// Compute layout dimensions (single grid or horizontal/wrapped multi-compartment rig)
+			int bodyW = 0;
+			int bodyH = 0;
+			int maxW = Math.min(this.width - 32, 320);
+			int rowX = 0;
+			int rowH = 0;
+			for (int gi = 0; gi < grids.size(); gi++) {
+				TarkovNetworking.GridView gv = grids.get(gi);
+				int gw = gv.width() * fCell;
+				int gh = gv.height() * fCell;
+				if (gi > 0 && rowX + gw + 4 > maxW - pad * 2) {
+					bodyH += rowH + 4;
+					rowX = 0;
+					rowH = 0;
+				}
+				rowX += gw + (gi > 0 && rowX > 0 ? 4 : 0);
+				bodyW = Math.max(bodyW, rowX);
+				rowH = Math.max(rowH, gh);
+			}
+			bodyH += rowH;
+			int winW = Math.max(118, bodyW + pad * 2);
+			int winH = headerH + pad + bodyH + pad;
+
+			int[] pos = floatingWinPos.computeIfAbsent(view.containerUuid(), k -> new int[]{
+				Math.max(12, (this.width - winW) / 2 + floatingWinPos.size() * 18),
+				Math.max(TarkovUiTheme.TOP_BAR_H + 10, (this.height - winH) / 2 + floatingWinPos.size() * 18)
+			});
+			pos[0] = Math.max(4, Math.min(this.width - winW - 4, pos[0]));
+			pos[1] = Math.max(TarkovUiTheme.TOP_BAR_H + 2, Math.min(this.height - winH - 4, pos[1]));
+			int wx = pos[0];
+			int wy = pos[1];
+
+			TarkovUiTheme.clearDepthBuffer(context);
+			context.getMatrices().push();
+			context.getMatrices().translate(0.0f, 0.0f, 220.0f + winIdx * 10.0f);
+
+			context.fill(wx, wy, wx + winW, wy + winH, TarkovUiTheme.BG_MODAL);
+			context.drawBorder(wx, wy, winW, winH, TarkovUiTheme.BORDER_POPUP);
+			context.fill(wx + 1, wy + 1, wx + winW - 1, wy + headerH, TarkovUiTheme.BG_MODAL_HEADER);
+			context.fill(wx + 1, wy + headerH, wx + winW - 1, wy + headerH + 1, TarkovUiTheme.BORDER_PANEL);
+
+			boolean unsearched = false;
+			for (TarkovNetworking.GridView gv : grids) {
+				if (!isGridFullySearched(gv)) {
+					unsearched = true;
+					break;
+				}
+			}
+
+			Rect closeRect = new Rect(wx + winW - 16, wy + 3, 13, 12);
+			boolean cHov = closeRect.contains(mouseX, mouseY);
+			context.fill(closeRect.x, closeRect.y, closeRect.x + closeRect.w, closeRect.y + closeRect.h,
+				cHov ? TarkovUiTheme.HOVER_MENU_BG : 0xFF281A1A);
+			TarkovUiTheme.drawCenteredFlatText(context, textRenderer, "X", closeRect.x + 6, closeRect.y + 3,
+				cHov ? TarkovUiTheme.HOVER_MENU_TEXT : 0xFFE57373, TarkovUiTheme.TEXT_SCALE_SMALL);
+
+			Rect searchRect = null;
+			int titleReserve = 22;
+			if (unsearched) {
+				String sTxt = Text.translatable("ui.tarkovcraft.search_btn").getString();
+				int sw = Math.max(42, Math.round(textRenderer.getWidth(sTxt) * TarkovUiTheme.TEXT_SCALE_SMALL) + 8);
+				searchRect = new Rect(closeRect.x - sw - 4, wy + 3, sw, 12);
+				boolean sHov = searchRect.contains(mouseX, mouseY);
+				context.fill(searchRect.x, searchRect.y, searchRect.x + searchRect.w, searchRect.y + searchRect.h,
+					sHov ? TarkovUiTheme.HOVER_MENU_BG : 0xFF283226);
+				context.drawBorder(searchRect.x, searchRect.y, searchRect.w, searchRect.h,
+					sHov ? TarkovUiTheme.BORDER_HOVER : TarkovUiTheme.ACCENT_SAND);
+				TarkovUiTheme.drawCenteredFlatText(context, textRenderer, sTxt,
+					searchRect.x + searchRect.w / 2, searchRect.y + 3,
+					sHov ? TarkovUiTheme.HOVER_MENU_TEXT : TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
+				titleReserve += sw + 6;
+			}
+
+			String title = TarkovUiTheme.trimWithEllipsis(textRenderer,
+				view.title().isEmpty() ? "CONTAINER" : view.title().toUpperCase(Locale.ROOT),
+				winW - pad - titleReserve, TarkovUiTheme.TEXT_SCALE_SMALL);
+			TarkovUiTheme.drawFlatText(context, textRenderer, title, wx + pad, wy + 6,
+				TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
+
+			Rect bounds = new Rect(wx, wy, winW, winH);
+			Rect headerRect = new Rect(wx, wy, winW, headerH);
+			floatingLayouts.add(new FloatingWindowLayout(view.containerUuid(), winIdx, bounds, headerRect, closeRect, searchRect));
+
+			int gx = wx + pad;
+			int gy = wy + headerH + pad;
+			int curRowH = 0;
+			for (int gi = 0; gi < grids.size(); gi++) {
+				TarkovNetworking.GridView gv = grids.get(gi);
+				int gw = gv.width() * fCell;
+				int gh = gv.height() * fCell;
+				if (gi > 0 && gx + gw > wx + winW - pad + 1) {
+					gx = wx + pad;
+					gy += curRowH + 4;
+					curRowH = 0;
+				}
+				int encodedIdx = (winIdx << 8) | (gi & 0xFF);
+				drawGridView(context, gx, gy, bounds, TarkovNetworking.LOC_FLOATING_CONTAINER, encodedIdx, fCell, gv, snap, false, mouseX, mouseY);
+				gx += gw + 4;
+				curRowH = Math.max(curRowH, gh);
+			}
+
+			context.getMatrices().pop();
+		}
+	}
+
+	@Nullable
+	private TarkovNetworking.ViewEntry findEntryAt(TarkovNetworking.GridView view, int gx, int gy) {
+		for (TarkovNetworking.ViewEntry e : view.entries()) {
+			if (gx >= e.x() && gx < e.x() + e.width() && gy >= e.y() && gy < e.y() + e.height()) {
+				return e;
+			}
+		}
+		return null;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\client\screen\TarkovSplitModal.java ==========
+package com.tarkovcraft.client.screen;
+
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.item.TooltipContext;
-import net.minecraft.item.FoodComponent;
 import net.minecraft.item.ItemStack;
 import net.minecraft.text.Text;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
+import java.util.function.IntConsumer;
 
 /**
- * Draggable EFT-style item inspection window rendered above the inventory on z = 420.
+ * Compact modal for choosing an exact split count (1 .. count - 1) before sending C2S_SPLIT_STACK.
  */
 @Environment(EnvType.CLIENT)
-public final class TarkovInspectWindow {
-	private static final int WIN_W = 232;
-	private static final int WIN_H = 192;
-	private static final int HEADER_H = 20;
+public final class TarkovSplitModal {
+	private static final int WIN_W = 164;
+	private static final int WIN_H = 84;
 
-	private final ItemStack stack;
+	private final int maxSplit;
+	private final String itemName;
+	private final IntConsumer onConfirm;
+
 	private int x;
 	private int y;
-	private boolean draggingHeader = false;
+	private int splitAmount;
+	private boolean draggingSlider = false;
 
-	public TarkovInspectWindow(ItemStack stack, int screenW, int screenH) {
-		this.stack = stack.copy();
-		this.x = Math.max(8, (screenW - WIN_W) / 2);
-		this.y = Math.max(8, (screenH - WIN_H) / 2);
+	public TarkovSplitModal(ItemStack stack, int anchorX, int anchorY, int screenW, int screenH, IntConsumer onConfirm) {
+		this.maxSplit = Math.max(1, stack.getCount() - 1);
+		this.itemName = stack.getName().getString();
+		this.splitAmount = Math.max(1, stack.getCount() / 2);
+		this.onConfirm = onConfirm;
+		this.x = Math.max(6, Math.min(screenW - WIN_W - 6, anchorX - WIN_W / 2));
+		this.y = Math.max(6, Math.min(screenH - WIN_H - 6, anchorY - WIN_H / 2));
 	}
 
-	public void render(DrawContext ctx, TextRenderer tr, int mouseX, int mouseY, int screenW, int screenH) {
-		clampToScreen(screenW, screenH);
-
+	public void render(DrawContext ctx, TextRenderer tr, int mouseX, int mouseY) {
 		ctx.getMatrices().push();
 		ctx.getMatrices().translate(0.0f, 0.0f, TarkovUiTheme.Z_MODAL);
 
 		ctx.fill(x, y, x + WIN_W, y + WIN_H, TarkovUiTheme.BG_MODAL);
 		ctx.drawBorder(x, y, WIN_W, WIN_H, TarkovUiTheme.BORDER_POPUP);
 
-		// Header
-		ctx.fill(x + 1, y + 1, x + WIN_W - 1, y + HEADER_H, TarkovUiTheme.BG_MODAL_HEADER);
-		ctx.fill(x + 1, y + HEADER_H, x + WIN_W - 1, y + HEADER_H + 1, TarkovUiTheme.BORDER_PANEL);
-		String title = tr.trimToWidth(stack.getName().getString(), WIN_W - 32);
-		ctx.drawText(tr, title, x + 6, y + 6, TarkovUiTheme.TEXT_PRIMARY, false);
+		ctx.fill(x + 1, y + 1, x + WIN_W - 1, y + 16, TarkovUiTheme.BG_MODAL_HEADER);
+		String title = Text.translatable("ui.tarkovcraft.split_title").getString() + " // " + itemName;
+		TarkovUiTheme.drawFlatText(ctx, tr, tr.trimToWidth(title, Math.round((WIN_W - 10) / TarkovUiTheme.TEXT_SCALE_SMALL)),
+			x + 5, y + 5, TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
 
-		// Close [X] button
-		int closeX = x + WIN_W - 18;
-		int closeY = y + 3;
-		boolean closeHov = mouseX >= closeX && mouseX < closeX + 14 && mouseY >= closeY && mouseY < closeY + 14;
-		ctx.fill(closeX, closeY, closeX + 14, closeY + 14, closeHov ? TarkovUiTheme.HOVER_MENU_BG : 0xFF1D2025);
-		TarkovUiTheme.drawCenteredFlatText(ctx, tr, "X", closeX + 7, closeY + 4,
-			closeHov ? TarkovUiTheme.HOVER_MENU_TEXT : TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+		int total = maxSplit + 1;
+		int remain = total - splitAmount;
+		TarkovUiTheme.drawCenteredFlatText(ctx, tr, splitAmount + " / " + remain,
+			x + WIN_W / 2, y + 22, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
 
-		// Left 70x70 large item preview
-		int previewX = x + 8;
-		int previewY = y + HEADER_H + 8;
-		ctx.fill(previewX, previewY, previewX + 70, previewY + 70, TarkovUiTheme.itemCategoryTint(stack));
-		ctx.drawBorder(previewX, previewY, 70, 70, TarkovUiTheme.BORDER_OCCUPIED);
+		// Slider track
+		int trackX = x + 10;
+		int trackY = y + 36;
+		int trackW = WIN_W - 20;
+		ctx.fill(trackX, trackY, trackX + trackW, trackY + 6, 0xFF1A1E23);
+		ctx.drawBorder(trackX, trackY, trackW, 6, TarkovUiTheme.BORDER_SLOT);
 
-		ctx.getMatrices().push();
-		ctx.getMatrices().translate(previewX + 35.0f, previewY + 35.0f, 10.0f);
-		ctx.getMatrices().scale(3.0f, 3.0f, 1.0f);
-		ctx.drawItem(stack, -8, -8);
-		ctx.getMatrices().pop();
+		float ratio = maxSplit <= 1 ? 1.0f : (splitAmount - 1) / (float) (maxSplit - 1);
+		int fillW = Math.max(4, Math.round(ratio * (trackW - 2)));
+		ctx.fill(trackX + 1, trackY + 1, trackX + 1 + fillW, trackY + 5, TarkovUiTheme.ACCENT_SAND);
 
-		ItemSize size = ItemSizeRegistry.getSize(stack);
-		TarkovUiTheme.drawRightAlignedFlatText(ctx, tr, size.width() + "x" + size.height(),
-			previewX + 67, previewY + 60, TarkovUiTheme.TEXT_SECONDARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+		int knobX = trackX + Math.round(ratio * (trackW - 6));
+		ctx.fill(knobX, trackY - 2, knobX + 6, trackY + 8, TarkovUiTheme.TEXT_PRIMARY);
 
-		// Right metadata column
-		int metaX = previewX + 78;
-		int metaY = previewY + 2;
-		float weight = (stack.getItem() instanceof TarkovArmorItem armor)
-			? armor.getWeightKg()
-			: PlayerLoadout.estimateItemWeight(stack);
-		ItemRarityTier rarity = ItemRarityRegistry.getTier(stack);
-
-		TarkovUiTheme.drawFlatText(ctx, tr,
-			Text.translatable("ui.tarkovcraft.inspect_weight", String.format(Locale.ROOT, "%.2f", weight)).getString(),
-			metaX, metaY, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
-		metaY += 12;
-		TarkovUiTheme.drawFlatText(ctx, tr,
-			Text.translatable("ui.tarkovcraft.inspect_count", stack.getCount() + "/" + stack.getMaxCount()).getString(),
-			metaX, metaY, TarkovUiTheme.TEXT_SECONDARY, TarkovUiTheme.TEXT_SCALE_SMALL);
-		metaY += 12;
-		TarkovUiTheme.drawFlatText(ctx, tr,
-			Text.translatable("ui.tarkovcraft.inspect_size", size.width(), size.height()).getString(),
-			metaX, metaY, TarkovUiTheme.TEXT_SECONDARY, TarkovUiTheme.TEXT_SCALE_SMALL);
-		metaY += 12;
-		TarkovUiTheme.drawFlatText(ctx, tr,
-			Text.translatable("ui.tarkovcraft.inspect_rarity", rarity.name()).getString(),
-			metaX, metaY, TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
-		metaY += 12;
-
-		FoodComponent fc = stack.getItem().getFoodComponent();
-		if (fc != null) {
-			int sat = Math.round(fc.getHunger() * fc.getSaturationModifier() * 2.0f);
-			TarkovUiTheme.drawFlatText(ctx, tr,
-				Text.translatable("ui.tarkovcraft.inspect_food", fc.getHunger(), sat).getString(),
-				metaX, metaY, 0xFF77B85A, TarkovUiTheme.TEXT_SCALE_SMALL);
-		}
-
-		// Divider & detailed tooltip lines
-		int detY = previewY + 76;
-		ctx.fill(x + 8, detY, x + WIN_W - 8, detY + 1, TarkovUiTheme.BORDER_PANEL);
-		detY += 5;
-
-		List<String> details = collectDetailLines();
-		int maxLines = Math.max(1, (y + WIN_H - 6 - detY) / 9);
-		for (int i = 0; i < Math.min(details.size(), maxLines); i++) {
-			String line = tr.trimToWidth(details.get(i), Math.round((WIN_W - 18) / TarkovUiTheme.TEXT_SCALE_SMALL));
-			TarkovUiTheme.drawFlatText(ctx, tr, line, x + 8, detY + i * 9, TarkovUiTheme.TEXT_SECONDARY, TarkovUiTheme.TEXT_SCALE_SMALL);
-		}
+		// Buttons: 50% | OK | Cancel
+		drawButton(ctx, tr, x + 8, y + 56, 36, 18, "50%", mouseX, mouseY, false);
+		drawButton(ctx, tr, x + 50, y + 56, 52, 18, Text.translatable("ui.tarkovcraft.confirm").getString(), mouseX, mouseY, true);
+		drawButton(ctx, tr, x + 108, y + 56, 48, 18, Text.translatable("ui.tarkovcraft.cancel").getString(), mouseX, mouseY, false);
 
 		ctx.getMatrices().pop();
 	}
 
-	private List<String> collectDetailLines() {
-		List<String> out = new ArrayList<>();
-		MinecraftClient mc = MinecraftClient.getInstance();
-		TooltipContext ctx = (mc != null && mc.options.advancedItemTooltips)
-			? TooltipContext.ADVANCED
-			: TooltipContext.BASIC;
-		List<Text> tooltip = stack.getTooltip(mc != null ? mc.player : null, ctx);
-		for (int i = 1; i < tooltip.size(); i++) {
-			String s = tooltip.get(i).getString().trim();
-			if (!s.isEmpty()) {
-				out.add(s);
-			}
-		}
-		return out;
+	private void drawButton(DrawContext ctx, TextRenderer tr, int bx, int by, int bw, int bh, String label, int mx, int my, boolean accent) {
+		boolean hov = mx >= bx && mx < bx + bw && my >= by && my < by + bh;
+		int bg = hov ? TarkovUiTheme.HOVER_MENU_BG : (accent ? 0xFF283226 : 0xFF1A1E24);
+		int textCol = hov ? TarkovUiTheme.HOVER_MENU_TEXT : (accent ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.TEXT_PRIMARY);
+		ctx.fill(bx, by, bx + bw, by + bh, bg);
+		ctx.drawBorder(bx, by, bw, bh, hov ? TarkovUiTheme.BORDER_HOVER : TarkovUiTheme.BORDER_SLOT);
+		TarkovUiTheme.drawCenteredFlatText(ctx, tr, label, bx + bw / 2, by + 6, textCol, TarkovUiTheme.TEXT_SCALE_SMALL);
 	}
 
 	public boolean contains(double mx, double my) {
@@ -150,39 +2153,1233 @@ public final class TarkovInspectWindow {
 	}
 
 	/**
-	 * Returns true if the window was closed by clicking [X].
+	 * Returns true if the modal should close after handling the click.
 	 */
 	public boolean handleMouseClicked(double mx, double my, int button) {
-		if (button != 0 || !contains(mx, my)) {
+		if (button != 0) {
 			return false;
 		}
-		int closeX = x + WIN_W - 18;
-		int closeY = y + 3;
-		if (mx >= closeX && mx < closeX + 14 && my >= closeY && my < closeY + 14) {
+		if (!contains(mx, my)) {
 			return true;
 		}
-		if (my >= y && my < y + HEADER_H) {
-			draggingHeader = true;
+
+		// Slider hit
+		int trackX = x + 10;
+		int trackY = y + 32;
+		int trackW = WIN_W - 20;
+		if (mx >= trackX && mx <= trackX + trackW && my >= trackY && my <= trackY + 14) {
+			draggingSlider = true;
+			updateSliderFromMouse(mx);
+			return false;
 		}
+
+		// 50% button
+		if (mx >= x + 8 && mx < x + 44 && my >= y + 56 && my < y + 74) {
+			splitAmount = Math.max(1, Math.min(maxSplit, (maxSplit + 1) / 2));
+			return false;
+		}
+
+		// OK button
+		if (mx >= x + 50 && mx < x + 102 && my >= y + 56 && my < y + 74) {
+			confirm();
+			return true;
+		}
+
+		// Cancel button
+		if (mx >= x + 108 && mx < x + 156 && my >= y + 56 && my < y + 74) {
+			return true;
+		}
+
 		return false;
 	}
 
-	public boolean handleMouseDragged(double dx, double dy, int screenW, int screenH) {
-		if (!draggingHeader) {
+	public boolean handleMouseDragged(double mx) {
+		if (!draggingSlider) {
 			return false;
 		}
-		x += Math.round(dx);
-		y += Math.round(dy);
-		clampToScreen(screenW, screenH);
+		updateSliderFromMouse(mx);
 		return true;
 	}
 
 	public void handleMouseReleased() {
-		draggingHeader = false;
+		draggingSlider = false;
 	}
 
-	private void clampToScreen(int screenW, int screenH) {
-		x = Math.max(4, Math.min(screenW - WIN_W - 4, x));
-		y = Math.max(4, Math.min(screenH - WIN_H - 4, y));
+	public void confirm() {
+		onConfirm.accept(Math.max(1, Math.min(maxSplit, splitAmount)));
+	}
+
+	private void updateSliderFromMouse(double mx) {
+		int trackX = x + 10;
+		int trackW = WIN_W - 20;
+		float ratio = (float) Math.max(0.0, Math.min(1.0, (mx - trackX) / trackW));
+		splitAmount = 1 + Math.round(ratio * Math.max(0, maxSplit - 1));
+		splitAmount = Math.max(1, Math.min(maxSplit, splitAmount));
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\client\screen\TarkovUiTheme.java ==========
+package com.tarkovcraft.client.screen;
+
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.tarkovcraft.ammo.AmmoTier;
+import net.minecraft.client.MinecraftClient;
+import org.lwjgl.opengl.GL11;
+import com.tarkovcraft.grid.ItemSize;
+import com.tarkovcraft.grid.ItemSizeRegistry;
+import com.tarkovcraft.item.BackpackItem;
+import com.tarkovcraft.item.TacticalRigItem;
+import com.tarkovcraft.item.TarkovArmorItem;
+import com.tarkovcraft.item.TarkovCaseItem;
+import com.tarkovcraft.item.TarkovGrenadeItem;
+import com.tarkovcraft.item.TarkovMedicalItem;
+import com.tarkovcraft.item.TarkovStimulatorItem;
+import com.tarkovcraft.screen.TarkovScreenHandler;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.minecraft.client.font.TextRenderer;
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.item.AxeItem;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.SwordItem;
+import net.minecraft.registry.Registries;
+import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.math.RotationAxis;
+
+import java.util.List;
+
+/**
+ * Shared EFT-inspired flat translucent visual theme, typography, Z-layers, and render helpers.
+ */
+@Environment(EnvType.CLIENT)
+public final class TarkovUiTheme {
+	// Backgrounds & Translucency
+	public static final int BG_WORLD_OVERLAY = 0x85000000;
+	public static final int BG_TOP_BAR = 0xE00C0D0F;
+	public static final int BG_PANEL = 0xC80D0E10;
+	public static final int BG_QUICK_BAR = 0xCC0D0E10;
+	public static final int BG_SLOT = 0x99121417;
+	public static final int BG_CELL_EMPTY = 0x99101215;
+	public static final int BG_CELL_OCCUPIED_DEFAULT = 0xCC1C2026;
+	public static final int BG_CELL_SILHOUETTE = 0xDD090B0D;
+	public static final int BG_DIM_DRAG_SOURCE = 0x9907080A;
+	public static final int BG_TOOLTIP = 0xE60B0C0E;
+	public static final int BG_CONTEXT_MENU = 0xF0111316;
+	public static final int BG_MODAL = 0xEE0E1013;
+	public static final int BG_MODAL_HEADER = 0xF515181C;
+
+	// Borders & Accents
+	public static final int BORDER_PANEL = 0xFF2D3035;
+	public static final int BORDER_SLOT = 0xFF32363C;
+	public static final int BORDER_CELL = 0xFF272B30;
+	public static final int BORDER_OCCUPIED = 0xFF3E454E;
+	public static final int BORDER_HOVER = 0xFF8C877B;
+	public static final int BORDER_TOOLTIP = 0xFF3E4249;
+	public static final int BORDER_POPUP = 0xFF42464D;
+	public static final int BORDER_BROKEN = 0xFFC93838;
+	public static final int ACCENT_SAND = 0xFFD4B46A;
+	public static final int HOVER_MENU_BG = 0xFFDCD6C8;
+	public static final int HOVER_MENU_TEXT = 0xFF111214;
+	public static final int DROP_VALID_FILL = 0x553B7A3B;
+	public static final int DROP_VALID_BORDER = 0xFF4CAF50;
+	public static final int DROP_INVALID_FILL = 0x558F2B2B;
+	public static final int DROP_INVALID_BORDER = 0xFFE53935;
+
+	// Text & Typography
+	public static final int TEXT_PRIMARY = 0xFFE6E1D6;
+	public static final int TEXT_SECONDARY = 0xB8CFCAC0;
+	public static final int TEXT_MUTED = 0xFF848B94;
+	public static final float TEXT_SCALE_SMALL = 0.72f;
+	public static final float TEXT_SCALE_HEADER = 0.85f;
+
+	// Layout Proportions & Drag
+	public static final int TOP_BAR_H = 26;
+	public static final int QUICK_BAR_H = 30;
+	public static final int STATS_BAR_H = 18;
+	public static final int OUTER_PAD = 6;
+	public static final int COL_GAP = 6;
+	public static final double DRAG_THRESHOLD_PX = 4.0;
+
+	// Z Layers
+	public static final int Z_PLAYER = 0;
+	public static final int Z_SLOTS = 130;
+	public static final int Z_DRAG_HIGHLIGHT = 260;
+	public static final int Z_DRAG_GHOST = 320;
+	public static final int Z_MODAL = 420;
+	public static final int Z_POPUP = 500;
+
+	private TarkovUiTheme() {
+	}
+
+	public static void clearDepthBuffer(DrawContext ctx) {
+		ctx.draw();
+		RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, MinecraftClient.IS_SYSTEM_MAC);
+	}
+
+	public static void drawFlatText(DrawContext ctx, TextRenderer tr, String text, int x, int y, int color, float scale) {
+		ctx.getMatrices().push();
+		ctx.getMatrices().scale(scale, scale, 1.0f);
+		ctx.drawText(tr, text, Math.round(x / scale), Math.round(y / scale), color, false);
+		ctx.getMatrices().pop();
+	}
+
+	public static void drawCenteredFlatText(DrawContext ctx, TextRenderer tr, String text, int cx, int y, int color, float scale) {
+		int w = Math.round(tr.getWidth(text) * scale);
+		drawFlatText(ctx, tr, text, cx - w / 2, y, color, scale);
+	}
+
+	public static void drawRightAlignedFlatText(DrawContext ctx, TextRenderer tr, String text, int rightX, int y, int color, float scale) {
+		int w = Math.round(tr.getWidth(text) * scale);
+		drawFlatText(ctx, tr, text, rightX - w, y, color, scale);
+	}
+
+	public static void drawCellCornerBadge(
+		DrawContext ctx, TextRenderer tr, String text,
+		int cellX, int cellY, int cellW, int cellH, int color
+	) {
+		if (text == null || text.isEmpty()) {
+			return;
+		}
+		int rawW = Math.max(1, tr.getWidth(text));
+		int maxW = Math.max(8, cellW - 4);
+		float scale = Math.min(0.62f, maxW / (float) rawW);
+		int drawnW = Math.round(rawW * scale);
+		int drawnH = Math.max(4, Math.round(7.0f * scale));
+
+		int tx = cellX + cellW - 2 - drawnW;
+		int ty = cellY + cellH - 2 - drawnH;
+
+		ctx.getMatrices().push();
+		ctx.getMatrices().translate(0.0f, 0.0f, 165.0f);
+		ctx.fill(tx - 1, ty - 1, tx + drawnW + 1, ty + drawnH + 1, 0xA608090C);
+		ctx.getMatrices().translate(tx, ty, 1.0f);
+		ctx.getMatrices().scale(scale, scale, 1.0f);
+		ctx.drawText(tr, text, 0, 0, color, false);
+		ctx.getMatrices().pop();
+	}
+
+	public static String trimWithEllipsis(TextRenderer tr, String text, int maxPx, float scale) {
+		int maxRaw = Math.max(6, Math.round(maxPx / scale));
+		if (tr.getWidth(text) <= maxRaw) {
+			return text;
+		}
+		int dotsW = tr.getWidth("...");
+		if (maxRaw <= dotsW) {
+			return tr.trimToWidth(text, maxRaw);
+		}
+		return tr.trimToWidth(text, maxRaw - dotsW) + "...";
+	}
+
+	public static void drawScaledItem(DrawContext ctx, ItemStack stack, int x, int y, int w, int h) {
+		drawScaledItem(ctx, stack, x, y, w, h, false);
+	}
+
+	public static void drawScaledItem(DrawContext ctx, ItemStack stack, int x, int y, int w, int h, boolean rotated) {
+		if (stack == null || stack.isEmpty() || w <= 0 || h <= 0) {
+			return;
+		}
+		Identifier id = Registries.ITEM.getId(stack.getItem());
+		int minDim = Math.min(w, h);
+		int maxDim = Math.max(w, h);
+		float targetPx;
+		if ("tarkovcraft".equals(id.getNamespace())) {
+			ItemSize itemSize = ItemSizeRegistry.getSize(stack);
+			boolean rectangularItem = itemSize.width() != itemSize.height();
+			if (rectangularItem && maxDim > minDim * 1.25f) {
+				targetPx = Math.min(maxDim * 0.86f, minDim * 2.0f);
+			} else {
+				targetPx = Math.min(38.0f, minDim * 0.80f);
+			}
+		} else {
+			targetPx = Math.min(38.0f, minDim * 0.82f);
+		}
+		float scale = targetPx / 16.0f;
+		ctx.enableScissor(x, y, x + w, y + h);
+		try {
+			ctx.getMatrices().push();
+			ctx.getMatrices().translate(x + w * 0.5f, y + h * 0.5f, 0.0f);
+			if (rotated) {
+				ctx.getMatrices().multiply(RotationAxis.POSITIVE_Z.rotationDegrees(90.0f));
+			}
+			ctx.getMatrices().scale(scale, scale, 1.0f);
+			ctx.drawItem(stack, -8, -8);
+			ctx.getMatrices().pop();
+		} finally {
+			ctx.disableScissor();
+		}
+	}
+
+	public static int itemCategoryTint(ItemStack stack) {
+		if (stack == null || stack.isEmpty()) {
+			return BG_CELL_OCCUPIED_DEFAULT;
+		}
+		Item item = stack.getItem();
+		if (item instanceof TarkovArmorItem) {
+			return 0xCC18242C;
+		}
+		if (item instanceof TarkovMedicalItem || item instanceof TarkovStimulatorItem) {
+			return 0xCC182824;
+		}
+		if (item instanceof BackpackItem || item instanceof TacticalRigItem || item instanceof TarkovCaseItem) {
+			return 0xCC1E241C;
+		}
+		Identifier id = Registries.ITEM.getId(item);
+		boolean isWeapon = ("tacz".equals(id.getNamespace()) && id.getPath().contains("gun"))
+			|| item instanceof SwordItem
+			|| item instanceof AxeItem
+			|| item instanceof TarkovGrenadeItem;
+		if (isWeapon || AmmoTier.isTaczAmmoStack(stack)) {
+			return 0xCC26221A;
+		}
+		if (TarkovScreenHandler.isConsumableItem(stack)) {
+			return 0xCC182620;
+		}
+		return BG_CELL_OCCUPIED_DEFAULT;
+	}
+
+	public static void drawFlatTooltip(
+		DrawContext ctx,
+		TextRenderer tr,
+		List<Text> lines,
+		int mouseX,
+		int mouseY,
+		int screenW,
+		int screenH
+	) {
+		if (lines == null || lines.isEmpty()) {
+			return;
+		}
+		clearDepthBuffer(ctx);
+		int pad = 5;
+		int lineH = 10;
+		int maxW = 0;
+		for (Text line : lines) {
+			maxW = Math.max(maxW, tr.getWidth(line));
+		}
+		int boxW = maxW + pad * 2;
+		int boxH = lines.size() * lineH + pad * 2 - 2;
+
+		int bx = mouseX + 10;
+		int by = mouseY - 6;
+		if (bx + boxW > screenW - 4) {
+			bx = Math.max(4, mouseX - boxW - 8);
+		}
+		if (by + boxH > screenH - 4) {
+			by = Math.max(4, screenH - boxH - 4);
+		}
+		if (by < 4) {
+			by = 4;
+		}
+
+		ctx.getMatrices().push();
+		ctx.getMatrices().translate(0.0f, 0.0f, Z_POPUP);
+		ctx.fill(bx, by, bx + boxW, by + boxH, BG_TOOLTIP);
+		ctx.drawBorder(bx, by, boxW, boxH, BORDER_TOOLTIP);
+
+		int ty = by + pad;
+		for (int i = 0; i < lines.size(); i++) {
+			Text line = lines.get(i);
+			int col = i == 0 ? TEXT_PRIMARY : TEXT_SECONDARY;
+			ctx.drawText(tr, line, bx + pad, ty, col, false);
+			ty += lineH;
+		}
+		ctx.getMatrices().pop();
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\client\screen\TarkovWorkbenchScreen.java ==========
+package com.tarkovcraft.client.screen;
+
+import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.ammo.TaCZCaliberCatalog;
+import com.tarkovcraft.client.ClientNetworkSender;
+import com.tarkovcraft.client.ClientWorkbenchCache;
+import com.tarkovcraft.grid.ItemSize;
+import com.tarkovcraft.health.TaCZBulletHelper;
+import com.tarkovcraft.item.BackpackItem;
+import com.tarkovcraft.item.TacticalRigItem;
+import com.tarkovcraft.item.TarkovArmorItem;
+import com.tarkovcraft.item.TarkovArmorRepairItem;
+import com.tarkovcraft.screen.TarkovWorkbenchScreenHandler;
+import com.tarkovcraft.workbench.TarkovWorkbenchRecipes;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.ingame.HandledScreen;
+import net.minecraft.client.gui.widget.TextFieldWidget;
+import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.registry.Registries;
+import net.minecraft.text.Text;
+import org.lwjgl.glfw.GLFW;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * Full-screen translucent EFT-style Workbench screen for crafting tiered TaCZ ammo
+ * and TarkovCraft armor/rigs/backpacks/plates.
+ */
+@Environment(EnvType.CLIENT)
+public class TarkovWorkbenchScreen extends HandledScreen<TarkovWorkbenchScreenHandler> {
+	private static final int TAB_AMMO = 0;
+	private static final int TAB_GEAR = 1;
+	private static final int ROW_H = 24;
+
+	private record Rect(int x, int y, int w, int h) {
+		boolean contains(double mx, double my) {
+			return mx >= x && mx < x + w && my >= y && my < y + h;
+		}
+	}
+
+	private record ClickButton(Rect rect, Runnable action) {
+	}
+
+	private enum GearSortMode {
+		DEFAULT("ui.tarkovcraft.wb_sort_default"),
+		ARMOR_DESC("ui.tarkovcraft.wb_sort_armor_desc"),
+		ARMOR_ASC("ui.tarkovcraft.wb_sort_armor_asc"),
+		CAPACITY_DESC("ui.tarkovcraft.wb_sort_cap_desc"),
+		CAPACITY_ASC("ui.tarkovcraft.wb_sort_cap_asc");
+
+		private final String translationKey;
+
+		GearSortMode(String translationKey) {
+			this.translationKey = translationKey;
+		}
+
+		public String getTranslationKey() {
+			return translationKey;
+		}
+
+		public GearSortMode next() {
+			GearSortMode[] vals = values();
+			return vals[(this.ordinal() + 1) % vals.length];
+		}
+	}
+
+	private final List<ClickButton> buttons = new ArrayList<>();
+	private int activeTab = TAB_AMMO;
+
+	// Ammo tab state
+	private int selectedCaliberIndex = 0;
+	private AmmoTier selectedTier = AmmoTier.AP;
+	private boolean upgradeFromFmj = false;
+	private int ammoScrollY = 0;
+	private int ammoMaxScroll = 0;
+	private Rect ammoListClip;
+
+	// Gear tab state
+	private TarkovWorkbenchRecipes.GearCategory gearCategory = TarkovWorkbenchRecipes.GearCategory.HELMET;
+	private GearSortMode gearSortMode = GearSortMode.DEFAULT;
+	private boolean onlyAvailableGear = false;
+	private int selectedGearIndex = 0;
+	private int gearScrollY = 0;
+	private int gearMaxScroll = 0;
+	private Rect gearListClip;
+	private TextFieldWidget searchBox;
+	private List<TarkovWorkbenchRecipes.GearRecipe> cachedFilteredGear = List.of();
+	private TarkovWorkbenchRecipes.GearCategory cachedGearCategory = null;
+	private String cachedGearQuery = null;
+	private GearSortMode cachedGearSortMode = null;
+	private boolean cachedOnlyAvailable = false;
+	private boolean cachedCreative = false;
+	private int cachedWorkbenchRevision = -1;
+
+	public TarkovWorkbenchScreen(TarkovWorkbenchScreenHandler handler, PlayerInventory inventory, Text title) {
+		super(handler, inventory, title);
+	}
+
+	@Override
+	protected void init() {
+		super.init();
+		this.x = 0;
+		this.y = 0;
+		this.backgroundWidth = this.width;
+		this.backgroundHeight = this.height;
+
+		String prevQuery = searchBox != null ? searchBox.getText() : "";
+		int panelW = Math.min(620, this.width - 24);
+		int panelX = (this.width - panelW) / 2;
+		int bodyY = TarkovUiTheme.TOP_BAR_H + 8;
+		int leftW = Math.max(170, Math.round(panelW * 0.40f));
+
+		searchBox = new TextFieldWidget(
+			this.textRenderer,
+			panelX + 8,
+			bodyY + 24,
+			leftW - 16,
+			14,
+			Text.translatable("ui.tarkovcraft.wb_search")
+		);
+		searchBox.setMaxLength(48);
+		searchBox.setPlaceholder(Text.translatable("ui.tarkovcraft.wb_search"));
+		searchBox.setText(prevQuery);
+		searchBox.setChangedListener(s -> {
+			gearScrollY = 0;
+			selectedGearIndex = 0;
+		});
+		searchBox.setVisible(activeTab == TAB_GEAR);
+		addDrawableChild(searchBox);
+	}
+
+	@Override
+	protected void drawBackground(DrawContext context, float delta, int mouseX, int mouseY) {
+	}
+
+	@Override
+	protected void drawForeground(DrawContext context, int mouseX, int mouseY) {
+	}
+
+	@Override
+	public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+		buttons.clear();
+		context.fill(0, 0, this.width, this.height, TarkovUiTheme.BG_WORLD_OVERLAY);
+
+		if (searchBox != null) {
+			searchBox.setVisible(activeTab == TAB_GEAR);
+		}
+
+		renderTopBar(context, mouseX, mouseY);
+
+		int panelW = Math.min(620, this.width - 24);
+		int panelH = Math.max(180, this.height - TarkovUiTheme.TOP_BAR_H - 18);
+		int panelX = (this.width - panelW) / 2;
+		int panelY = TarkovUiTheme.TOP_BAR_H + 8;
+
+		context.fill(panelX, panelY, panelX + panelW, panelY + panelH, TarkovUiTheme.BG_PANEL);
+		context.drawBorder(panelX, panelY, panelW, panelH, TarkovUiTheme.BORDER_PANEL);
+
+		if (activeTab == TAB_AMMO) {
+			renderAmmoTab(context, panelX, panelY, panelW, panelH, mouseX, mouseY);
+		} else {
+			renderGearTab(context, panelX, panelY, panelW, panelH, mouseX, mouseY);
+		}
+
+		super.render(context, mouseX, mouseY, delta);
+	}
+
+	private void renderTopBar(DrawContext context, int mouseX, int mouseY) {
+		int h = TarkovUiTheme.TOP_BAR_H;
+		context.fill(0, 0, this.width, h, TarkovUiTheme.BG_TOP_BAR);
+		context.fill(0, h, this.width, h + 1, TarkovUiTheme.BORDER_PANEL);
+
+		String title = Text.translatable("screen.tarkovcraft.workbench").getString().toUpperCase(Locale.ROOT);
+		TarkovUiTheme.drawFlatText(context, textRenderer, title, 10, 9,
+			TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_HEADER);
+
+		String ammoLabel = Text.translatable("tab.tarkovcraft.wb_ammo").getString();
+		String gearLabel = Text.translatable("tab.tarkovcraft.wb_gear").getString();
+		int ammoW = Math.max(66, Math.round(textRenderer.getWidth(ammoLabel) * TarkovUiTheme.TEXT_SCALE_HEADER) + 18);
+		int gearW = Math.max(96, Math.round(textRenderer.getWidth(gearLabel) * TarkovUiTheme.TEXT_SCALE_HEADER) + 18);
+		int totalTabsW = ammoW + 6 + gearW;
+		int tabX = Math.max(120, (this.width - totalTabsW) / 2);
+
+		drawTopTab(context, new Rect(tabX, 4, ammoW, 18), ammoLabel, activeTab == TAB_AMMO, mouseX, mouseY, () -> {
+			activeTab = TAB_AMMO;
+			if (searchBox != null) searchBox.setFocused(false);
+		});
+		drawTopTab(context, new Rect(tabX + ammoW + 6, 4, gearW, 18), gearLabel, activeTab == TAB_GEAR, mouseX, mouseY, () -> activeTab = TAB_GEAR);
+
+		String backTxt = Text.translatable("ui.tarkovcraft.back_esc").getString();
+		int bw = Math.max(66, Math.round(textRenderer.getWidth(backTxt) * TarkovUiTheme.TEXT_SCALE_SMALL) + 14);
+		Rect backRect = new Rect(this.width - bw - 8, 5, bw, 16);
+		boolean bHov = backRect.contains(mouseX, mouseY);
+		context.fill(backRect.x, backRect.y, backRect.x + backRect.w, backRect.y + backRect.h,
+			bHov ? TarkovUiTheme.HOVER_MENU_BG : 0xFF1A1D22);
+		context.drawBorder(backRect.x, backRect.y, backRect.w, backRect.h, TarkovUiTheme.BORDER_SLOT);
+		TarkovUiTheme.drawCenteredFlatText(context, textRenderer, backTxt, backRect.x + backRect.w / 2, backRect.y + 5,
+			bHov ? TarkovUiTheme.HOVER_MENU_TEXT : TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+		buttons.add(new ClickButton(backRect, this::close));
+	}
+
+	private void drawTopTab(DrawContext context, Rect r, String label, boolean selected, int mouseX, int mouseY, Runnable action) {
+		boolean hov = r.contains(mouseX, mouseY);
+		int bg = selected ? 0xFF28241C : (hov ? 0xFF1E2228 : 0xFF14161A);
+		int border = selected ? TarkovUiTheme.ACCENT_SAND : (hov ? TarkovUiTheme.BORDER_HOVER : TarkovUiTheme.BORDER_SLOT);
+		context.fill(r.x, r.y, r.x + r.w, r.y + r.h, bg);
+		context.drawBorder(r.x, r.y, r.w, r.h, border);
+		TarkovUiTheme.drawCenteredFlatText(context, textRenderer, label, r.x + r.w / 2, r.y + 6,
+			selected ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+		buttons.add(new ClickButton(r, action));
+	}
+
+	private void renderAmmoTab(DrawContext context, int px, int py, int pw, int ph, int mouseX, int mouseY) {
+		int leftW = Math.max(170, Math.round(pw * 0.39f));
+		int rightX = px + leftW + 1;
+		int rightW = pw - leftW - 1;
+		context.fill(px + leftW, py + 1, px + leftW + 1, py + ph - 1, TarkovUiTheme.BORDER_PANEL);
+
+		List<TaCZCaliberCatalog.CaliberSpec> calibers = TaCZCaliberCatalog.getAllCalibersWithExtras(ClientWorkbenchCache.getExtraCalibers());
+		if (calibers.isEmpty()) return;
+		selectedCaliberIndex = Math.max(0, Math.min(selectedCaliberIndex, calibers.size() - 1));
+
+		ammoListClip = new Rect(px + 6, py + 6, leftW - 12, ph - 12);
+		context.enableScissor(ammoListClip.x, ammoListClip.y, ammoListClip.x + ammoListClip.w, ammoListClip.y + ammoListClip.h);
+		int cy = ammoListClip.y - ammoScrollY;
+		for (int i = 0; i < calibers.size(); i++) {
+			TaCZCaliberCatalog.CaliberSpec spec = calibers.get(i);
+			Rect row = new Rect(ammoListClip.x, cy, ammoListClip.w - 6, ROW_H - 2);
+			boolean sel = i == selectedCaliberIndex;
+			boolean hov = row.contains(mouseX, mouseY) && ammoListClip.contains(mouseX, mouseY);
+			context.fill(row.x, row.y, row.x + row.w, row.y + row.h,
+				sel ? 0xCC28241C : (hov ? 0xCC1C2026 : TarkovUiTheme.BG_SLOT));
+			context.drawBorder(row.x, row.y, row.w, row.h,
+				sel ? TarkovUiTheme.ACCENT_SAND : (hov ? TarkovUiTheme.BORDER_HOVER : TarkovUiTheme.BORDER_CELL));
+
+			ItemStack icon = AmmoTier.createTaczAmmoStack(spec.ammoId(), selectedTier, 1);
+			TarkovUiTheme.drawScaledItem(context, icon, row.x + 2, row.y + 2, 18, 18);
+
+			String name = TarkovUiTheme.trimWithEllipsis(textRenderer, spec.displayName(), row.w - 62, TarkovUiTheme.TEXT_SCALE_SMALL);
+			TarkovUiTheme.drawFlatText(context, textRenderer, name, row.x + 24, row.y + 7,
+				sel ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+			TarkovUiTheme.drawRightAlignedFlatText(context, textRenderer, "Pen " + spec.basePenetration(),
+				row.x + row.w - 5, row.y + 7, TarkovUiTheme.TEXT_MUTED, TarkovUiTheme.TEXT_SCALE_SMALL);
+
+			final int idx = i;
+			if (ammoListClip.contains(mouseX, mouseY)) {
+				buttons.add(new ClickButton(row, () -> {
+					selectedCaliberIndex = idx;
+					selectedTier = calibers.get(idx).clampTier(selectedTier);
+					if (selectedTier == AmmoTier.FMJ) {
+						upgradeFromFmj = false;
+					}
+				}));
+			}
+			cy += ROW_H;
+		}
+		context.disableScissor();
+
+		ammoMaxScroll = Math.max(0, calibers.size() * ROW_H - ammoListClip.h);
+		ammoScrollY = Math.max(0, Math.min(ammoScrollY, ammoMaxScroll));
+		drawScrollbar(context, ammoListClip, ammoScrollY, ammoMaxScroll);
+
+		// Right details column
+		TaCZCaliberCatalog.CaliberSpec spec = calibers.get(selectedCaliberIndex);
+		selectedTier = spec.clampTier(selectedTier);
+		int rx = rightX + 12;
+		int rw = rightW - 24;
+		int ry = py + 12;
+
+		ItemStack preview = AmmoTier.createTaczAmmoStack(spec.ammoId(), selectedTier, spec.getBatchSize());
+		context.fill(rx, ry, rx + 36, ry + 36, TarkovUiTheme.itemCategoryTint(preview));
+		context.drawBorder(rx, ry, 36, 36, TarkovUiTheme.BORDER_OCCUPIED);
+		TarkovUiTheme.drawScaledItem(context, preview, rx + 2, ry + 2, 32, 32);
+
+		TarkovUiTheme.drawFlatText(context, textRenderer, spec.displayName(), rx + 44, ry + 5,
+			TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_HEADER);
+		TarkovUiTheme.drawFlatText(context, textRenderer,
+			Text.translatable(selectedTier.getTranslationKey()).getString(),
+			rx + 44, ry + 19, selectedTier.getArgbColor(), TarkovUiTheme.TEXT_SCALE_SMALL);
+		ry += 44;
+
+		// 4 Tier buttons
+		AmmoTier[] tiers = AmmoTier.values();
+		int gap = 5;
+		int tierW = (rw - gap * (tiers.length - 1)) / tiers.length;
+		for (int i = 0; i < tiers.length; i++) {
+			AmmoTier t = tiers[i];
+			Rect tr = new Rect(rx + i * (tierW + gap), ry, tierW, 18);
+			boolean allowed = spec.isTierAllowed(t);
+			boolean sel = allowed && t == selectedTier;
+			boolean hov = allowed && tr.contains(mouseX, mouseY);
+			int bgCol = !allowed ? 0x66101215 : (sel ? 0xFF23272D : (hov ? 0xFF1A1E24 : TarkovUiTheme.BG_SLOT));
+			int bdCol = !allowed ? 0xFF1D2024 : (sel ? t.getArgbColor() : (hov ? TarkovUiTheme.BORDER_HOVER : TarkovUiTheme.BORDER_CELL));
+			int txtCol = !allowed ? 0xFF4A4E55 : t.getArgbColor();
+			String label = allowed ? t.getBadge() : (t.getBadge() + " N/A");
+			context.fill(tr.x, tr.y, tr.x + tr.w, tr.y + tr.h, bgCol);
+			context.drawBorder(tr.x, tr.y, tr.w, tr.h, bdCol);
+			TarkovUiTheme.drawCenteredFlatText(context, textRenderer, label, tr.x + tr.w / 2, tr.y + 6,
+				txtCol, TarkovUiTheme.TEXT_SCALE_SMALL);
+			if (allowed) {
+				buttons.add(new ClickButton(tr, () -> {
+					selectedTier = t;
+					if (selectedTier == AmmoTier.FMJ) {
+						upgradeFromFmj = false;
+					}
+				}));
+			}
+		}
+		ry += 24;
+
+		// Mode toggle (From Scratch vs Upgrade FMJ)
+		int modeW = (rw - 6) / 2;
+		int ownedFmj = ClientWorkbenchCache.getFmjCount(spec.ammoId());
+		Rect scratchRect = new Rect(rx, ry, modeW, 16);
+		boolean sSel = !upgradeFromFmj || selectedTier == AmmoTier.FMJ;
+		drawModeButton(context, scratchRect, Text.translatable("ui.tarkovcraft.wb_mode_scratch").getString(),
+			sSel, true, mouseX, mouseY, () -> upgradeFromFmj = false);
+
+		Rect upgradeRect = new Rect(rx + modeW + 6, ry, modeW, 16);
+		boolean canUpgradeMode = selectedTier != AmmoTier.FMJ;
+		String upgText = Text.translatable("ui.tarkovcraft.wb_mode_upgrade").getString() + " (" + ownedFmj + ")";
+		drawModeButton(context, upgradeRect, upgText, upgradeFromFmj && canUpgradeMode, canUpgradeMode, mouseX, mouseY, () -> {
+			if (selectedTier != AmmoTier.FMJ) upgradeFromFmj = true;
+		});
+		ry += 22;
+
+		// Ballistic stats box
+		int finalPen = TaCZBulletHelper.computePenetration(spec.ammoId(), selectedTier);
+		context.fill(rx, ry, rx + rw, ry + 34, TarkovUiTheme.BG_SLOT);
+		context.drawBorder(rx, ry, rw, 34, TarkovUiTheme.BORDER_CELL);
+		TarkovUiTheme.drawFlatText(context, textRenderer,
+			Text.translatable("tooltip.tarkovcraft.ammo_pen", finalPen, AmmoTier.formatArmorClassTarget(finalPen)).getString(),
+			rx + 6, ry + 6, selectedTier.getArgbColor(), TarkovUiTheme.TEXT_SCALE_SMALL);
+		TarkovUiTheme.drawFlatText(context, textRenderer,
+			Text.translatable("tooltip.tarkovcraft.ammo_dmg_wear",
+				String.format(Locale.ROOT, "%.2f", selectedTier.getDamageMultiplier()),
+				String.format(Locale.ROOT, "%.2f", selectedTier.getArmorWearMultiplier())).getString(),
+			rx + 6, ry + 19, TarkovUiTheme.TEXT_SECONDARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+		ry += 42;
+
+		// Required materials
+		TarkovWorkbenchRecipes.AmmoRecipe recipe = TarkovWorkbenchRecipes.getAmmoRecipe(
+			spec.ammoId(), selectedTier, upgradeFromFmj && selectedTier != AmmoTier.FMJ
+		);
+		boolean creative = client != null && client.player != null && client.player.isCreative();
+		boolean allEnough = renderIngredientsList(
+			context, rx, ry, rw,
+			recipe.materials(),
+			recipe.upgradeFromFmj() ? AmmoTier.createTaczAmmoStack(spec.ammoId(), AmmoTier.FMJ, 1) : ItemStack.EMPTY,
+			ownedFmj,
+			recipe.requiredFmjCount(),
+			creative,
+			19
+		);
+
+		String craftLabel = Text.translatable("ui.tarkovcraft.wb_craft_batch", recipe.batchSize()).getString();
+		Rect craftBtn = new Rect(rx, py + ph - 28, rw, 20);
+		drawCraftButton(context, craftBtn, craftLabel, creative || allEnough, mouseX, mouseY, () ->
+			ClientNetworkSender.sendWorkbenchCraftAmmo(spec.ammoId(), selectedTier, recipe.upgradeFromFmj())
+		);
+	}
+
+	private void renderGearTab(DrawContext context, int px, int py, int pw, int ph, int mouseX, int mouseY) {
+		int leftW = Math.max(185, Math.round(pw * 0.42f));
+		int rightX = px + leftW + 1;
+		int rightW = pw - leftW - 1;
+		context.fill(px + leftW, py + 1, px + leftW + 1, py + ph - 1, TarkovUiTheme.BORDER_PANEL);
+
+		// Category filter strip across top of panel
+		TarkovWorkbenchRecipes.GearCategory[] cats = TarkovWorkbenchRecipes.GearCategory.values();
+		int catGap = 3;
+		int catW = (pw - 16 - catGap * (cats.length - 1)) / cats.length;
+		for (int i = 0; i < cats.length; i++) {
+			TarkovWorkbenchRecipes.GearCategory cat = cats[i];
+			Rect cr = new Rect(px + 8 + i * (catW + catGap), py + 6, catW, 14);
+			boolean sel = cat == gearCategory;
+			boolean hov = cr.contains(mouseX, mouseY);
+			context.fill(cr.x, cr.y, cr.x + cr.w, cr.y + cr.h, sel ? 0xFF28241C : (hov ? 0xFF1C2026 : TarkovUiTheme.BG_SLOT));
+			context.drawBorder(cr.x, cr.y, cr.w, cr.h, sel ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.BORDER_CELL);
+			String label = TarkovUiTheme.trimWithEllipsis(textRenderer,
+				Text.translatable(cat.getTranslationKey()).getString(), cr.w - 4, TarkovUiTheme.TEXT_SCALE_SMALL);
+			TarkovUiTheme.drawCenteredFlatText(context, textRenderer, label, cr.x + cr.w / 2, cr.y + 4,
+				sel ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+			buttons.add(new ClickButton(cr, () -> {
+				gearCategory = cat;
+				gearScrollY = 0;
+				selectedGearIndex = 0;
+			}));
+		}
+
+		// Sort & Available controls row below searchBox (py + 40, height 14)
+		int ctrlW = leftW - 16;
+		int sortW = Math.round(ctrlW * 0.60f);
+		int availX = px + 8 + sortW + 4;
+		int availW = ctrlW - sortW - 4;
+		Rect sortRect = new Rect(px + 8, py + 40, sortW, 14);
+		boolean sortHov = sortRect.contains(mouseX, mouseY);
+		context.fill(sortRect.x, sortRect.y, sortRect.x + sortRect.w, sortRect.y + sortRect.h,
+			sortHov ? 0xFF1C2026 : TarkovUiTheme.BG_SLOT);
+		context.drawBorder(sortRect.x, sortRect.y, sortRect.w, sortRect.h,
+			gearSortMode != GearSortMode.DEFAULT ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.BORDER_CELL);
+		String sortLabel = TarkovUiTheme.trimWithEllipsis(textRenderer,
+			Text.translatable(gearSortMode.getTranslationKey()).getString(), sortRect.w - 6, TarkovUiTheme.TEXT_SCALE_SMALL);
+		TarkovUiTheme.drawCenteredFlatText(context, textRenderer, sortLabel, sortRect.x + sortRect.w / 2, sortRect.y + 4,
+			gearSortMode != GearSortMode.DEFAULT ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+		buttons.add(new ClickButton(sortRect, () -> {
+			gearSortMode = gearSortMode.next();
+			gearScrollY = 0;
+			selectedGearIndex = 0;
+		}));
+
+		Rect availRect = new Rect(availX, py + 40, availW, 14);
+		boolean availHov = availRect.contains(mouseX, mouseY);
+		context.fill(availRect.x, availRect.y, availRect.x + availRect.w, availRect.y + availRect.h,
+			onlyAvailableGear ? 0xFF232C20 : (availHov ? 0xFF1C2026 : TarkovUiTheme.BG_SLOT));
+		context.drawBorder(availRect.x, availRect.y, availRect.w, availRect.h,
+			onlyAvailableGear ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.BORDER_CELL);
+		String availPrefix = onlyAvailableGear ? "[x] " : "[ ] ";
+		String availLabel = TarkovUiTheme.trimWithEllipsis(textRenderer,
+			availPrefix + Text.translatable("ui.tarkovcraft.wb_only_available").getString(),
+			availRect.w - 6, TarkovUiTheme.TEXT_SCALE_SMALL);
+		TarkovUiTheme.drawCenteredFlatText(context, textRenderer, availLabel, availRect.x + availRect.w / 2, availRect.y + 4,
+			onlyAvailableGear ? 0xFF8FD46E : TarkovUiTheme.TEXT_SECONDARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+		buttons.add(new ClickButton(availRect, () -> {
+			onlyAvailableGear = !onlyAvailableGear;
+			gearScrollY = 0;
+			selectedGearIndex = 0;
+		}));
+
+		boolean creative = client != null && client.player != null && client.player.isCreative();
+
+		// Filter & sort recipes (cached until category, query, sortMode, onlyAvailable, creative, or sync revision changes)
+		String query = searchBox != null ? searchBox.getText().trim().toLowerCase(Locale.ROOT) : "";
+		int rev = ClientWorkbenchCache.getRevision();
+		if (cachedGearCategory != gearCategory
+			|| !query.equals(cachedGearQuery)
+			|| cachedGearSortMode != gearSortMode
+			|| cachedOnlyAvailable != onlyAvailableGear
+			|| cachedCreative != creative
+			|| cachedWorkbenchRevision != rev) {
+			List<TarkovWorkbenchRecipes.GearRecipe> all = TarkovWorkbenchRecipes.getGearRecipes(gearCategory);
+			List<TarkovWorkbenchRecipes.GearRecipe> rebuilt = new ArrayList<>();
+			for (TarkovWorkbenchRecipes.GearRecipe r : all) {
+				if (!query.isEmpty() && !r.resultItem().getName().getString().toLowerCase(Locale.ROOT).contains(query)) {
+					continue;
+				}
+				if (onlyAvailableGear && !creative && !hasAllMaterials(r.materials())) {
+					continue;
+				}
+				rebuilt.add(r);
+			}
+			if (gearSortMode != GearSortMode.DEFAULT) {
+				Comparator<TarkovWorkbenchRecipes.GearRecipe> cmp = switch (gearSortMode) {
+					case ARMOR_DESC -> Comparator.comparingInt((TarkovWorkbenchRecipes.GearRecipe r) -> getArmorMetric(r.resultItem())).reversed();
+					case ARMOR_ASC -> Comparator.comparingInt(r -> getArmorMetric(r.resultItem()));
+					case CAPACITY_DESC -> Comparator.comparingInt((TarkovWorkbenchRecipes.GearRecipe r) -> getCapacityMetric(r.resultItem())).reversed();
+					case CAPACITY_ASC -> Comparator.comparingInt(r -> getCapacityMetric(r.resultItem()));
+					default -> Comparator.comparing(r -> r.resultItem().getName().getString());
+				};
+				rebuilt.sort(cmp.thenComparing(r -> r.resultItem().getName().getString(), String.CASE_INSENSITIVE_ORDER));
+			}
+			cachedFilteredGear = List.copyOf(rebuilt);
+			cachedGearCategory = gearCategory;
+			cachedGearQuery = query;
+			cachedGearSortMode = gearSortMode;
+			cachedOnlyAvailable = onlyAvailableGear;
+			cachedCreative = creative;
+			cachedWorkbenchRevision = rev;
+		}
+		List<TarkovWorkbenchRecipes.GearRecipe> filtered = cachedFilteredGear;
+
+		gearListClip = new Rect(px + 8, py + 58, leftW - 16, ph - 66);
+		context.enableScissor(gearListClip.x, gearListClip.y, gearListClip.x + gearListClip.w, gearListClip.y + gearListClip.h);
+		int cy = gearListClip.y - gearScrollY;
+		if (!filtered.isEmpty()) {
+			selectedGearIndex = Math.max(0, Math.min(selectedGearIndex, filtered.size() - 1));
+			for (int i = 0; i < filtered.size(); i++) {
+				TarkovWorkbenchRecipes.GearRecipe recipe = filtered.get(i);
+				Rect row = new Rect(gearListClip.x, cy, gearListClip.w - 6, ROW_H - 2);
+				boolean sel = i == selectedGearIndex;
+				boolean hov = row.contains(mouseX, mouseY) && gearListClip.contains(mouseX, mouseY);
+				context.fill(row.x, row.y, row.x + row.w, row.y + row.h,
+					sel ? 0xCC28241C : (hov ? 0xCC1C2026 : TarkovUiTheme.BG_SLOT));
+				context.drawBorder(row.x, row.y, row.w, row.h,
+					sel ? TarkovUiTheme.ACCENT_SAND : (hov ? TarkovUiTheme.BORDER_HOVER : TarkovUiTheme.BORDER_CELL));
+
+				ItemStack icon = new ItemStack(recipe.resultItem());
+				TarkovUiTheme.drawScaledItem(context, icon, row.x + 2, row.y + 2, 18, 18);
+
+				String tag = shortGearTag(recipe.resultItem());
+				String name = TarkovUiTheme.trimWithEllipsis(textRenderer,
+					icon.getName().getString(), row.w - 58, TarkovUiTheme.TEXT_SCALE_SMALL);
+				TarkovUiTheme.drawFlatText(context, textRenderer, name, row.x + 24, row.y + 7,
+					sel ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+				TarkovUiTheme.drawRightAlignedFlatText(context, textRenderer, tag, row.x + row.w - 5, row.y + 7,
+					TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
+
+				final int idx = i;
+				if (gearListClip.contains(mouseX, mouseY)) {
+					buttons.add(new ClickButton(row, () -> selectedGearIndex = idx));
+				}
+				cy += ROW_H;
+			}
+		}
+		context.disableScissor();
+
+		gearMaxScroll = Math.max(0, filtered.size() * ROW_H - gearListClip.h);
+		gearScrollY = Math.max(0, Math.min(gearScrollY, gearMaxScroll));
+		drawScrollbar(context, gearListClip, gearScrollY, gearMaxScroll);
+
+		if (filtered.isEmpty()) {
+			return;
+		}
+
+		TarkovWorkbenchRecipes.GearRecipe selRecipe = filtered.get(selectedGearIndex);
+		Item resultItem = selRecipe.resultItem();
+		ItemStack preview = new ItemStack(resultItem);
+
+		int rx = rightX + 12;
+		int rw = rightW - 24;
+		int ry = py + 24;
+
+		context.fill(rx, ry, rx + 48, ry + 48, TarkovUiTheme.itemCategoryTint(preview));
+		context.drawBorder(rx, ry, 48, 48, TarkovUiTheme.BORDER_OCCUPIED);
+		TarkovUiTheme.drawScaledItem(context, preview, rx + 2, ry + 2, 44, 44);
+
+		String itemTitle = TarkovUiTheme.trimWithEllipsis(textRenderer, preview.getName().getString(), rw - 58, TarkovUiTheme.TEXT_SCALE_HEADER);
+		TarkovUiTheme.drawFlatText(context, textRenderer, itemTitle, rx + 56, ry + 4,
+			TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_HEADER);
+		renderGearMetaLines(context, resultItem, rx + 56, ry + 18);
+		ry += 52;
+
+		boolean hasSlotPreview = resultItem instanceof BackpackItem || resultItem instanceof TacticalRigItem;
+		if (hasSlotPreview) {
+			ry = renderContainerSlotPreview(context, resultItem, rx, ry, rw);
+		}
+
+		int rowH = hasSlotPreview ? 15 : 19;
+		boolean allEnough = renderIngredientsList(
+			context, rx, ry, rw, selRecipe.materials(), ItemStack.EMPTY, 0, 0, creative, rowH
+		);
+
+		String craftLabel = Text.translatable("ui.tarkovcraft.wb_craft").getString();
+		Rect craftBtn = new Rect(rx, py + ph - 28, rw, 20);
+		drawCraftButton(context, craftBtn, craftLabel, creative || allEnough, mouseX, mouseY, () ->
+			ClientNetworkSender.sendWorkbenchCraftGear(Registries.ITEM.getId(resultItem))
+		);
+	}
+
+	private int renderContainerSlotPreview(DrawContext context, Item item, int x, int y, int w) {
+		TarkovUiTheme.drawFlatText(context, textRenderer,
+			Text.translatable("ui.tarkovcraft.wb_slot_preview").getString(),
+			x, y, TarkovUiTheme.TEXT_SECONDARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+		y += 10;
+
+		int boxH = 66;
+		context.fill(x, y, x + w, y + boxH, 0xCC0A0C0E);
+		context.drawBorder(x, y, w, boxH, TarkovUiTheme.BORDER_CELL);
+
+		context.enableScissor(x + 1, y + 1, x + w - 1, y + boxH - 1);
+		try {
+			if (item instanceof BackpackItem bp) {
+				int gw = Math.max(1, bp.getGridWidth());
+				int gh = Math.max(1, bp.getGridHeight());
+				int c = Math.max(5, Math.min(11, Math.min((w - 16) / gw, 52 / gh)));
+				int gridW = gw * c;
+				int gridH = gh * c;
+				int gx = x + 8;
+				int gy = y + Math.max(4, (boxH - gridH) / 2);
+
+				for (int cx = 0; cx < gw; cx++) {
+					for (int cy = 0; cy < gh; cy++) {
+						int rx = gx + cx * c;
+						int ry = gy + cy * c;
+						context.fill(rx, ry, rx + c, ry + c, TarkovUiTheme.BG_CELL_EMPTY);
+						context.drawBorder(rx, ry, c, c, TarkovUiTheme.BORDER_CELL);
+					}
+				}
+				context.drawBorder(gx - 1, gy - 1, gridW + 2, gridH + 2, TarkovUiTheme.ACCENT_SAND);
+				String capText = gw + "x" + gh + " (" + (gw * gh) + ")";
+				TarkovUiTheme.drawFlatText(context, textRenderer, capText, gx + gridW + 8, gy + 2,
+					TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
+			} else if (item instanceof TacticalRigItem rig) {
+				List<ItemSize> layouts = rig.getCompartmentLayouts();
+				int maxRowCells = 10;
+				int c = Math.max(5, Math.min(10, (w - 24) / maxRowCells));
+				if (layouts.size() > 6) {
+					c = Math.min(c, 7);
+				}
+				int gap = 4;
+				int curX = x + 6;
+				int curY = y + 5;
+				int rowMaxH = 0;
+
+				for (ItemSize sz : layouts) {
+					int pw = sz.width() * c;
+					int ph = sz.height() * c;
+					if (curX + pw > x + w - 6 && curX > x + 6) {
+						curX = x + 6;
+						curY += rowMaxH + gap;
+						rowMaxH = 0;
+					}
+					for (int sx = 0; sx < sz.width(); sx++) {
+						for (int sy = 0; sy < sz.height(); sy++) {
+							int rx = curX + sx * c;
+							int ry = curY + sy * c;
+							context.fill(rx, ry, rx + c, ry + c, TarkovUiTheme.BG_CELL_EMPTY);
+							context.drawBorder(rx, ry, c, c, TarkovUiTheme.BORDER_CELL);
+						}
+					}
+					context.drawBorder(curX - 1, curY - 1, pw + 2, ph + 2, TarkovUiTheme.BORDER_OCCUPIED);
+					if (pw >= 12 && ph >= 8) {
+						TarkovUiTheme.drawCenteredFlatText(context, textRenderer, sz.width() + "x" + sz.height(),
+							curX + pw / 2, curY + Math.max(1, ph / 2 - 2), 0x88CFD6DF, 0.55f);
+					}
+					curX += pw + gap;
+					rowMaxH = Math.max(rowMaxH, ph);
+				}
+			}
+		} finally {
+			context.disableScissor();
+		}
+		return y + boxH + 6;
+	}
+
+	private static boolean hasAllMaterials(List<TarkovWorkbenchRecipes.Ingredient> mats) {
+		for (TarkovWorkbenchRecipes.Ingredient ing : mats) {
+			if (ClientWorkbenchCache.getItemCount(ing.item()) < ing.count()) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private static int getArmorMetric(Item item) {
+		if (item instanceof TarkovArmorItem armor) {
+			return armor.getArmorClass();
+		}
+		if (item instanceof TarkovArmorRepairItem repair) {
+			return repair.getRepairAmount();
+		}
+		return 0;
+	}
+
+	private static int getCapacityMetric(Item item) {
+		if (item instanceof BackpackItem bp) {
+			return bp.getGridWidth() * bp.getGridHeight();
+		}
+		if (item instanceof TacticalRigItem rig) {
+			return rig.getCompartmentLayouts().stream().mapToInt(s -> s.width() * s.height()).sum();
+		}
+		return 0;
+	}
+
+	private void renderGearMetaLines(DrawContext context, Item item, int x, int y) {
+		if (item instanceof TarkovArmorItem armor) {
+			String line1 = armor.getArmorClass() > 0
+				? Text.translatable("tooltip.tarkovcraft.armor_class", armor.getArmorClass()).getString()
+					+ "  |  " + Text.translatable(armor.getMaterial().getTranslationKey()).getString()
+				: Text.translatable("tooltip.tarkovcraft.armor_cosmetic").getString();
+			TarkovUiTheme.drawFlatText(context, textRenderer, line1, x, y,
+				TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
+			String line2 = (armor.getArmorClass() > 0
+				? Text.translatable("tooltip.tarkovcraft.armor_durability",
+					TarkovArmorItem.formatDurability(new ItemStack(item))).getString() + "  |  "
+				: "")
+				+ Text.translatable("tooltip.tarkovcraft.armor_weight",
+					String.format(Locale.ROOT, "%.1f", armor.getWeightKg())).getString();
+			TarkovUiTheme.drawFlatText(context, textRenderer, line2, x, y + 12,
+				TarkovUiTheme.TEXT_SECONDARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+		} else if (item instanceof TarkovArmorRepairItem repair) {
+			TarkovUiTheme.drawFlatText(context, textRenderer,
+				Text.translatable("tooltip.tarkovcraft.repair_use", repair.getRepairAmount()).getString(),
+				x, y, TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
+			TarkovUiTheme.drawFlatText(context, textRenderer,
+				Text.translatable("tooltip.tarkovcraft.med_weight",
+					String.format(Locale.ROOT, "%.2f", repair.getWeightKg())).getString(),
+				x, y + 12, TarkovUiTheme.TEXT_SECONDARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+		} else if (item instanceof TacticalRigItem rig) {
+			int total = rig.getCompartmentLayouts().stream().mapToInt(s -> s.width() * s.height()).sum();
+			TarkovUiTheme.drawFlatText(context, textRenderer,
+				Text.translatable("tooltip.tarkovcraft.rig_capacity", total, rig.getCompartmentLayouts().size()).getString(),
+				x, y, TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
+		} else if (item instanceof BackpackItem bp) {
+			TarkovUiTheme.drawFlatText(context, textRenderer,
+				Text.translatable("tooltip.tarkovcraft.backpack_grid", bp.getGridWidth(), bp.getGridHeight()).getString(),
+				x, y, TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
+		}
+	}
+
+	private boolean renderIngredientsList(
+		DrawContext context,
+		int x,
+		int y,
+		int w,
+		List<TarkovWorkbenchRecipes.Ingredient> mats,
+		ItemStack fmjStack,
+		int ownedFmj,
+		int requiredFmj,
+		boolean creative,
+		int rowStep
+	) {
+		TarkovUiTheme.drawFlatText(context, textRenderer,
+			Text.translatable("ui.tarkovcraft.wb_ingredients").getString(),
+			x, y, TarkovUiTheme.TEXT_SECONDARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+		y += 11;
+
+		int rowH = Math.max(13, rowStep - 2);
+		boolean allEnough = true;
+		if (requiredFmj > 0 && !fmjStack.isEmpty()) {
+			boolean ok = creative || ownedFmj >= requiredFmj;
+			if (!ok) allEnough = false;
+			drawIngredientRow(context, x, y, w, rowH, fmjStack, fmjStack.getName().getString() + " [PS/FMJ]", ownedFmj, requiredFmj, ok, creative);
+			y += rowStep;
+		}
+
+		for (TarkovWorkbenchRecipes.Ingredient ing : mats) {
+			int owned = ClientWorkbenchCache.getItemCount(ing.item());
+			boolean ok = creative || owned >= ing.count();
+			if (!ok) allEnough = false;
+			ItemStack st = new ItemStack(ing.item());
+			drawIngredientRow(context, x, y, w, rowH, st, st.getName().getString(), owned, ing.count(), ok, creative);
+			y += rowStep;
+		}
+		return allEnough;
+	}
+
+	private void drawIngredientRow(
+		DrawContext context,
+		int x,
+		int y,
+		int w,
+		int h,
+		ItemStack icon,
+		String label,
+		int owned,
+		int required,
+		boolean ok,
+		boolean creative
+	) {
+		context.fill(x, y, x + w, y + h, TarkovUiTheme.BG_SLOT);
+		context.drawBorder(x, y, w, h, TarkovUiTheme.BORDER_CELL);
+		int iconSz = Math.max(11, h - 2);
+		TarkovUiTheme.drawScaledItem(context, icon, x + 2, y + 1, iconSz, iconSz);
+		String trimmed = TarkovUiTheme.trimWithEllipsis(textRenderer, label, w - 70, TarkovUiTheme.TEXT_SCALE_SMALL);
+		int textY = y + Math.max(2, (h - 6) / 2);
+		TarkovUiTheme.drawFlatText(context, textRenderer, trimmed, x + iconSz + 6, textY,
+			TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+
+		String countStr = creative ? ("INF / " + required) : (owned + " / " + required);
+		int countCol = ok ? 0xFF77B85A : 0xFFE55353;
+		TarkovUiTheme.drawRightAlignedFlatText(context, textRenderer, countStr, x + w - 6, textY,
+			countCol, TarkovUiTheme.TEXT_SCALE_SMALL);
+	}
+
+	private void drawModeButton(
+		DrawContext context,
+		Rect r,
+		String label,
+		boolean selected,
+		boolean enabled,
+		int mouseX,
+		int mouseY,
+		Runnable action
+	) {
+		boolean hov = enabled && r.contains(mouseX, mouseY);
+		int bg = !enabled ? 0xFF111316 : (selected ? 0xFF28241C : (hov ? 0xFF1C2026 : TarkovUiTheme.BG_SLOT));
+		int border = !enabled ? 0xFF22252A : (selected ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.BORDER_CELL);
+		int textCol = !enabled ? TarkovUiTheme.TEXT_MUTED : (selected ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.TEXT_PRIMARY);
+		context.fill(r.x, r.y, r.x + r.w, r.y + r.h, bg);
+		context.drawBorder(r.x, r.y, r.w, r.h, border);
+		String trimmed = TarkovUiTheme.trimWithEllipsis(textRenderer, label, r.w - 8, TarkovUiTheme.TEXT_SCALE_SMALL);
+		TarkovUiTheme.drawCenteredFlatText(context, textRenderer, trimmed, r.x + r.w / 2, r.y + 5,
+			textCol, TarkovUiTheme.TEXT_SCALE_SMALL);
+		if (enabled) {
+			buttons.add(new ClickButton(r, action));
+		}
+	}
+
+	private void drawCraftButton(
+		DrawContext context,
+		Rect r,
+		String label,
+		boolean enabled,
+		int mouseX,
+		int mouseY,
+		Runnable action
+	) {
+		boolean hov = enabled && r.contains(mouseX, mouseY);
+		int bg = !enabled ? 0xFF17191D : (hov ? 0xFF3A4933 : 0xFF283525);
+		int border = !enabled ? 0xFF2C3036 : (hov ? 0xFF8FD46E : TarkovUiTheme.ACCENT_SAND);
+		int textCol = !enabled ? TarkovUiTheme.TEXT_MUTED : (hov ? 0xFFFFFFFF : TarkovUiTheme.ACCENT_SAND);
+		context.fill(r.x, r.y, r.x + r.w, r.y + r.h, bg);
+		context.drawBorder(r.x, r.y, r.w, r.h, border);
+		TarkovUiTheme.drawCenteredFlatText(context, textRenderer, label, r.x + r.w / 2, r.y + 7,
+			textCol, TarkovUiTheme.TEXT_SCALE_SMALL);
+		if (enabled) {
+			buttons.add(new ClickButton(r, action));
+		}
+	}
+
+	private static String shortGearTag(Item item) {
+		if (item instanceof TarkovArmorItem armor) {
+			return armor.getArmorClass() > 0 ? "CL." + armor.getArmorClass() : "COSM";
+		}
+		if (item instanceof TarkovArmorRepairItem repair) {
+			return "+" + repair.getRepairAmount();
+		}
+		if (item instanceof TacticalRigItem rig) {
+			int total = rig.getCompartmentLayouts().stream().mapToInt(s -> s.width() * s.height()).sum();
+			return total + "c";
+		}
+		if (item instanceof BackpackItem bp) {
+			return bp.getGridWidth() + "x" + bp.getGridHeight();
+		}
+		return "";
+	}
+
+	private void drawScrollbar(DrawContext context, Rect area, int scrollY, int maxScroll) {
+		if (maxScroll <= 0) return;
+		int barX = area.x + area.w - 4;
+		int trackH = area.h - 2;
+		int thumbH = Math.max(18, Math.round(trackH * (area.h / (float) (area.h + maxScroll))));
+		int thumbY = area.y + 1 + Math.round((trackH - thumbH) * (scrollY / (float) maxScroll));
+		context.fill(barX, area.y + 1, barX + 3, area.y + 1 + trackH, 0x66101215);
+		context.fill(barX, thumbY, barX + 3, thumbY + thumbH, TarkovUiTheme.BORDER_HOVER);
+	}
+
+	@Override
+	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		if (button == 0) {
+			for (ClickButton cb : buttons) {
+				if (cb.rect().contains(mouseX, mouseY)) {
+					cb.action().run();
+					return true;
+				}
+			}
+		}
+		return super.mouseClicked(mouseX, mouseY, button);
+	}
+
+	@Override
+	public boolean mouseScrolled(double mouseX, double mouseY, double amount) {
+		int step = (int) Math.round(-amount * 20.0);
+		if (activeTab == TAB_AMMO && ammoListClip != null && ammoListClip.contains(mouseX, mouseY)) {
+			ammoScrollY = Math.max(0, Math.min(ammoMaxScroll, ammoScrollY + step));
+			return true;
+		}
+		if (activeTab == TAB_GEAR && gearListClip != null && gearListClip.contains(mouseX, mouseY)) {
+			gearScrollY = Math.max(0, Math.min(gearMaxScroll, gearScrollY + step));
+			return true;
+		}
+		return super.mouseScrolled(mouseX, mouseY, amount);
+	}
+
+	@Override
+	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (activeTab == TAB_GEAR && searchBox != null && searchBox.isFocused()) {
+			if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+				searchBox.setFocused(false);
+				return true;
+			}
+			if (searchBox.keyPressed(keyCode, scanCode, modifiers)) {
+				return true;
+			}
+			return true;
+		}
+		if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+			this.close();
+			return true;
+		}
+		if (client != null && client.options.inventoryKey.matchesKey(keyCode, scanCode)) {
+			this.close();
+			return true;
+		}
+		return super.keyPressed(keyCode, scanCode, modifiers);
+	}
+
+	@Override
+	public boolean charTyped(char chr, int modifiers) {
+		if (activeTab == TAB_GEAR && searchBox != null && searchBox.isFocused()) {
+			return searchBox.charTyped(chr, modifiers);
+		}
+		return super.charTyped(chr, modifiers);
 	}
 }

@@ -3,6 +3,7 @@
 package com.tarkovcraft.client.hud;
 
 import com.tarkovcraft.client.ClientLoadoutCache;
+import com.tarkovcraft.client.screen.TarkovUiTheme;
 import com.tarkovcraft.health.BodyPart;
 import com.tarkovcraft.health.BodyPartHealth;
 import com.tarkovcraft.health.DamageReport;
@@ -10,10 +11,13 @@ import com.tarkovcraft.health.HitZone;
 import com.tarkovcraft.health.InjuryType;
 import com.tarkovcraft.health.MedicalHelper;
 import com.tarkovcraft.health.ZonalArmorHelper;
+import com.tarkovcraft.item.MedicalType;
+import com.tarkovcraft.item.TarkovMedicalItem;
 import com.tarkovcraft.loadout.PlayerLoadout;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.text.Text;
 import org.jetbrains.annotations.Nullable;
@@ -23,7 +27,11 @@ import com.tarkovcraft.client.screen.TarkovInventoryScreen;
 import net.minecraft.client.MinecraftClient;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * Renders the Tarkov-style body-part health silhouette, injury badges, painkiller timer,
@@ -38,6 +46,15 @@ public final class BodyHealthHudHelper {
 	};
 
 	public record PartHitbox(BodyPart part, int x, int y, int w, int h) {
+		public boolean contains(double mx, double my) {
+			return mx >= x && mx < x + w && my >= y && my < y + h;
+		}
+	}
+
+	public record QuickHealMed(byte loc, int idx, @Nullable UUID entryId, ItemStack stack) {
+	}
+
+	public record QuickHealHitbox(BodyPart part, QuickHealMed med, int x, int y, int w, int h) {
 		public boolean contains(double mx, double my) {
 			return mx >= x && mx < x + w && my >= y && my < y + h;
 		}
@@ -98,7 +115,14 @@ public final class BodyHealthHudHelper {
 		}
 		if (health.hasPainkiller()) {
 			int secs = (health.getPainkillerTicks() + 19) / 20;
-			drawHudBadge(context, textRenderer, x + boxW, py, "PK " + secs + "s", 0xDD143B34, 0xFF4FD1C5, 0xFFB2F5EA);
+			py = drawHudBadge(context, textRenderer, x + boxW, py, "PK " + secs + "s", 0xDD143B34, 0xFF4FD1C5, 0xFFB2F5EA);
+		}
+		if (player != null) {
+			int energy = Math.max(0, Math.min(100, player.getHungerManager().getFoodLevel() * 5));
+			int eBg = energy <= 15 ? 0xDD6A1414 : (energy <= 30 ? 0xDD4D3C12 : 0xDD14222D);
+			int eBorder = energy <= 15 ? 0xFFFF4444 : (energy <= 30 ? 0xFFE0B23B : 0xFF3E6888);
+			int eText = energy <= 15 ? 0xFFFFCCCC : (energy <= 30 ? 0xFFFFEEAA : 0xFF90CDF4);
+			drawHudBadge(context, textRenderer, x + boxW, py, "E:" + energy, eBg, eBorder, eText);
 		}
 	}
 
@@ -134,11 +158,30 @@ public final class BodyHealthHudHelper {
 		int mouseX,
 		int mouseY
 	) {
+		drawDetailedHealthTab(context, textRenderer, player, x, y, w, h, selectedMedStack, outHitboxes, null, null, mouseX, mouseY);
+	}
+
+	public static void drawDetailedHealthTab(
+		DrawContext context,
+		TextRenderer textRenderer,
+		PlayerEntity player,
+		int x,
+		int y,
+		int w,
+		int h,
+		@Nullable ItemStack selectedMedStack,
+		@Nullable List<PartHitbox> outHitboxes,
+		@Nullable List<QuickHealMed> availableMeds,
+		@Nullable List<QuickHealHitbox> outQuickHeals,
+		int mouseX,
+		int mouseY
+	) {
 		BodyPartHealth health = ClientLoadoutCache.getBodyHealth();
 		PlayerLoadout loadout = ClientLoadoutCache.getLoadout();
 
 		int silTop = y + 8;
-		drawSilhouetteWithZoneBars(context, textRenderer, health, x + w / 2, silTop, selectedMedStack, outHitboxes, mouseX, mouseY);
+		drawSilhouetteWithZoneBars(context, textRenderer, health, x + w / 2, silTop,
+			selectedMedStack, outHitboxes, availableMeds, outQuickHeals, mouseX, mouseY);
 
 		List<DamageReport> hits = health.getRecentHits();
 		int panelW = Math.min(w - 16, 420);
@@ -268,6 +311,22 @@ public final class BodyHealthHudHelper {
 		int mouseX,
 		int mouseY
 	) {
+		drawSilhouetteWithZoneBars(context, textRenderer, health, cx, top, selectedMedStack, outHitboxes, null, null, mouseX, mouseY);
+	}
+
+	public static void drawSilhouetteWithZoneBars(
+		DrawContext context,
+		TextRenderer textRenderer,
+		BodyPartHealth health,
+		int cx,
+		int top,
+		@Nullable ItemStack selectedMedStack,
+		@Nullable List<PartHitbox> outHitboxes,
+		@Nullable List<QuickHealMed> availableMeds,
+		@Nullable List<QuickHealHitbox> outQuickHeals,
+		int mouseX,
+		int mouseY
+	) {
 		drawInteractivePartRect(context, BodyPart.HEAD, cx - 10, top, 20, 20, health, selectedMedStack, outHitboxes, mouseX, mouseY);
 		drawInteractivePartRect(context, BodyPart.THORAX, cx - 15, top + 24, 30, 28, health, selectedMedStack, outHitboxes, mouseX, mouseY);
 		drawInteractivePartRect(context, BodyPart.STOMACH, cx - 13, top + 54, 26, 18, health, selectedMedStack, outHitboxes, mouseX, mouseY);
@@ -276,14 +335,14 @@ public final class BodyHealthHudHelper {
 		drawInteractivePartRect(context, BodyPart.LEFT_LEG, cx - 14, top + 74, 12, 46, health, selectedMedStack, outHitboxes, mouseX, mouseY);
 		drawInteractivePartRect(context, BodyPart.RIGHT_LEG, cx + 2, top + 74, 12, 46, health, selectedMedStack, outHitboxes, mouseX, mouseY);
 
-		drawZoneBar(context, textRenderer, cx + 38, top, BodyPart.HEAD, health, selectedMedStack, outHitboxes, mouseX, mouseY);
-		drawZoneBar(context, textRenderer, cx + 38, top + 24, BodyPart.THORAX, health, selectedMedStack, outHitboxes, mouseX, mouseY);
-		drawZoneBar(context, textRenderer, cx + 38, top + 48, BodyPart.STOMACH, health, selectedMedStack, outHitboxes, mouseX, mouseY);
-		drawZoneBar(context, textRenderer, cx + 38, top + 72, BodyPart.RIGHT_ARM, health, selectedMedStack, outHitboxes, mouseX, mouseY);
-		drawZoneBar(context, textRenderer, cx + 38, top + 96, BodyPart.RIGHT_LEG, health, selectedMedStack, outHitboxes, mouseX, mouseY);
+		drawZoneBar(context, textRenderer, cx + 38, top, BodyPart.HEAD, health, selectedMedStack, outHitboxes, availableMeds, outQuickHeals, true, mouseX, mouseY);
+		drawZoneBar(context, textRenderer, cx + 38, top + 24, BodyPart.THORAX, health, selectedMedStack, outHitboxes, availableMeds, outQuickHeals, true, mouseX, mouseY);
+		drawZoneBar(context, textRenderer, cx + 38, top + 48, BodyPart.STOMACH, health, selectedMedStack, outHitboxes, availableMeds, outQuickHeals, true, mouseX, mouseY);
+		drawZoneBar(context, textRenderer, cx + 38, top + 72, BodyPart.RIGHT_ARM, health, selectedMedStack, outHitboxes, availableMeds, outQuickHeals, true, mouseX, mouseY);
+		drawZoneBar(context, textRenderer, cx + 38, top + 96, BodyPart.RIGHT_LEG, health, selectedMedStack, outHitboxes, availableMeds, outQuickHeals, true, mouseX, mouseY);
 
-		drawZoneBar(context, textRenderer, cx - 130, top + 34, BodyPart.LEFT_ARM, health, selectedMedStack, outHitboxes, mouseX, mouseY);
-		drawZoneBar(context, textRenderer, cx - 130, top + 76, BodyPart.LEFT_LEG, health, selectedMedStack, outHitboxes, mouseX, mouseY);
+		drawZoneBar(context, textRenderer, cx - 130, top + 34, BodyPart.LEFT_ARM, health, selectedMedStack, outHitboxes, availableMeds, outQuickHeals, false, mouseX, mouseY);
+		drawZoneBar(context, textRenderer, cx - 130, top + 76, BodyPart.LEFT_LEG, health, selectedMedStack, outHitboxes, availableMeds, outQuickHeals, false, mouseX, mouseY);
 	}
 
 	private static void drawInteractivePartRect(
@@ -310,6 +369,9 @@ public final class BodyHealthHudHelper {
 		BodyPartHealth health,
 		@Nullable ItemStack selectedMedStack,
 		@Nullable List<PartHitbox> outHitboxes,
+		@Nullable List<QuickHealMed> availableMeds,
+		@Nullable List<QuickHealHitbox> outQuickHeals,
+		boolean iconsOnRight,
 		int mouseX,
 		int mouseY
 	) {
@@ -383,6 +445,56 @@ public final class BodyHealthHudHelper {
 		if (outHitboxes != null) {
 			outHitboxes.add(new PartHitbox(part, x, y, bw, bh));
 		}
+
+		// Quick-Heal 14x14 mini-icons next to injured parts (no durability text)
+		if (availableMeds != null && outQuickHeals != null) {
+			boolean needsHelp = health.getHp(part) < health.getEffectiveMaxHp(part) - 0.5f
+				|| health.hasLightBleed(part)
+				|| health.hasHeavyBleed(part)
+				|| health.hasFracture(part)
+				|| health.isBlacked(part);
+			if (needsHelp) {
+				List<QuickHealMed> suitable = collectQuickHealsForPart(health, part, availableMeds);
+				int btnSize = 14;
+				int btnY = y + (bh - btnSize) / 2;
+				for (int i = 0; i < suitable.size(); i++) {
+					QuickHealMed qm = suitable.get(i);
+					int btnX = iconsOnRight
+						? (x + bw + 4 + i * (btnSize + 2))
+						: (x - 4 - btnSize - i * (btnSize + 2));
+					boolean qHov = mouseX >= btnX && mouseX < btnX + btnSize && mouseY >= btnY && mouseY < btnY + btnSize;
+					context.fill(btnX, btnY, btnX + btnSize, btnY + btnSize, qHov ? 0xDD272B30 : 0xCC121619);
+					context.drawBorder(btnX, btnY, btnSize, btnSize, qHov ? TarkovUiTheme.ACCENT_SAND : 0xFF3A424A);
+					TarkovUiTheme.drawScaledItem(context, qm.stack(), btnX + 1, btnY + 1, 12, 12);
+					outQuickHeals.add(new QuickHealHitbox(part, qm, btnX, btnY, btnSize, btnSize));
+				}
+			}
+		}
+	}
+
+	private static List<QuickHealMed> collectQuickHealsForPart(
+		BodyPartHealth health, BodyPart part, List<QuickHealMed> allMeds
+	) {
+		Map<Item, QuickHealMed> unique = new LinkedHashMap<>();
+		for (QuickHealMed m : allMeds) {
+			if (!unique.containsKey(m.stack().getItem()) && MedicalHelper.canApplyToPart(health, m.stack(), part)) {
+				unique.put(m.stack().getItem(), m);
+			}
+		}
+		List<QuickHealMed> sorted = new ArrayList<>(unique.values());
+		sorted.sort(Comparator.comparingInt(m -> quickHealPriority(health, part, m.stack())));
+		return sorted.size() > 4 ? sorted.subList(0, 4) : sorted;
+	}
+
+	private static int quickHealPriority(BodyPartHealth health, BodyPart part, ItemStack stack) {
+		if (!(stack.getItem() instanceof TarkovMedicalItem med)) return 99;
+		MedicalType t = med.getMedicalType();
+		if (health.hasHeavyBleed(part) && t.isCuresHeavyBleed()) return 0;
+		if (health.isBlacked(part) && t.isSurgicalKit()) return 1;
+		if (health.hasFracture(part) && t.isCuresFracture()) return 2;
+		if (health.hasLightBleed(part) && t.isCuresLightBleed()) return 3;
+		if (t.getMaxHealPerUse() > 0) return 4;
+		return 5;
 	}
 
 	private static int drawMicroTag(DrawContext context, TextRenderer tr, int x, int y, String text, int color) {
@@ -442,6 +554,677 @@ public final class BodyHealthHudHelper {
 		int g = Math.round(((c1 >> 8) & 0xFF) + (((c2 >> 8) & 0xFF) - ((c1 >> 8) & 0xFF)) * t);
 		int b = Math.round((c1 & 0xFF) + ((c2 & 0xFF) - (c1 & 0xFF)) * t);
 		return (r << 16) | (g << 8) | b;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\client\model\GearModel.java ==========
+package com.tarkovcraft.client.model;
+
+import net.minecraft.client.model.Dilation;
+import net.minecraft.client.model.ModelData;
+import net.minecraft.client.model.ModelPart;
+import net.minecraft.client.model.ModelPartBuilder;
+import net.minecraft.client.model.ModelTransform;
+import net.minecraft.client.model.TexturedModelData;
+import net.minecraft.client.render.OverlayTexture;
+import net.minecraft.client.render.RenderLayer;
+import net.minecraft.client.render.VertexConsumer;
+import net.minecraft.client.render.VertexConsumerProvider;
+import net.minecraft.client.render.entity.model.BipedEntityModel;
+import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.item.Item;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.math.RotationAxis;
+
+import java.util.Locale;
+
+/** Cuboids and box UVs supplied by the TarkovCraft model pack. */
+public enum GearModel {
+	ARMOR_HEAVY(64, 64, false,
+		part(Anchor.BODY,
+			cube(0, 0, -4.50F, 0.50F, -2.50F, 9.0F, 11.0F, 5.0F, 0.25F),
+			cube(21, 17, -4.00F, 1.50F, -3.60F, 8.0F, 9.0F, 1.0F, 0.10F),
+			cube(40, 17, -4.00F, 1.50F, 2.60F, 8.0F, 9.0F, 1.0F, 0.10F),
+			cube(0, 29, -5.20F, 4.50F, -2.00F, 1.0F, 6.0F, 4.0F),
+			cube(11, 29, 4.20F, 4.50F, -2.00F, 1.0F, 6.0F, 4.0F),
+			cube(28, 40, -4.00F, -1.50F, 1.80F, 8.0F, 2.0F, 1.0F, 0.05F),
+			cube(47, 40, -3.50F, -1.20F, -3.00F, 7.0F, 2.0F, 1.0F),
+			cube(44, 29, -4.50F, -1.50F, -2.50F, 1.0F, 2.0F, 5.0F),
+			cube(0, 40, 3.50F, -1.50F, -2.50F, 1.0F, 2.0F, 5.0F),
+			cube(13, 40, -3.00F, 11.00F, -3.30F, 6.0F, 3.0F, 1.0F),
+			cube(0, 48, -2.50F, 2.00F, -3.80F, 5.0F, 2.0F, 1.0F)),
+		part(Anchor.RIGHT_ARM,
+			cube(29, 0, -3.50F, -2.00F, -2.50F, 5.0F, 6.0F, 5.0F, 0.15F),
+			cube(22, 29, -4.00F, -1.00F, -2.00F, 1.0F, 4.0F, 4.0F)),
+		part(Anchor.LEFT_ARM,
+			cube(0, 17, -1.50F, -2.00F, -2.50F, 5.0F, 6.0F, 5.0F, 0.15F),
+			cube(33, 29, 3.00F, -1.00F, -2.00F, 1.0F, 4.0F, 4.0F))),
+	ARMOR_MEDIUM(64, 64, false,
+		part(Anchor.BODY,
+			cube(0, 0, -4.50F, 1.00F, -2.50F, 9.0F, 10.0F, 5.0F, 0.15F),
+			cube(29, 0, -4.00F, 2.20F, -3.40F, 8.0F, 8.0F, 1.0F, 0.05F),
+			cube(0, 16, -4.00F, 2.20F, 2.40F, 8.0F, 8.0F, 1.0F, 0.05F),
+			cube(0, 26, -3.50F, -1.20F, 1.80F, 7.0F, 2.0F, 1.0F),
+			cube(41, 16, -4.20F, -1.20F, -1.00F, 1.0F, 2.0F, 3.0F),
+			cube(50, 16, 3.20F, -1.20F, -1.00F, 1.0F, 2.0F, 3.0F),
+			cube(19, 16, -5.00F, 5.20F, -2.00F, 1.0F, 5.0F, 4.0F),
+			cube(30, 16, 4.00F, 5.20F, -2.00F, 1.0F, 5.0F, 4.0F),
+			cube(17, 26, -2.50F, 2.20F, -3.60F, 5.0F, 2.0F, 1.0F))),
+	ARMOR_SLICK(64, 64, false,
+		part(Anchor.BODY,
+			cube(0, 0, -4.00F, 1.50F, -2.00F, 8.0F, 8.0F, 4.0F, 0.40F),
+			cube(25, 0, -3.50F, 2.00F, -3.10F, 7.0F, 7.0F, 1.0F, 0.05F),
+			cube(42, 0, -3.50F, 2.00F, 2.10F, 7.0F, 7.0F, 1.0F, 0.05F),
+			cube(48, 13, -2.50F, 2.00F, -3.30F, 5.0F, 2.0F, 1.0F),
+			cube(0, 13, -4.00F, 0.00F, -2.50F, 2.0F, 1.0F, 5.0F, 0.10F),
+			cube(15, 13, 2.00F, 0.00F, -2.50F, 2.0F, 1.0F, 5.0F, 0.10F),
+			cube(30, 13, -4.60F, 5.50F, -1.50F, 1.0F, 3.0F, 3.0F),
+			cube(39, 13, 3.60F, 5.50F, -1.50F, 1.0F, 3.0F, 3.0F))),
+	BACKPACK_LARGE(64, 64, false,
+		part(Anchor.BODY,
+			cube(0, 0, -5.00F, -0.50F, 3.60F, 10.0F, 13.0F, 5.0F),
+			cube(33, 38, -4.50F, -2.50F, 3.60F, 9.0F, 2.0F, 5.0F),
+			cube(0, 46, -4.50F, -4.50F, 4.60F, 9.0F, 2.0F, 3.0F),
+			cube(45, 0, -3.50F, 3.00F, 8.50F, 7.0F, 8.0F, 2.0F),
+			cube(0, 19, -6.50F, 4.00F, 4.60F, 2.0F, 7.0F, 3.0F),
+			cube(11, 19, 4.50F, 4.00F, 4.60F, 2.0F, 7.0F, 3.0F),
+			cube(0, 30, -5.20F, 2.00F, 4.00F, 10.0F, 1.0F, 6.0F, 0.10F),
+			cube(0, 38, -5.20F, 8.50F, 4.00F, 10.0F, 1.0F, 6.0F, 0.10F),
+			cube(22, 19, -4.20F, -0.60F, -2.50F, 2.0F, 1.0F, 7.0F, 0.05F),
+			cube(41, 19, 2.20F, -0.60F, -2.50F, 2.0F, 1.0F, 7.0F, 0.05F),
+			cube(31, 0, -4.20F, 0.00F, -3.00F, 2.0F, 10.0F, 1.0F),
+			cube(38, 0, 2.20F, 0.00F, -3.00F, 2.0F, 10.0F, 1.0F),
+			cube(25, 46, -2.00F, 3.50F, -3.20F, 4.0F, 1.0F, 1.0F))),
+	BACKPACK_SMALL(64, 64, false,
+		part(Anchor.BODY,
+			cube(0, 0, -4.00F, 1.50F, 3.50F, 8.0F, 9.0F, 4.0F),
+			cube(15, 14, -3.50F, 0.50F, 3.50F, 7.0F, 1.0F, 3.0F),
+			cube(0, 14, -3.00F, 5.00F, 7.20F, 6.0F, 5.0F, 1.0F),
+			cube(36, 14, -1.50F, -0.50F, 4.50F, 3.0F, 1.0F, 1.0F),
+			cube(35, 0, -4.20F, -0.50F, -2.20F, 1.0F, 1.0F, 6.0F, 0.05F),
+			cube(50, 0, 3.20F, -0.50F, -2.20F, 1.0F, 1.0F, 6.0F, 0.05F),
+			cube(25, 0, -4.20F, 0.50F, -2.70F, 1.0F, 8.0F, 1.0F),
+			cube(30, 0, 3.20F, 0.50F, -2.70F, 1.0F, 8.0F, 1.0F))),
+	BALACLAVA(64, 64, true,
+		part(Anchor.HEAD,
+			cube(0, 0, -4.00F, -8.00F, -4.00F, 8.0F, 8.0F, 8.0F, 0.30F),
+			cube(33, 0, -3.50F, 0.00F, -3.50F, 7.0F, 1.0F, 7.0F, 0.25F),
+			cube(0, 17, -2.50F, -2.20F, -4.50F, 5.0F, 2.0F, 1.0F, 0.05F))),
+	GAS_MASK(64, 64, true,
+		part(Anchor.HEAD,
+			cube(0, 0, -4.00F, -8.00F, -4.00F, 8.0F, 8.0F, 8.0F, 0.40F),
+			cube(0, 17, -3.50F, -5.00F, -5.10F, 7.0F, 2.0F, 1.0F),
+			cube(33, 0, -2.00F, -3.20F, -6.00F, 4.0F, 3.0F, 2.0F),
+			cube(17, 17, -1.00F, -2.70F, -6.50F, 2.0F, 2.0F, 1.0F),
+			cube(46, 0, 1.50F, -3.20F, -6.30F, 3.0F, 3.0F, 2.0F))),
+	HEADSET_ACTIVE(64, 64, false,
+		part(Anchor.HEAD,
+			cube(41, 0, -4.50F, -9.10F, -0.50F, 9.0F, 1.0F, 1.0F, 0.05F),
+			cube(22, 0, -4.80F, -9.00F, -0.50F, 1.0F, 4.0F, 1.0F),
+			cube(27, 0, 3.80F, -9.00F, -0.50F, 1.0F, 4.0F, 1.0F),
+			cube(0, 0, -5.60F, -5.50F, -1.50F, 2.0F, 4.0F, 3.0F),
+			cube(11, 0, 3.60F, -5.50F, -1.50F, 2.0F, 4.0F, 3.0F),
+			cube(32, 0, -4.80F, -2.20F, -4.50F, 1.0F, 1.0F, 3.0F),
+			cube(0, 8, -4.50F, -2.00F, -5.00F, 2.0F, 1.0F, 1.0F))),
+	HELMET_HIGHCUT(64, 64, false,
+		part(Anchor.HEAD,
+			cube(0, 0, -4.50F, -8.50F, -4.50F, 9.0F, 3.0F, 9.0F, 0.25F),
+			cube(0, 13, -4.00F, -9.80F, -4.00F, 8.0F, 1.0F, 8.0F, 0.10F),
+			cube(33, 13, -4.50F, -5.20F, 1.50F, 9.0F, 3.0F, 3.0F, 0.22F),
+			cube(13, 30, -1.50F, -8.20F, -5.30F, 3.0F, 2.0F, 1.0F),
+			cube(0, 23, -5.30F, -7.00F, -3.00F, 1.0F, 1.0F, 5.0F),
+			cube(13, 23, 4.30F, -7.00F, -3.00F, 1.0F, 1.0F, 5.0F),
+			cube(0, 30, -2.50F, -5.50F, 4.40F, 5.0F, 2.0F, 1.0F),
+			cube(36, 23, -2.00F, -10.40F, -2.00F, 4.0F, 1.0F, 4.0F),
+			cube(26, 23, -4.60F, -5.50F, -2.50F, 1.0F, 5.0F, 1.0F),
+			cube(31, 23, 3.60F, -5.50F, -2.50F, 1.0F, 5.0F, 1.0F))),
+	HELMET_LOWCUT(64, 64, false,
+		part(Anchor.HEAD,
+			cube(0, 0, -4.50F, -9.00F, -4.50F, 9.0F, 4.0F, 9.0F, 0.25F),
+			cube(15, 14, -4.00F, -10.00F, -4.00F, 8.0F, 1.0F, 8.0F, 0.12F),
+			cube(37, 0, -5.10F, -6.00F, -2.00F, 1.0F, 4.0F, 6.0F, 0.10F),
+			cube(0, 14, 4.10F, -6.00F, -2.00F, 1.0F, 4.0F, 6.0F, 0.10F),
+			cube(0, 25, -4.50F, -5.80F, 2.50F, 9.0F, 4.0F, 2.0F, 0.22F),
+			cube(33, 25, -4.50F, -6.20F, -5.20F, 9.0F, 1.0F, 1.0F),
+			cube(23, 25, -4.60F, -3.20F, -2.50F, 1.0F, 3.0F, 1.0F),
+			cube(28, 25, 3.60F, -3.20F, -2.50F, 1.0F, 3.0F, 1.0F))),
+	HELMET_RONIN(64, 64, true,
+		part(Anchor.HEAD,
+			cube(0, 0, -4.50F, -8.50F, -4.50F, 9.0F, 8.0F, 9.0F, 0.25F),
+			cube(21, 18, -3.50F, -9.50F, -3.50F, 7.0F, 1.0F, 7.0F, 0.10F),
+			cube(0, 18, -4.50F, -8.20F, -5.40F, 9.0F, 8.0F, 1.0F),
+			cube(37, 0, -5.20F, -5.50F, -3.50F, 1.0F, 5.0F, 5.0F),
+			cube(50, 0, 4.20F, -5.50F, -3.50F, 1.0F, 5.0F, 5.0F),
+			cube(50, 18, -2.50F, -6.00F, 4.60F, 5.0F, 4.0F, 1.0F))),
+	HELMET_VISOR(64, 64, true,
+		part(Anchor.HEAD,
+			cube(0, 0, -5.00F, -9.50F, -5.00F, 10.0F, 5.0F, 10.0F, 0.05F),
+			cube(0, 27, -4.00F, -10.50F, -4.00F, 8.0F, 1.0F, 8.0F, 0.05F),
+			cube(0, 16, -5.00F, -5.00F, -1.00F, 10.0F, 4.0F, 6.0F, 0.05F),
+			cube(33, 27, -4.50F, -5.50F, -5.60F, 9.0F, 5.0F, 1.0F, 0.05F),
+			cube(33, 37, -3.50F, -0.80F, -5.50F, 7.0F, 1.0F, 1.0F),
+			cube(54, 27, -5.60F, -5.50F, -2.00F, 1.0F, 2.0F, 2.0F),
+			cube(0, 37, 4.60F, -5.50F, -2.00F, 1.0F, 2.0F, 2.0F),
+			cube(7, 37, -5.50F, -3.20F, 0.50F, 1.0F, 2.0F, 2.0F),
+			cube(14, 37, -4.00F, -1.50F, 4.30F, 8.0F, 2.0F, 1.0F))),
+	VISOR(64, 64, true, "helmet_visor",
+		part(Anchor.HEAD,
+			cube(33, 27, -4.50F, -5.50F, -5.60F, 9.0F, 5.0F, 1.0F, 0.05F),
+			cube(54, 27, -5.60F, -5.50F, -2.00F, 1.0F, 2.0F, 2.0F),
+			cube(0, 37, 4.60F, -5.50F, -2.00F, 1.0F, 2.0F, 2.0F))),
+	MASK_TAGILLA(64, 64, false,
+		part(Anchor.HEAD,
+			cube(0, 13, -4.50F, -8.00F, -5.60F, 9.0F, 9.0F, 1.0F, 0.10F),
+			cube(0, 0, -5.20F, -7.50F, -4.80F, 1.0F, 8.0F, 4.0F, 0.05F),
+			cube(11, 0, 4.20F, -7.50F, -4.80F, 1.0F, 8.0F, 4.0F, 0.05F),
+			cube(0, 24, -4.50F, -8.80F, -5.50F, 9.0F, 1.0F, 4.0F, 0.05F),
+			cube(46, 24, -3.50F, -6.00F, -6.20F, 7.0F, 2.0F, 1.0F),
+			cube(27, 24, -3.50F, 0.60F, -5.20F, 7.0F, 1.0F, 2.0F),
+			cube(22, 0, -4.00F, -5.50F, -3.50F, 8.0F, 2.0F, 8.0F, 0.35F),
+			cube(21, 13, -1.50F, -9.20F, -2.50F, 3.0F, 1.0F, 7.0F, 0.25F))),
+	RIG_ARMORED(64, 64, false,
+		part(Anchor.BODY,
+			cube(0, 0, -4.50F, 1.00F, -2.50F, 9.0F, 10.0F, 5.0F, 0.20F),
+			cube(29, 0, -4.00F, 1.50F, -3.60F, 8.0F, 9.0F, 1.0F, 0.05F),
+			cube(0, 16, -4.00F, 1.50F, 2.60F, 8.0F, 9.0F, 1.0F, 0.05F),
+			cube(41, 16, -3.00F, 2.50F, 3.50F, 6.0F, 7.0F, 1.0F),
+			cube(34, 27, -3.80F, 6.50F, -4.90F, 2.0F, 4.0F, 1.0F, 0.10F),
+			cube(41, 27, -1.00F, 6.50F, -4.90F, 2.0F, 4.0F, 1.0F, 0.10F),
+			cube(48, 27, 1.80F, 6.50F, -4.90F, 2.0F, 4.0F, 1.0F, 0.10F),
+			cube(0, 35, -2.50F, 2.80F, -4.40F, 5.0F, 2.0F, 1.0F),
+			cube(19, 16, -5.30F, 5.50F, -2.00F, 1.0F, 5.0F, 4.0F),
+			cube(30, 16, 4.30F, 5.50F, -2.00F, 1.0F, 5.0F, 4.0F),
+			cube(0, 27, -4.20F, -0.20F, -2.80F, 2.0F, 1.0F, 6.0F, 0.15F),
+			cube(17, 27, 2.20F, -0.20F, -2.80F, 2.0F, 1.0F, 6.0F, 0.15F))),
+	RIG_BELT_RPS(64, 64, false,
+		part(Anchor.BODY,
+			cube(0, 0, -4.50F, 9.00F, -3.50F, 9.0F, 3.0F, 7.0F, 0.15F),
+			cube(27, 21, -1.50F, 9.50F, -4.00F, 3.0F, 2.0F, 1.0F),
+			cube(53, 11, -5.80F, 8.20F, -3.00F, 2.0F, 4.0F, 2.0F),
+			cube(0, 21, -5.80F, 8.20F, -0.50F, 2.0F, 4.0F, 2.0F),
+			cube(9, 21, 3.80F, 8.20F, -3.00F, 2.0F, 4.0F, 2.0F),
+			cube(18, 21, 3.80F, 8.20F, -0.50F, 2.0F, 4.0F, 2.0F),
+			cube(32, 11, -3.50F, 8.50F, 3.50F, 7.0F, 4.0F, 3.0F),
+			cube(33, 0, -3.80F, 0.00F, -3.80F, 1.0F, 9.0F, 1.0F),
+			cube(38, 0, 2.80F, 0.00F, -3.80F, 1.0F, 9.0F, 1.0F),
+			cube(43, 0, -3.80F, -0.80F, -3.80F, 1.0F, 1.0F, 8.0F),
+			cube(0, 11, 2.80F, -0.80F, -3.80F, 1.0F, 1.0F, 8.0F),
+			cube(19, 11, -2.50F, 0.50F, 3.50F, 5.0F, 8.0F, 1.0F))),
+	RIG_CHEST_HEAVY(64, 64, false,
+		part(Anchor.BODY,
+			cube(0, 0, -4.50F, 3.00F, -4.00F, 9.0F, 8.0F, 1.0F),
+			cube(9, 10, -4.20F, 6.70F, -5.40F, 2.0F, 4.0F, 2.0F),
+			cube(18, 10, -1.00F, 6.70F, -5.40F, 2.0F, 4.0F, 2.0F),
+			cube(27, 10, 2.20F, 6.70F, -5.40F, 2.0F, 4.0F, 2.0F),
+			cube(33, 18, -3.00F, 4.00F, -5.10F, 6.0F, 2.0F, 1.0F),
+			cube(0, 10, 4.20F, 5.00F, -3.60F, 2.0F, 5.0F, 2.0F),
+			cube(36, 10, -6.20F, 6.00F, -3.60F, 2.0F, 4.0F, 2.0F),
+			cube(45, 10, 5.00F, 0.00F, -3.00F, 1.0F, 5.0F, 1.0F, -0.25F),
+			cube(19, 18, -3.80F, 0.00F, -4.00F, 2.0F, 3.0F, 1.0F),
+			cube(26, 18, 1.80F, 0.00F, -4.00F, 2.0F, 3.0F, 1.0F),
+			cube(21, 0, -3.80F, -0.80F, -4.00F, 2.0F, 1.0F, 8.0F),
+			cube(42, 0, 1.80F, -0.80F, -4.00F, 2.0F, 1.0F, 8.0F),
+			cube(0, 18, -4.00F, 4.00F, 3.50F, 8.0F, 3.0F, 1.0F),
+			cube(48, 18, -3.30F, 2.50F, -4.40F, 1.0F, 1.0F, 1.0F),
+			cube(53, 18, 2.30F, 2.50F, -4.40F, 1.0F, 1.0F, 1.0F))),
+	RIG_SCAV_VEST(64, 64, false,
+		part(Anchor.BODY,
+			cube(38, 0, -4.00F, 5.00F, -3.90F, 8.0F, 5.0F, 1.0F),
+			cube(5, 10, -3.60F, 5.80F, -5.00F, 2.0F, 4.0F, 1.0F, 0.10F),
+			cube(12, 10, 1.60F, 5.80F, -5.00F, 2.0F, 4.0F, 1.0F, 0.10F),
+			cube(19, 10, -1.00F, 5.80F, -4.90F, 2.0F, 2.0F, 1.0F),
+			cube(26, 10, -1.00F, 8.00F, -4.90F, 2.0F, 2.0F, 1.0F),
+			cube(57, 0, -3.50F, 0.00F, -3.90F, 1.0F, 5.0F, 1.0F),
+			cube(0, 10, 2.50F, 0.00F, -3.90F, 1.0F, 5.0F, 1.0F),
+			cube(0, 0, -3.50F, -0.80F, -3.90F, 1.0F, 1.0F, 8.0F),
+			cube(19, 0, 2.50F, -0.80F, -3.90F, 1.0F, 1.0F, 8.0F),
+			cube(33, 10, -4.00F, 6.50F, 3.50F, 8.0F, 1.0F, 1.0F))),
+	TACTICAL_CAP(64, 64, false,
+		part(Anchor.HEAD,
+			cube(0, 0, -4.00F, -8.00F, -4.00F, 8.0F, 3.0F, 8.0F, 0.45F),
+			cube(33, 0, -3.50F, -9.20F, -3.50F, 7.0F, 1.0F, 7.0F, 0.15F),
+			cube(0, 12, -4.00F, -6.00F, -7.20F, 8.0F, 1.0F, 3.0F),
+			cube(34, 12, -3.00F, -5.80F, -8.00F, 6.0F, 1.0F, 1.0F),
+			cube(23, 12, -2.00F, -8.20F, -4.70F, 4.0F, 2.0F, 1.0F))),
+	TACTICAL_GOGGLES(64, 64, true,
+		part(Anchor.HEAD,
+			cube(0, 0, -4.00F, -5.00F, -4.00F, 8.0F, 2.0F, 8.0F, 0.45F),
+			cube(33, 0, -4.50F, -5.80F, -5.00F, 9.0F, 3.0F, 1.0F),
+			cube(7, 11, -4.00F, -5.20F, -5.30F, 8.0F, 2.0F, 1.0F, -0.05F),
+			cube(54, 0, -4.90F, -5.20F, -3.50F, 1.0F, 2.0F, 2.0F),
+			cube(0, 11, 3.90F, -5.20F, -3.50F, 1.0F, 2.0F, 2.0F))),
+	USHANKA(64, 64, false,
+		part(Anchor.HEAD,
+			cube(0, 0, -4.50F, -9.00F, -4.50F, 9.0F, 4.0F, 9.0F, 0.15F),
+			cube(0, 14, -4.50F, -8.20F, -5.50F, 9.0F, 3.0F, 1.0F, 0.10F),
+			cube(37, 0, -5.30F, -5.50F, -1.50F, 1.0F, 6.0F, 4.0F, 0.05F),
+			cube(48, 0, 4.30F, -5.50F, -1.50F, 1.0F, 6.0F, 4.0F, 0.05F),
+			cube(21, 14, -4.50F, -5.50F, 3.80F, 9.0F, 3.0F, 1.0F, 0.10F))),
+	GROUND_ARMOR(64, 64, false,
+		part(Anchor.GROUND,
+			cube(0, 0, -5.00F, -2.00F, -5.50F, 10.0F, 2.0F, 11.0F),
+			cube(0, 14, -4.50F, -4.00F, -4.50F, 9.0F, 2.0F, 9.0F),
+			cube(0, 34, -2.50F, -4.80F, -3.50F, 5.0F, 1.0F, 2.0F),
+			cube(34, 26, -4.50F, -2.00F, -7.50F, 2.0F, 1.0F, 3.0F),
+			cube(45, 26, 2.50F, -2.00F, -7.50F, 2.0F, 1.0F, 3.0F),
+			cube(37, 14, -7.00F, -2.00F, -2.50F, 2.0F, 2.0F, 5.0F),
+			cube(0, 26, 5.00F, -2.00F, -2.50F, 2.0F, 2.0F, 5.0F),
+			cube(15, 26, -3.50F, -4.00F, -6.50F, 7.0F, 2.0F, 2.0F))),
+	GROUND_BACKPACK_LARGE(64, 64, false,
+		part(Anchor.GROUND,
+			cube(0, 0, -5.00F, -5.50F, -6.00F, 10.0F, 5.0F, 12.0F),
+			cube(19, 42, -4.50F, -5.00F, -8.00F, 9.0F, 4.0F, 2.0F),
+			cube(23, 53, -4.50F, -7.00F, -8.50F, 9.0F, 3.0F, 2.0F),
+			cube(0, 31, -3.50F, -7.50F, -3.50F, 7.0F, 2.0F, 8.0F),
+			cube(31, 31, -7.00F, -4.00F, -3.50F, 2.0F, 3.0F, 7.0F),
+			cube(0, 42, 5.00F, -4.00F, -3.50F, 2.0F, 3.0F, 7.0F),
+			cube(0, 18, -4.00F, -1.00F, -5.50F, 2.0F, 1.0F, 11.0F),
+			cube(27, 18, 2.00F, -1.00F, -5.50F, 2.0F, 1.0F, 11.0F),
+			cube(42, 42, -5.20F, -5.80F, -2.00F, 10.0F, 5.0F, 1.0F, 0.10F),
+			cube(0, 53, -5.20F, -5.80F, 2.50F, 10.0F, 5.0F, 1.0F, 0.10F))),
+	GROUND_BACKPACK_SMALL(64, 64, false,
+		part(Anchor.GROUND,
+			cube(0, 0, -4.00F, -4.50F, -4.50F, 8.0F, 4.0F, 9.0F),
+			cube(44, 14, -3.50F, -4.00F, -5.50F, 7.0F, 3.0F, 1.0F),
+			cube(21, 14, -3.00F, -5.50F, -2.00F, 6.0F, 1.0F, 5.0F),
+			cube(0, 24, -1.50F, -3.00F, -6.50F, 3.0F, 1.0F, 1.0F),
+			cube(35, 0, -4.20F, -1.00F, -4.00F, 2.0F, 1.0F, 8.0F),
+			cube(0, 14, 2.20F, -1.00F, -4.00F, 2.0F, 1.0F, 8.0F))),
+	GROUND_CASE_MEDKIT(64, 64, false,
+		part(Anchor.GROUND,
+			cube(0, 0, -5.00F, -4.00F, -3.50F, 10.0F, 4.0F, 7.0F),
+			cube(0, 12, -5.00F, -5.00F, -3.50F, 10.0F, 1.0F, 7.0F, 0.05F),
+			cube(35, 12, -3.00F, -5.00F, -4.00F, 1.0F, 2.0F, 1.0F),
+			cube(40, 12, 2.00F, -5.00F, -4.00F, 1.0F, 2.0F, 1.0F),
+			cube(45, 12, -2.00F, -2.50F, -4.50F, 4.0F, 1.0F, 1.0F),
+			cube(35, 0, -5.30F, -4.50F, -3.00F, 1.0F, 4.0F, 6.0F),
+			cube(50, 0, 4.30F, -4.50F, -3.00F, 1.0F, 4.0F, 6.0F))),
+	GROUND_HELMET_OPEN(64, 64, false,
+		part(Anchor.GROUND,
+			cube(0, 13, -4.50F, -2.00F, -4.50F, 9.0F, 2.0F, 9.0F),
+			cube(0, 0, -4.50F, -5.00F, -4.50F, 9.0F, 3.0F, 9.0F, 0.10F),
+			cube(0, 25, -3.50F, -6.00F, -3.50F, 7.0F, 1.0F, 7.0F),
+			cube(0, 34, -1.50F, -4.50F, -5.20F, 3.0F, 2.0F, 1.0F),
+			cube(29, 25, -5.20F, -3.20F, -3.00F, 1.0F, 1.0F, 6.0F),
+			cube(44, 25, 4.20F, -3.20F, -3.00F, 1.0F, 1.0F, 6.0F),
+			cube(9, 34, -5.50F, -1.00F, -1.50F, 2.0F, 1.0F, 2.0F),
+			cube(18, 34, 3.50F, -1.00F, -1.50F, 2.0F, 1.0F, 2.0F))),
+	GROUND_HELMET_VISOR(64, 64, true,
+		part(Anchor.GROUND,
+			cube(0, 0, -5.00F, -4.00F, -4.50F, 10.0F, 4.0F, 9.0F),
+			cube(0, 14, -4.50F, -6.00F, -4.00F, 9.0F, 2.0F, 8.0F),
+			cube(35, 14, -3.50F, -7.00F, -3.00F, 7.0F, 1.0F, 6.0F),
+			cube(0, 25, -4.50F, -5.50F, -5.50F, 9.0F, 5.0F, 1.0F),
+			cube(21, 25, -5.60F, -4.50F, -2.00F, 1.0F, 2.0F, 2.0F),
+			cube(28, 25, 4.60F, -4.50F, -2.00F, 1.0F, 2.0F, 2.0F),
+			cube(35, 25, -4.00F, -2.00F, 4.20F, 8.0F, 2.0F, 1.0F))),
+	GROUND_MASK_TAGILLA(64, 64, false,
+		part(Anchor.GROUND,
+			cube(0, 0, -5.00F, -3.00F, -4.00F, 1.0F, 3.0F, 8.0F),
+			cube(19, 0, 4.00F, -3.00F, -4.00F, 1.0F, 3.0F, 8.0F),
+			cube(37, 12, -4.50F, -3.00F, -5.00F, 9.0F, 3.0F, 1.0F),
+			cube(0, 12, -4.50F, -4.00F, -4.50F, 9.0F, 1.0F, 9.0F, 0.05F),
+			cube(0, 23, -3.50F, -4.80F, -3.50F, 7.0F, 1.0F, 2.0F),
+			cube(19, 23, -3.50F, -1.00F, 4.00F, 7.0F, 1.0F, 2.0F))),
+	GROUND_RIG(64, 64, false,
+		part(Anchor.GROUND,
+			cube(0, 0, -5.50F, -2.00F, -4.00F, 11.0F, 2.0F, 8.0F),
+			cube(39, 0, -4.50F, -4.00F, -1.00F, 2.0F, 2.0F, 4.0F),
+			cube(52, 0, -1.00F, -4.00F, -1.00F, 2.0F, 2.0F, 4.0F),
+			cube(0, 11, 2.50F, -4.00F, -1.00F, 2.0F, 2.0F, 4.0F),
+			cube(0, 18, -3.00F, -3.00F, -3.50F, 6.0F, 1.0F, 2.0F),
+			cube(13, 11, -7.50F, -2.50F, -2.00F, 2.0F, 2.0F, 4.0F),
+			cube(26, 11, 5.50F, -2.50F, -2.00F, 2.0F, 2.0F, 4.0F),
+			cube(39, 11, -4.00F, -1.00F, -7.00F, 2.0F, 1.0F, 3.0F),
+			cube(50, 11, 2.00F, -1.00F, -7.00F, 2.0F, 1.0F, 3.0F),
+			cube(17, 18, -3.50F, -2.00F, -4.50F, 1.0F, 1.0F, 1.0F),
+			cube(22, 18, 2.50F, -2.00F, -4.50F, 1.0F, 1.0F, 1.0F)));
+
+	private static final float DROPPED_SCALE = 0.85F;
+	private static final float PIXELS_PER_BLOCK = 16.0F;
+
+	private final BakedPart[] parts;
+	private final Identifier baseTexture;
+	private final boolean translucent;
+	private final boolean groundModel;
+	private final double centerX;
+	private final double centerDepth;
+	private final double bottom;
+
+	GearModel(int textureWidth, int textureHeight, boolean translucent, Part... geometry) {
+		this(textureWidth, textureHeight, translucent, null, geometry);
+	}
+
+	GearModel(int textureWidth, int textureHeight, boolean translucent, String textureName, Part... geometry) {
+		this.groundModel = geometry[0].anchor() == Anchor.GROUND;
+		this.translucent = translucent;
+		String folder = groundModel ? "ground" : "wearable";
+		String file = textureName == null ? name().toLowerCase(Locale.ROOT) : textureName;
+		this.baseTexture = new Identifier("tarkovcraft", "textures/equipment/" + folder + "/" + file + ".png");
+
+		ModelData data = new ModelData();
+		float minX = Float.POSITIVE_INFINITY;
+		float maxX = Float.NEGATIVE_INFINITY;
+		float minDepth = Float.POSITIVE_INFINITY;
+		float maxDepth = Float.NEGATIVE_INFINITY;
+		float lowestPoint = Float.POSITIVE_INFINITY;
+		for (Part part : geometry) {
+			ModelPartBuilder builder = ModelPartBuilder.create();
+			Anchor anchor = part.anchor();
+			for (Cuboid cube : part.cuboids()) {
+				cube.addTo(builder);
+				minX = Math.min(minX, anchor.x + cube.x() - cube.dilation());
+				maxX = Math.max(maxX, anchor.x + cube.x() + cube.width() + cube.dilation());
+				if (groundModel) {
+					minDepth = Math.min(minDepth, cube.z() - cube.dilation());
+					maxDepth = Math.max(maxDepth, cube.z() + cube.depth() + cube.dilation());
+					lowestPoint = Math.min(lowestPoint, -(cube.y() + cube.height() + cube.dilation()));
+				} else {
+					// When laid face up, model Y becomes horizontal depth and -Z becomes height.
+					minDepth = Math.min(minDepth, -(anchor.y + cube.y() + cube.height() + cube.dilation()));
+					maxDepth = Math.max(maxDepth, -(anchor.y + cube.y() - cube.dilation()));
+					lowestPoint = Math.min(lowestPoint, -(cube.z() + cube.depth() + cube.dilation()));
+				}
+			}
+			data.getRoot().addChild(anchor.name(), builder, ModelTransform.NONE);
+		}
+		ModelPart model = TexturedModelData.of(data, textureWidth, textureHeight).createModel();
+		this.parts = new BakedPart[geometry.length];
+		for (int index = 0; index < geometry.length; index++) {
+			Anchor anchor = geometry[index].anchor();
+			parts[index] = new BakedPart(anchor, model.getChild(anchor.name()));
+		}
+		this.centerX = (minX + maxX) / (2.0 * PIXELS_PER_BLOCK);
+		this.centerDepth = (minDepth + maxDepth) / (2.0 * PIXELS_PER_BLOCK);
+		this.bottom = lowestPoint / PIXELS_PER_BLOCK;
+	}
+
+	public void renderWorn(MatrixStack matrices, VertexConsumerProvider consumers, int light, BipedEntityModel<?> playerModel, Item item) {
+		if (groundModel) {
+			return;
+		}
+		VertexConsumer vertices = consumers.getBuffer(renderLayer(item));
+		for (BakedPart part : parts) {
+			ModelPart anchor = part.anchor().fromPlayer(playerModel);
+			if (!anchor.visible || anchor.hidden) {
+				continue;
+			}
+			matrices.push();
+			anchor.rotate(matrices);
+			part.model().render(matrices, vertices, light, OverlayTexture.DEFAULT_UV);
+			matrices.pop();
+		}
+	}
+
+	public void renderOnGround(MatrixStack matrices, VertexConsumerProvider consumers, int light, Item item) {
+		VertexConsumer vertices = consumers.getBuffer(renderLayer(item));
+		matrices.push();
+		matrices.scale(DROPPED_SCALE, DROPPED_SCALE, DROPPED_SCALE);
+		matrices.translate(centerX, -bottom, -centerDepth);
+		if (!groundModel) {
+			matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees(90.0F));
+		}
+		matrices.scale(-1.0F, -1.0F, 1.0F);
+		for (BakedPart part : parts) {
+			Anchor anchor = part.anchor();
+			matrices.push();
+			matrices.translate(anchor.x / PIXELS_PER_BLOCK, anchor.y / PIXELS_PER_BLOCK, 0.0);
+			part.model().render(matrices, vertices, light, OverlayTexture.DEFAULT_UV);
+			matrices.pop();
+		}
+		matrices.pop();
+	}
+
+	private RenderLayer renderLayer(Item item) {
+		Identifier texture = this == GROUND_CASE_MEDKIT || this == VISOR ? baseTexture : GearPalette.textureFor(item, baseTexture);
+		return translucent ? RenderLayer.getEntityTranslucent(texture) : RenderLayer.getEntityCutoutNoCull(texture);
+	}
+
+	private static Part part(Anchor anchor, Cuboid... cuboids) {
+		return new Part(anchor, cuboids);
+	}
+
+	private static Cuboid cube(int u, int v, float x, float y, float z, float width, float height, float depth) {
+		return cube(u, v, x, y, z, width, height, depth, 0.0F);
+	}
+
+	private static Cuboid cube(int u, int v, float x, float y, float z, float width, float height, float depth, float dilation) {
+		return new Cuboid(u, v, x, y, z, width, height, depth, dilation);
+	}
+
+	private record Cuboid(int u, int v, float x, float y, float z, float width, float height, float depth, float dilation) {
+		void addTo(ModelPartBuilder builder) {
+			builder.uv(u, v).cuboid(x, y, z, width, height, depth, new Dilation(dilation));
+		}
+	}
+
+	private record Part(Anchor anchor, Cuboid[] cuboids) {}
+	private record BakedPart(Anchor anchor, ModelPart model) {}
+
+	private enum Anchor {
+		HEAD(0, 0),
+		BODY(0, 0),
+		RIGHT_ARM(-5, 2),
+		LEFT_ARM(5, 2),
+		GROUND(0, 0);
+
+		private final float x;
+		private final float y;
+
+		Anchor(float x, float y) {
+			this.x = x;
+			this.y = y;
+		}
+
+		ModelPart fromPlayer(BipedEntityModel<?> playerModel) {
+			return switch (this) {
+				case HEAD -> playerModel.head;
+				case BODY -> playerModel.body;
+				case RIGHT_ARM -> playerModel.rightArm;
+				case LEFT_ARM -> playerModel.leftArm;
+				case GROUND -> throw new IllegalStateException("Ground geometry has no player model part");
+			};
+		}
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\client\model\GearPalette.java ==========
+package com.tarkovcraft.client.model;
+
+import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
+import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.texture.NativeImage;
+import net.minecraft.client.texture.NativeImageBackedTexture;
+import net.minecraft.client.texture.TextureManager;
+import net.minecraft.item.Item;
+import net.minecraft.registry.Registries;
+import net.minecraft.resource.ResourceManager;
+import net.minecraft.resource.ResourceType;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.math.MathHelper;
+import org.jetbrains.annotations.Nullable;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+
+/** Recolors the pack's materials from the inventory icon for each equipment item. */
+public final class GearPalette {
+	private static final Map<Identifier, Optional<Color>> ICON_COLORS = new HashMap<>();
+	private static final Map<TextureKey, Optional<Identifier>> RECOLORED_TEXTURES = new HashMap<>();
+
+	private GearPalette() {
+	}
+
+	public static void register() {
+		ResourceManagerHelper.get(ResourceType.CLIENT_RESOURCES).registerReloadListener(new SimpleSynchronousResourceReloadListener() {
+			@Override
+			public Identifier getFabricId() {
+				return new Identifier("tarkovcraft", "gear_palette");
+			}
+
+			@Override
+			public void reload(ResourceManager manager) {
+				TextureManager textures = MinecraftClient.getInstance().getTextureManager();
+				for (Optional<Identifier> texture : RECOLORED_TEXTURES.values()) {
+					texture.ifPresent(textures::destroyTexture);
+				}
+				RECOLORED_TEXTURES.clear();
+				ICON_COLORS.clear();
+			}
+		});
+	}
+
+	static Identifier textureFor(Item item, Identifier baseTexture) {
+		Identifier itemId = Registries.ITEM.getId(item);
+		TextureKey key = new TextureKey(itemId, baseTexture);
+		return RECOLORED_TEXTURES.computeIfAbsent(key, GearPalette::createTexture).orElse(baseTexture);
+	}
+
+	private static Optional<Identifier> createTexture(TextureKey key) {
+		MinecraftClient client = MinecraftClient.getInstance();
+		ResourceManager resources = client.getResourceManager();
+		Optional<Color> icon = ICON_COLORS.computeIfAbsent(key.item(), item -> readIconColor(resources, item));
+		if (icon.isEmpty()) {
+			return Optional.empty();
+		}
+
+		NativeImage image;
+		try {
+			image = readImage(resources, key.baseTexture());
+		} catch (IOException | IllegalArgumentException e) {
+			return Optional.empty();
+		}
+		NativeImageBackedTexture texture = null;
+		boolean registered = false;
+		try {
+			Color material = materialColor(image, 255);
+			if (material == null) {
+				return Optional.empty();
+			}
+			recolor(image, material, icon.get());
+			texture = new NativeImageBackedTexture(image);
+			// Stable IDs let RenderLayer reuse its cached layer across reloads.
+			Identifier id = new Identifier("tarkovcraft", "gear_palette/"
+				+ key.baseTexture().getPath() + "/" + key.item().getNamespace() + "/" + key.item().getPath());
+			client.getTextureManager().registerTexture(id, texture);
+			registered = true;
+			return Optional.of(id);
+		} finally {
+			if (!registered) {
+				if (texture == null) image.close();
+				else texture.close();
+			}
+		}
+	}
+
+	private static Optional<Color> readIconColor(ResourceManager resources, Identifier item) {
+		// TarkovCraft's equipment item models use a matching textures/item/<id>.png layer.
+		Identifier texture = new Identifier(item.getNamespace(), "textures/item/" + item.getPath() + ".png");
+		try (NativeImage icon = readImage(resources, texture)) {
+			return Optional.ofNullable(materialColor(icon, 128));
+		} catch (IOException | IllegalArgumentException e) {
+			return Optional.empty();
+		}
+	}
+
+	private static NativeImage readImage(ResourceManager resources, Identifier texture) throws IOException {
+		try (InputStream stream = resources.open(texture)) {
+			return NativeImage.read(NativeImage.Format.RGBA, stream);
+		}
+	}
+
+	@Nullable
+	private static Color materialColor(NativeImage image, int minAlpha) {
+		int[] brightnessCounts = new int[256];
+		int count = 0;
+		for (int y = 0; y < image.getHeight(); y++) {
+			for (int x = 0; x < image.getWidth(); x++) {
+				int pixel = image.getColor(x, y);
+				if ((pixel >>> 24) >= minAlpha) {
+					brightnessCounts[Math.round(Color.fromPixel(pixel).luminance())]++;
+					count++;
+				}
+			}
+		}
+		if (count == 0) {
+			return null;
+		}
+		int low = percentile(brightnessCounts, count * 15 / 100);
+		int high = percentile(brightnessCounts, count * 85 / 100);
+		int red = 0;
+		int green = 0;
+		int blue = 0;
+		int included = 0;
+		for (int y = 0; y < image.getHeight(); y++) {
+			for (int x = 0; x < image.getWidth(); x++) {
+				int pixel = image.getColor(x, y);
+				if ((pixel >>> 24) < minAlpha) continue;
+				Color color = Color.fromPixel(pixel);
+				int shade = Math.round(color.luminance());
+				if (shade < low || shade > high) continue;
+				red += color.red();
+				green += color.green();
+				blue += color.blue();
+				included++;
+			}
+		}
+		return new Color(red / included, green / included, blue / included);
+	}
+
+	private static int percentile(int[] counts, int index) {
+		for (int shade = 0; shade < counts.length; shade++) {
+			index -= counts[shade];
+			if (index < 0) return shade;
+		}
+		return 255;
+	}
+
+	private static void recolor(NativeImage image, Color material, Color target) {
+		float baseShade = material.luminance();
+		for (int y = 0; y < image.getHeight(); y++) {
+			for (int x = 0; x < image.getWidth(); x++) {
+				int pixel = image.getColor(x, y);
+				// Preserve transparent UV padding, openings and translucent lenses exactly.
+				if ((pixel >>> 24) != 255) continue;
+				Color original = Color.fromPixel(pixel);
+				float shade = original.luminance();
+				float chromaDistance = original.chromaDistance(material, shade, baseShade);
+				float materialWeight = 1.0F - MathHelper.clamp((chromaDistance - 0.18F) / 0.30F, 0.0F, 1.0F);
+				float lightRatio = MathHelper.clamp(shade / Math.max(baseShade, 1.0F), 0.0F, 2.0F);
+				int red = shadeChannel(original.red(), target.red(), lightRatio, materialWeight);
+				int green = shadeChannel(original.green(), target.green(), lightRatio, materialWeight);
+				int blue = shadeChannel(original.blue(), target.blue(), lightRatio, materialWeight);
+				image.setColor(x, y, 0xFF000000 | blue << 16 | green << 8 | red);
+			}
+		}
+	}
+
+	private static int shadeChannel(int original, int target, float ratio, float weight) {
+		return MathHelper.clamp(Math.round(MathHelper.lerp(weight, original, target * ratio)), 0, 255);
+	}
+
+	private record TextureKey(Identifier item, Identifier baseTexture) {}
+
+	private record Color(int red, int green, int blue) {
+		static Color fromPixel(int abgr) {
+			return new Color(abgr & 255, abgr >>> 8 & 255, abgr >>> 16 & 255);
+		}
+
+		float luminance() {
+			return (3 * red + 6 * green + blue) / 10.0F;
+		}
+
+		float chromaDistance(Color other, float shade, float otherShade) {
+			float scale = Math.max(shade, 24.0F);
+			float otherScale = Math.max(otherShade, 24.0F);
+			float redGreen = (red - green) / scale - (other.red - other.green) / otherScale;
+			float blueGreen = (blue - green) / scale - (other.blue - other.green) / otherScale;
+			return Math.max(Math.abs(redGreen), Math.abs(blueGreen));
+		}
 	}
 }
 
@@ -620,6 +1403,114 @@ public class CorpseEntityRenderer extends EntityRenderer<CorpseEntity> {
 	}
 }
 
+// ========== .\src\main\java\com\tarkovcraft\client\renderer\GearAppearance.java ==========
+package com.tarkovcraft.client.renderer;
+
+import com.tarkovcraft.client.model.GearModel;
+import com.tarkovcraft.health.HitZone;
+import com.tarkovcraft.item.BackpackItem;
+import com.tarkovcraft.item.MedicalType;
+import com.tarkovcraft.item.TacticalRigItem;
+import com.tarkovcraft.item.TarkovArmorItem;
+import com.tarkovcraft.item.TarkovCaseItem;
+import com.tarkovcraft.item.TarkovFunctionalItem;
+import com.tarkovcraft.item.TarkovMedicalItem;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.registry.Registries;
+import org.jetbrains.annotations.Nullable;
+
+/** Selects a model from the pack for each supported equipment family. */
+public final class GearAppearance {
+	private GearAppearance() {
+	}
+
+	@Nullable
+	public static GearModel worn(Item item) {
+		if (item instanceof BackpackItem backpack) {
+			return backpack.getGridWidth() * backpack.getGridHeight() >= 24
+				? GearModel.BACKPACK_LARGE : GearModel.BACKPACK_SMALL;
+		}
+
+		if (item instanceof TacticalRigItem) {
+			String path = Registries.ITEM.getId(item).getPath();
+			if (path.startsWith("remenno_plechevaya_") || path.equals("bank_robber_rig")) {
+				return GearModel.RIG_BELT_RPS;
+			}
+			if (path.startsWith("chekhol_dlya_broneplit_")) {
+				return GearModel.RIG_ARMORED;
+			}
+			return path.equals("scav_vest") || path.startsWith("zhilet_okhrannika_") || path.startsWith("okhotnichiy_zhilet_")
+				? GearModel.RIG_SCAV_VEST : GearModel.RIG_CHEST_HEAVY;
+		}
+		if (item instanceof TarkovArmorItem armor) {
+			String path = Registries.ITEM.getId(item).getPath();
+			return switch (armor.getTargetSlot()) {
+				case HELMET -> helmet(path, armor);
+				case FACE_MASK -> faceMask(path, armor);
+				case BODY_ARMOR -> bodyArmor(path, armor);
+				default -> null;
+			};
+		}
+		if (item instanceof TarkovFunctionalItem functional && functional.isHeadset()) {
+			return GearModel.HEADSET_ACTIVE;
+		}
+		return null;
+	}
+
+	private static GearModel helmet(String path, TarkovArmorItem armor) {
+		if (path.contains("tagilly")) return GearModel.MASK_TAGILLA;
+		if (path.contains("ronin")) return GearModel.HELMET_RONIN;
+		if (path.contains("ushanka") || path.contains("shapka")) return GearModel.USHANKA;
+		if (path.contains("kepka") || path.startsWith("panama_") || path.startsWith("beret_")) {
+			return GearModel.TACTICAL_CAP;
+		}
+		// Hit zones describe protection. They do not equip a visor on an open shell.
+		return armor.coversZone(HitZone.HEAD_EARS) || path.equals("ssh68_helmet") || path.startsWith("broneshlem_altyn_")
+			? GearModel.HELMET_LOWCUT : GearModel.HELMET_HIGHCUT;
+	}
+
+	private static GearModel faceMask(String path, TarkovArmorItem armor) {
+		if (path.startsWith("vizor_")) return GearModel.VISOR;
+		if (path.contains("ochki")) return GearModel.TACTICAL_GOGGLES;
+		if (armor.isGasProtection() || path.startsWith("respirator")) return GearModel.GAS_MASK;
+		if (path.contains("tagilly") || path.contains("ten_smer") || path.equals("death_shadow_mask")) {
+			return GearModel.MASK_TAGILLA;
+		}
+		return GearModel.BALACLAVA;
+	}
+
+	private static GearModel bodyArmor(String path, TarkovArmorItem armor) {
+		if (path.contains("slick") || path.contains("paca") || path.contains("hexgrid")) {
+			return GearModel.ARMOR_SLICK;
+		}
+		return armor.getCoveredZones().contains(HitZone.NECK) || path.equals("zabralo_armor")
+			? GearModel.ARMOR_HEAVY : GearModel.ARMOR_MEDIUM;
+	}
+
+	@Nullable
+	public static GearModel ground(ItemStack stack) {
+		if (stack.isEmpty()) return null;
+		Item item = stack.getItem();
+		if ((item instanceof TarkovMedicalItem medical && medical.getMedicalType().getCapacityMode() == MedicalType.CapacityMode.HP_POOL)
+			|| (item instanceof TarkovCaseItem storage && storage.getCaseRole() == TarkovCaseItem.CaseRole.MEDICAL)) {
+			return GearModel.GROUND_CASE_MEDKIT;
+		}
+		GearModel worn = worn(item);
+		if (worn == null) return null;
+		return switch (worn) {
+			case BACKPACK_SMALL -> GearModel.GROUND_BACKPACK_SMALL;
+			case BACKPACK_LARGE -> GearModel.GROUND_BACKPACK_LARGE;
+			case ARMOR_HEAVY, ARMOR_MEDIUM, ARMOR_SLICK -> GearModel.GROUND_ARMOR;
+			case RIG_ARMORED, RIG_BELT_RPS, RIG_CHEST_HEAVY, RIG_SCAV_VEST -> GearModel.GROUND_RIG;
+			case HELMET_HIGHCUT, HELMET_LOWCUT -> GearModel.GROUND_HELMET_OPEN;
+			case HELMET_RONIN, HELMET_VISOR -> GearModel.GROUND_HELMET_VISOR;
+			case MASK_TAGILLA -> GearModel.GROUND_MASK_TAGILLA;
+			default -> worn;
+		};
+	}
+}
+
 // ========== .\src\main\java\com\tarkovcraft\client\renderer\HitZoneDebugRenderer.java ==========
 package com.tarkovcraft.client.renderer;
 
@@ -768,6 +1659,191 @@ public final class HitZoneDebugRenderer {
 			case LEFT_ARM, RIGHT_ARM -> new float[]{0.20f, 0.48f, 1.00f, 1.0f};
 			case LEFT_LEG, RIGHT_LEG -> new float[]{0.12f, 0.88f, 0.82f, 1.0f};
 		};
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\client\renderer\PlayerGearFeature.java ==========
+package com.tarkovcraft.client.renderer;
+
+import com.tarkovcraft.client.model.GearModel;
+import com.tarkovcraft.loadout.PlayerLoadoutHolder;
+import com.tarkovcraft.network.EquipmentAppearance;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.client.rendering.v1.LivingEntityFeatureRendererRegistrationCallback;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.network.AbstractClientPlayerEntity;
+import net.minecraft.client.render.VertexConsumerProvider;
+import net.minecraft.client.render.entity.PlayerEntityRenderer;
+import net.minecraft.client.render.entity.feature.FeatureRenderer;
+import net.minecraft.client.render.entity.model.PlayerEntityModel;
+import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.item.Item;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+public final class PlayerGearFeature extends FeatureRenderer<AbstractClientPlayerEntity, PlayerEntityModel<AbstractClientPlayerEntity>> {
+	private static final Map<UUID, EquipmentAppearance> REMOTE_APPEARANCES = new HashMap<>();
+
+	private PlayerGearFeature(PlayerEntityRenderer renderer) {
+		super(renderer);
+	}
+
+	public static void register() {
+		LivingEntityFeatureRendererRegistrationCallback.EVENT.register((type, renderer, helper, context) -> {
+			if (renderer instanceof PlayerEntityRenderer playerRenderer) {
+				helper.register(new PlayerGearFeature(playerRenderer));
+			}
+		});
+		ClientPlayNetworking.registerGlobalReceiver(EquipmentAppearance.CHANNEL, (client, handler, buf, sender) -> {
+			UUID playerId = buf.readUuid();
+			EquipmentAppearance appearance = EquipmentAppearance.read(buf);
+			client.execute(() -> {
+				if (client.getNetworkHandler() != handler) return;
+				if (appearance.isEmpty()) {
+					REMOTE_APPEARANCES.remove(playerId);
+				} else {
+					REMOTE_APPEARANCES.put(playerId, appearance);
+				}
+			});
+		});
+		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> REMOTE_APPEARANCES.clear());
+	}
+
+	@Override
+	public void render(MatrixStack matrices, VertexConsumerProvider vertices, int light, AbstractClientPlayerEntity player,
+			float limbAngle, float limbDistance, float tickDelta, float animationProgress, float headYaw, float headPitch) {
+		if (player.isInvisible() || player.isSpectator()) return;
+		EquipmentAppearance appearance = REMOTE_APPEARANCES.get(player.getUuid());
+		if (player == MinecraftClient.getInstance().player && player instanceof PlayerLoadoutHolder holder) {
+			appearance = EquipmentAppearance.capture(holder.tarkovcraft$getLoadout());
+		}
+		if (appearance == null) return;
+
+		for (Item item : appearance.items()) {
+			GearModel model = GearAppearance.worn(item);
+			if (model != null) {
+				model.renderWorn(matrices, vertices, light, getContextModel(), item);
+			}
+		}
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\client\screen\AmmoRadialScreen.java ==========
+package com.tarkovcraft.client.screen;
+
+import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.ammo.TaCZCaliberCatalog;
+import com.tarkovcraft.network.AmmoSelectionNetworking;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.network.PacketByteBuf;
+import net.minecraft.text.Text;
+import org.lwjgl.glfw.GLFW;
+
+import java.util.Map;
+
+/** Selects which available ammo tier TaCZ should draw from first on the next reload. */
+public final class AmmoRadialScreen extends Screen {
+	private static final int CARD_WIDTH = 60;
+	private static final int CARD_HEIGHT = 28;
+	private static final int RADIUS = 70;
+	private static final AmmoTier[] TIERS = AmmoTier.values();
+
+	private final String gunId;
+	private final TaCZCaliberCatalog.CaliberSpec caliber;
+	private final Map<AmmoTier, Integer> ammoCounts;
+
+	public AmmoRadialScreen(String gunId, String ammoId, Map<AmmoTier, Integer> ammoCounts) {
+		super(Text.translatable("screen.tarkovcraft.ammo_radial"));
+		this.gunId = gunId;
+		this.caliber = TaCZCaliberCatalog.getSpecOrDynamic(ammoId);
+		this.ammoCounts = Map.copyOf(ammoCounts);
+	}
+
+	@Override
+	public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+		int centerX = width / 2;
+		int centerY = height / 2;
+		context.fillGradient(0, 0, width, height, 0x79131517, 0xB1121315);
+		context.drawCenteredTextWithShadow(textRenderer, title, centerX, centerY - 12, 0xE5CE9F);
+		context.drawCenteredTextWithShadow(textRenderer, caliber.displayName(), centerX, centerY + 2, 0xB7B4AD);
+		context.drawCenteredTextWithShadow(textRenderer, Text.translatable("screen.tarkovcraft.ammo_radial_hint"),
+			centerX, centerY + radiusY() + 18, 0xB7B4AD);
+
+		for (AmmoTier tier : TIERS) {
+			int x = cardX(tier);
+			int y = cardY(tier);
+			boolean selectable = isSelectable(tier);
+			boolean hovered = selectable && isOverCard(tier, mouseX, mouseY);
+			context.fill(x, y, x + CARD_WIDTH, y + CARD_HEIGHT, hovered ? 0xE7393630 : 0xE7222427);
+			context.drawBorder(x, y, CARD_WIDTH, CARD_HEIGHT, hovered ? tier.getArgbColor() : 0xFF585750);
+			context.drawCenteredTextWithShadow(textRenderer, tier.getBadge(), x + CARD_WIDTH / 2, y + 4,
+				selectable ? tier.getArgbColor() : 0x808080);
+			context.drawCenteredTextWithShadow(textRenderer, Integer.toString(ammoCounts.getOrDefault(tier, 0)),
+				x + CARD_WIDTH / 2, y + 16, selectable ? 0xE7E3DB : 0x808080);
+		}
+	}
+
+	@Override
+	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+			for (AmmoTier tier : TIERS) {
+				if (isSelectable(tier) && isOverCard(tier, mouseX, mouseY)) {
+					if (ClientPlayNetworking.canSend(AmmoSelectionNetworking.SELECT)) {
+						PacketByteBuf buf = PacketByteBufs.create();
+						buf.writeByte(tier.ordinal());
+						buf.writeString(gunId, AmmoSelectionNetworking.MAX_GUN_ID_LENGTH);
+						ClientPlayNetworking.send(AmmoSelectionNetworking.SELECT, buf);
+					}
+					close();
+					return true;
+				}
+			}
+		}
+		return super.mouseClicked(mouseX, mouseY, button);
+	}
+
+	@Override
+	public boolean shouldPause() {
+		return false;
+	}
+
+	private boolean isSelectable(AmmoTier tier) {
+		return caliber.isTierAllowed(tier) && ammoCounts.getOrDefault(tier, 0) > 0;
+	}
+
+	private boolean isOverCard(AmmoTier tier, double mouseX, double mouseY) {
+		int x = cardX(tier);
+		int y = cardY(tier);
+		return mouseX >= x && mouseX < x + CARD_WIDTH && mouseY >= y && mouseY < y + CARD_HEIGHT;
+	}
+
+	private int cardX(AmmoTier tier) {
+		int radius = Math.min(RADIUS, width / 2 - CARD_WIDTH / 2 - 4);
+		int offset = switch (tier) {
+			case FMJ -> radius;
+			case IGN -> -radius;
+			default -> 0;
+		};
+		return width / 2 + offset - CARD_WIDTH / 2;
+	}
+
+	private int cardY(AmmoTier tier) {
+		int offset = switch (tier) {
+			case HP -> -radiusY();
+			case AP -> radiusY();
+			default -> 0;
+		};
+		return height / 2 + offset - CARD_HEIGHT / 2;
+	}
+
+	private int radiusY() {
+		return Math.min(RADIUS, height / 2 - 30);
 	}
 }
 
@@ -961,5 +2037,255 @@ public class TarkovDeathScreen extends Screen {
 		context.getMatrices().scale(0.72f, 0.72f, 1.0f);
 		context.drawTextWithShadow(textRenderer, text, (int) (x / 0.72f), (int) (y / 0.72f), col);
 		context.getMatrices().pop();
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\client\screen\TarkovInspectWindow.java ==========
+package com.tarkovcraft.client.screen;
+
+import com.tarkovcraft.grid.ItemSize;
+import com.tarkovcraft.grid.ItemSizeRegistry;
+import com.tarkovcraft.item.TarkovArmorItem;
+import com.tarkovcraft.loadout.PlayerLoadout;
+import com.tarkovcraft.search.ItemRarityRegistry;
+import com.tarkovcraft.search.ItemRarityTier;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.font.TextRenderer;
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.item.TooltipContext;
+import net.minecraft.item.FoodComponent;
+import net.minecraft.item.ItemStack;
+import net.minecraft.text.Text;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * Draggable EFT-style item inspection window rendered above the inventory on z = 420.
+ */
+@Environment(EnvType.CLIENT)
+public final class TarkovInspectWindow {
+	private static final int WIN_W = 256;
+	private static final int WIN_H = 224;
+	private static final int HEADER_H = 20;
+
+	private final ItemStack stack;
+	private int x;
+	private int y;
+	private int scrollY = 0;
+	private int maxScrollY = 0;
+	private boolean draggingHeader = false;
+
+	public TarkovInspectWindow(ItemStack stack, int screenW, int screenH) {
+		this(stack, screenW, screenH, 0);
+	}
+
+	public TarkovInspectWindow(ItemStack stack, int screenW, int screenH, int cascadeIndex) {
+		this.stack = stack.copy();
+		int offset = cascadeIndex * 16;
+		this.x = Math.max(8, (screenW - WIN_W) / 2 + offset);
+		this.y = Math.max(8, (screenH - WIN_H) / 2 + offset);
+		clampToScreen(screenW, screenH);
+	}
+
+	public void render(DrawContext ctx, TextRenderer tr, int mouseX, int mouseY, int screenW, int screenH) {
+		clampToScreen(screenW, screenH);
+		TarkovUiTheme.clearDepthBuffer(ctx);
+
+		ctx.getMatrices().push();
+		ctx.getMatrices().translate(0.0f, 0.0f, TarkovUiTheme.Z_MODAL);
+
+		ctx.fill(x, y, x + WIN_W, y + WIN_H, TarkovUiTheme.BG_MODAL);
+		ctx.drawBorder(x, y, WIN_W, WIN_H, TarkovUiTheme.BORDER_POPUP);
+
+		// Header
+		ctx.fill(x + 1, y + 1, x + WIN_W - 1, y + HEADER_H, TarkovUiTheme.BG_MODAL_HEADER);
+		ctx.fill(x + 1, y + HEADER_H, x + WIN_W - 1, y + HEADER_H + 1, TarkovUiTheme.BORDER_PANEL);
+		String title = tr.trimToWidth(stack.getName().getString(), WIN_W - 32);
+		ctx.drawText(tr, title, x + 6, y + 6, TarkovUiTheme.TEXT_PRIMARY, false);
+
+		// Close [X] button
+		int closeX = x + WIN_W - 18;
+		int closeY = y + 3;
+		boolean closeHov = mouseX >= closeX && mouseX < closeX + 14 && mouseY >= closeY && mouseY < closeY + 14;
+		ctx.fill(closeX, closeY, closeX + 14, closeY + 14, closeHov ? TarkovUiTheme.HOVER_MENU_BG : 0xFF1D2025);
+		TarkovUiTheme.drawCenteredFlatText(ctx, tr, "X", closeX + 7, closeY + 4,
+			closeHov ? TarkovUiTheme.HOVER_MENU_TEXT : TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+
+		// Left 70x70 large item preview
+		int previewX = x + 8;
+		int previewY = y + HEADER_H + 8;
+		ctx.fill(previewX, previewY, previewX + 70, previewY + 70, TarkovUiTheme.itemCategoryTint(stack));
+		ctx.drawBorder(previewX, previewY, 70, 70, TarkovUiTheme.BORDER_OCCUPIED);
+
+		ctx.getMatrices().push();
+		ctx.getMatrices().translate(previewX + 35.0f, previewY + 35.0f, 10.0f);
+		ctx.getMatrices().scale(3.0f, 3.0f, 1.0f);
+		ctx.drawItem(stack, -8, -8);
+		ctx.getMatrices().pop();
+
+		// Clear OpenGL depth buffer after 3D item draw so labels/lines/subsequent windows never get clipped
+		TarkovUiTheme.clearDepthBuffer(ctx);
+
+		ItemSize size = ItemSizeRegistry.getSize(stack);
+		TarkovUiTheme.drawRightAlignedFlatText(ctx, tr, size.width() + "x" + size.height(),
+			previewX + 67, previewY + 60, TarkovUiTheme.TEXT_SECONDARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+
+		// Right metadata column
+		int metaX = previewX + 78;
+		int metaY = previewY + 2;
+		float weight = (stack.getItem() instanceof TarkovArmorItem armor)
+			? armor.getWeightKg()
+			: PlayerLoadout.estimateItemWeight(stack);
+		ItemRarityTier rarity = ItemRarityRegistry.getTier(stack);
+
+		TarkovUiTheme.drawFlatText(ctx, tr,
+			Text.translatable("ui.tarkovcraft.inspect_weight", String.format(Locale.ROOT, "%.2f", weight)).getString(),
+			metaX, metaY, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+		metaY += 12;
+		TarkovUiTheme.drawFlatText(ctx, tr,
+			Text.translatable("ui.tarkovcraft.inspect_count", stack.getCount() + "/" + stack.getMaxCount()).getString(),
+			metaX, metaY, TarkovUiTheme.TEXT_SECONDARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+		metaY += 12;
+		TarkovUiTheme.drawFlatText(ctx, tr,
+			Text.translatable("ui.tarkovcraft.inspect_size", size.width(), size.height()).getString(),
+			metaX, metaY, TarkovUiTheme.TEXT_SECONDARY, TarkovUiTheme.TEXT_SCALE_SMALL);
+		metaY += 12;
+		TarkovUiTheme.drawFlatText(ctx, tr,
+			Text.translatable("ui.tarkovcraft.inspect_rarity", rarity.name()).getString(),
+			metaX, metaY, TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
+		metaY += 12;
+
+		FoodComponent fc = stack.getItem().getFoodComponent();
+		if (fc != null) {
+			int energy = fc.getHunger() * 5;
+			int sat = Math.round(fc.getHunger() * fc.getSaturationModifier() * 10.0f);
+			TarkovUiTheme.drawFlatText(ctx, tr,
+				Text.translatable("ui.tarkovcraft.inspect_food", energy, sat).getString(),
+				metaX, metaY, 0xFF77B85A, TarkovUiTheme.TEXT_SCALE_SMALL);
+		}
+
+		// Divider & scrollable colored tooltip lines
+		int detY = previewY + 76;
+		ctx.fill(x + 8, detY, x + WIN_W - 8, detY + 1, TarkovUiTheme.BORDER_PANEL);
+		detY += 5;
+
+		int boxBottom = y + WIN_H - 6;
+		int viewH = Math.max(12, boxBottom - detY);
+		List<Text> details = collectDetailLines();
+		int lineH = 10;
+		maxScrollY = Math.max(0, details.size() * lineH - viewH);
+		scrollY = Math.max(0, Math.min(scrollY, maxScrollY));
+
+		ctx.enableScissor(x + 6, detY, x + WIN_W - 6, boxBottom);
+		float s = TarkovUiTheme.TEXT_SCALE_SMALL;
+		int maxUnscaledW = Math.round((WIN_W - 22) / s);
+		for (int i = 0; i < details.size(); i++) {
+			int ly = detY + i * lineH - scrollY;
+			if (ly + lineH < detY || ly > boxBottom) {
+				continue;
+			}
+			Text line = details.get(i);
+			String plain = line.getString();
+			if (tr.getWidth(plain) > maxUnscaledW) {
+				String trimmed = tr.trimToWidth(plain, maxUnscaledW - tr.getWidth("...")) + "...";
+				line = Text.literal(trimmed).setStyle(line.getStyle());
+			}
+			ctx.getMatrices().push();
+			ctx.getMatrices().scale(s, s, 1.0f);
+			ctx.drawText(tr, line, Math.round((x + 8) / s), Math.round(ly / s), TarkovUiTheme.TEXT_SECONDARY, false);
+			ctx.getMatrices().pop();
+		}
+		ctx.disableScissor();
+
+		if (maxScrollY > 0) {
+			int sbX = x + WIN_W - 6;
+			ctx.fill(sbX, detY, sbX + 2, boxBottom, 0x6620242A);
+			int thumbH = Math.max(10, Math.round(viewH * (viewH / (float) (viewH + maxScrollY))));
+			int thumbY = detY + Math.round((viewH - thumbH) * (scrollY / (float) maxScrollY));
+			ctx.fill(sbX, thumbY, sbX + 2, thumbY + thumbH, TarkovUiTheme.ACCENT_SAND);
+		}
+
+		ctx.getMatrices().pop();
+	}
+
+	private List<Text> collectDetailLines() {
+		List<Text> out = new ArrayList<>();
+		MinecraftClient mc = MinecraftClient.getInstance();
+		boolean advanced = mc != null && mc.options.advancedItemTooltips;
+		TooltipContext ctx = advanced ? TooltipContext.ADVANCED : TooltipContext.BASIC;
+		List<Text> tooltip = stack.getTooltip(mc != null ? mc.player : null, ctx);
+		for (int i = 1; i < tooltip.size(); i++) {
+			Text t = tooltip.get(i);
+			String s = t.getString().trim();
+			if (s.isEmpty()) {
+				continue;
+			}
+			if (!advanced && isTechnicalDebugLine(s)) {
+				continue;
+			}
+			out.add(t);
+		}
+		return out;
+	}
+
+	private static boolean isTechnicalDebugLine(String s) {
+		String lower = s.toLowerCase(Locale.ROOT);
+		if (lower.startsWith("nbt:") || lower.startsWith("gunid:") || lower.equals("tacz:modern_kinetic_gun")) {
+			return true;
+		}
+		return lower.matches("^[a-z0-9_]+:[a-z0-9_./-]+$");
+	}
+
+	public boolean handleMouseScrolled(double mx, double my, double amount) {
+		if (!contains(mx, my) || maxScrollY <= 0) {
+			return false;
+		}
+		scrollY = Math.max(0, Math.min(maxScrollY, scrollY - (int) Math.round(amount * 14)));
+		return true;
+	}
+
+	public boolean contains(double mx, double my) {
+		return mx >= x && mx < x + WIN_W && my >= y && my < y + WIN_H;
+	}
+
+	/**
+	 * Returns true if the window was closed by clicking [X].
+	 */
+	public boolean handleMouseClicked(double mx, double my, int button) {
+		if (button != 0 || !contains(mx, my)) {
+			return false;
+		}
+		int closeX = x + WIN_W - 18;
+		int closeY = y + 3;
+		if (mx >= closeX && mx < closeX + 14 && my >= closeY && my < closeY + 14) {
+			return true;
+		}
+		if (my >= y && my < y + HEADER_H) {
+			draggingHeader = true;
+		}
+		return false;
+	}
+
+	public boolean handleMouseDragged(double dx, double dy, int screenW, int screenH) {
+		if (!draggingHeader) {
+			return false;
+		}
+		x += Math.round(dx);
+		y += Math.round(dy);
+		clampToScreen(screenW, screenH);
+		return true;
+	}
+
+	public void handleMouseReleased() {
+		draggingHeader = false;
+	}
+
+	private void clampToScreen(int screenW, int screenH) {
+		x = Math.max(4, Math.min(screenW - WIN_W - 4, x));
+		y = Math.max(4, Math.min(screenH - WIN_H - 4, y));
 	}
 }

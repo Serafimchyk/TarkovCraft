@@ -1,418 +1,3973 @@
 
-// ========== .\src\main\java\com\tarkovcraft\client\screen\TarkovSplitModal.java ==========
-package com.tarkovcraft.client.screen;
+// ========== .\src\main\java\com\tarkovcraft\item\TarkovFoodItem.java ==========
+package com.tarkovcraft.item;
 
-import net.fabricmc.api.EnvType;
-import net.fabricmc.api.Environment;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
+import com.tarkovcraft.grid.ItemSize;
+import com.tarkovcraft.search.ItemRarityTier;
+import net.minecraft.client.item.TooltipContext;
+import net.minecraft.item.FoodComponent;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
+import net.minecraft.util.UseAction;
+import net.minecraft.world.World;
+import org.jetbrains.annotations.Nullable;
 
-import java.util.function.IntConsumer;
+import java.util.List;
+import java.util.Locale;
 
 /**
- * Compact modal for choosing an exact split count (1 .. count - 1) before sending C2S_SPLIT_STACK.
+ * TarkovCraft food and drink provisions with FoodComponent, grid size, rarity, and weight.
  */
-@Environment(EnvType.CLIENT)
-public final class TarkovSplitModal {
-	private static final int WIN_W = 164;
-	private static final int WIN_H = 84;
+public class TarkovFoodItem extends Item implements TarkovSizedItem {
+	private final ItemSize storedItemSize;
+	private final ItemRarityTier rarityTier;
+	private final float weightKg;
+	private final boolean drink;
 
-	private final int maxSplit;
-	private final String itemName;
-	private final IntConsumer onConfirm;
-
-	private int x;
-	private int y;
-	private int splitAmount;
-	private boolean draggingSlider = false;
-
-	public TarkovSplitModal(ItemStack stack, int anchorX, int anchorY, int screenW, int screenH, IntConsumer onConfirm) {
-		this.maxSplit = Math.max(1, stack.getCount() - 1);
-		this.itemName = stack.getName().getString();
-		this.splitAmount = Math.max(1, stack.getCount() / 2);
-		this.onConfirm = onConfirm;
-		this.x = Math.max(6, Math.min(screenW - WIN_W - 6, anchorX - WIN_W / 2));
-		this.y = Math.max(6, Math.min(screenH - WIN_H - 6, anchorY - WIN_H / 2));
+	public TarkovFoodItem(
+		Settings settings,
+		int hunger,
+		float saturation,
+		boolean drink,
+		ItemSize storedItemSize,
+		ItemRarityTier rarityTier,
+		float weightKg
+	) {
+		super(buildSettings(settings, hunger, saturation, drink));
+		this.storedItemSize = storedItemSize != null ? storedItemSize : ItemSize.ONE_BY_ONE;
+		this.rarityTier = rarityTier != null ? rarityTier : ItemRarityTier.COMMON;
+		this.weightKg = Math.max(0.0f, weightKg);
+		this.drink = drink;
 	}
 
-	public void render(DrawContext ctx, TextRenderer tr, int mouseX, int mouseY) {
-		ctx.getMatrices().push();
-		ctx.getMatrices().translate(0.0f, 0.0f, TarkovUiTheme.Z_MODAL);
-
-		ctx.fill(x, y, x + WIN_W, y + WIN_H, TarkovUiTheme.BG_MODAL);
-		ctx.drawBorder(x, y, WIN_W, WIN_H, TarkovUiTheme.BORDER_POPUP);
-
-		ctx.fill(x + 1, y + 1, x + WIN_W - 1, y + 16, TarkovUiTheme.BG_MODAL_HEADER);
-		String title = Text.translatable("ui.tarkovcraft.split_title").getString() + " // " + itemName;
-		TarkovUiTheme.drawFlatText(ctx, tr, tr.trimToWidth(title, Math.round((WIN_W - 10) / TarkovUiTheme.TEXT_SCALE_SMALL)),
-			x + 5, y + 5, TarkovUiTheme.ACCENT_SAND, TarkovUiTheme.TEXT_SCALE_SMALL);
-
-		int total = maxSplit + 1;
-		int remain = total - splitAmount;
-		TarkovUiTheme.drawCenteredFlatText(ctx, tr, splitAmount + " / " + remain,
-			x + WIN_W / 2, y + 22, TarkovUiTheme.TEXT_PRIMARY, TarkovUiTheme.TEXT_SCALE_SMALL);
-
-		// Slider track
-		int trackX = x + 10;
-		int trackY = y + 36;
-		int trackW = WIN_W - 20;
-		ctx.fill(trackX, trackY, trackX + trackW, trackY + 6, 0xFF1A1E23);
-		ctx.drawBorder(trackX, trackY, trackW, 6, TarkovUiTheme.BORDER_SLOT);
-
-		float ratio = maxSplit <= 1 ? 1.0f : (splitAmount - 1) / (float) (maxSplit - 1);
-		int fillW = Math.max(4, Math.round(ratio * (trackW - 2)));
-		ctx.fill(trackX + 1, trackY + 1, trackX + 1 + fillW, trackY + 5, TarkovUiTheme.ACCENT_SAND);
-
-		int knobX = trackX + Math.round(ratio * (trackW - 6));
-		ctx.fill(knobX, trackY - 2, knobX + 6, trackY + 8, TarkovUiTheme.TEXT_PRIMARY);
-
-		// Buttons: 50% | OK | Cancel
-		drawButton(ctx, tr, x + 8, y + 56, 36, 18, "50%", mouseX, mouseY, false);
-		drawButton(ctx, tr, x + 50, y + 56, 52, 18, Text.translatable("ui.tarkovcraft.confirm").getString(), mouseX, mouseY, true);
-		drawButton(ctx, tr, x + 108, y + 56, 48, 18, Text.translatable("ui.tarkovcraft.cancel").getString(), mouseX, mouseY, false);
-
-		ctx.getMatrices().pop();
-	}
-
-	private void drawButton(DrawContext ctx, TextRenderer tr, int bx, int by, int bw, int bh, String label, int mx, int my, boolean accent) {
-		boolean hov = mx >= bx && mx < bx + bw && my >= by && my < by + bh;
-		int bg = hov ? TarkovUiTheme.HOVER_MENU_BG : (accent ? 0xFF283226 : 0xFF1A1E24);
-		int textCol = hov ? TarkovUiTheme.HOVER_MENU_TEXT : (accent ? TarkovUiTheme.ACCENT_SAND : TarkovUiTheme.TEXT_PRIMARY);
-		ctx.fill(bx, by, bx + bw, by + bh, bg);
-		ctx.drawBorder(bx, by, bw, bh, hov ? TarkovUiTheme.BORDER_HOVER : TarkovUiTheme.BORDER_SLOT);
-		TarkovUiTheme.drawCenteredFlatText(ctx, tr, label, bx + bw / 2, by + 6, textCol, TarkovUiTheme.TEXT_SCALE_SMALL);
-	}
-
-	public boolean contains(double mx, double my) {
-		return mx >= x && mx < x + WIN_W && my >= y && my < y + WIN_H;
-	}
-
-	/**
-	 * Returns true if the modal should close after handling the click.
-	 */
-	public boolean handleMouseClicked(double mx, double my, int button) {
-		if (button != 0) {
-			return false;
+	private static Settings buildSettings(Settings settings, int hunger, float saturation, boolean drink) {
+		FoodComponent.Builder builder = new FoodComponent.Builder()
+			.hunger(Math.max(0, hunger))
+			.saturationModifier(Math.max(0.0f, saturation));
+		if (drink || hunger <= 0) {
+			builder.alwaysEdible();
 		}
-		if (!contains(mx, my)) {
-			return true;
-		}
-
-		// Slider hit
-		int trackX = x + 10;
-		int trackY = y + 32;
-		int trackW = WIN_W - 20;
-		if (mx >= trackX && mx <= trackX + trackW && my >= trackY && my <= trackY + 14) {
-			draggingSlider = true;
-			updateSliderFromMouse(mx);
-			return false;
-		}
-
-		// 50% button
-		if (mx >= x + 8 && mx < x + 44 && my >= y + 56 && my < y + 74) {
-			splitAmount = Math.max(1, Math.min(maxSplit, (maxSplit + 1) / 2));
-			return false;
-		}
-
-		// OK button
-		if (mx >= x + 50 && mx < x + 102 && my >= y + 56 && my < y + 74) {
-			confirm();
-			return true;
-		}
-
-		// Cancel button
-		if (mx >= x + 108 && mx < x + 156 && my >= y + 56 && my < y + 74) {
-			return true;
-		}
-
-		return false;
+		return settings.maxCount(16).food(builder.build());
 	}
 
-	public boolean handleMouseDragged(double mx) {
-		if (!draggingSlider) {
-			return false;
-		}
-		updateSliderFromMouse(mx);
-		return true;
+	public boolean isDrink() {
+		return drink;
 	}
 
-	public void handleMouseReleased() {
-		draggingSlider = false;
+	@Override
+	public UseAction getUseAction(ItemStack stack) {
+		return drink ? UseAction.DRINK : UseAction.EAT;
 	}
 
-	public void confirm() {
-		onConfirm.accept(Math.max(1, Math.min(maxSplit, splitAmount)));
+	@Override
+	public ItemSize getStoredItemSize() {
+		return storedItemSize;
 	}
 
-	private void updateSliderFromMouse(double mx) {
-		int trackX = x + 10;
-		int trackW = WIN_W - 20;
-		float ratio = (float) Math.max(0.0, Math.min(1.0, (mx - trackX) / trackW));
-		splitAmount = 1 + Math.round(ratio * Math.max(0, maxSplit - 1));
-		splitAmount = Math.max(1, Math.min(maxSplit, splitAmount));
+	@Override
+	public ItemRarityTier getRarityTier() {
+		return rarityTier;
+	}
+
+	@Override
+	public float getWeightKg() {
+		return weightKg;
+	}
+
+	@Override
+	public void appendTooltip(ItemStack stack, @Nullable World world, List<Text> tooltip, TooltipContext context) {
+		tooltip.add(Text.translatable("tooltip.tarkovcraft.item_size",
+			storedItemSize.width(), storedItemSize.height()).formatted(Formatting.GRAY));
+		tooltip.add(Text.translatable("tooltip.tarkovcraft.med_weight",
+			String.format(Locale.ROOT, "%.2f", weightKg)).formatted(Formatting.DARK_GRAY));
 	}
 }
 
-// ========== .\src\main\java\com\tarkovcraft\client\screen\TarkovUiTheme.java ==========
-package com.tarkovcraft.client.screen;
+// ========== .\src\main\java\com\tarkovcraft\item\TarkovFunctionalItem.java ==========
+package com.tarkovcraft.item;
 
-import com.tarkovcraft.ammo.AmmoTier;
 import com.tarkovcraft.grid.ItemSize;
+import com.tarkovcraft.search.ItemRarityTier;
+import net.minecraft.client.item.TooltipContext;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
+import net.minecraft.world.World;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * Catalog item with Tarkov grid size, weight and rarity.
+ */
+public class TarkovFunctionalItem extends Item implements TarkovSizedItem {
+	private final String category;
+	private final ItemSize storedItemSize;
+	private final ItemRarityTier rarityTier;
+	private final float weightKg;
+	private final long basePrice;
+
+	public TarkovFunctionalItem(
+		Settings settings,
+		String category,
+		ItemSize storedItemSize,
+		ItemRarityTier rarityTier,
+		float weightKg
+	) {
+		this(settings, category, storedItemSize, rarityTier, weightKg, 0);
+	}
+
+	public TarkovFunctionalItem(
+		Settings settings, String category, ItemSize storedItemSize, ItemRarityTier rarityTier, float weightKg,
+		long basePrice
+	) {
+		super(settings.maxCount("barter".equals(category) ? 64 : "grenade".equalsIgnoreCase(category) ? 4 : 1));
+		this.category = category != null ? category : "gear";
+		this.storedItemSize = storedItemSize != null ? storedItemSize : ItemSize.ONE_BY_ONE;
+		this.rarityTier = rarityTier != null ? rarityTier : ItemRarityTier.UNCOMMON;
+		this.weightKg = Math.max(0.0f, weightKg);
+		this.basePrice = Math.max(0L, basePrice);
+	}
+
+	public String getCategory() {
+		return category;
+	}
+
+	public boolean isHeadset() {
+		return "headset".equals(category);
+	}
+
+	public boolean isValuable() {
+		return "valuable".equals(category);
+	}
+
+	public long getBasePrice() {
+		return basePrice;
+	}
+
+	@Override
+	public ItemSize getStoredItemSize() {
+		return storedItemSize;
+	}
+
+	@Override
+	public ItemRarityTier getRarityTier() {
+		return rarityTier;
+	}
+
+	@Override
+	public float getWeightKg() {
+		return weightKg;
+	}
+
+	@Override
+	public void appendTooltip(ItemStack stack, @Nullable World world, List<Text> tooltip, TooltipContext context) {
+		tooltip.add(Text.translatable("tooltip.tarkovcraft.category", formatCategory(category)).formatted(Formatting.AQUA));
+		tooltip.add(Text.translatable("tooltip.tarkovcraft.item_size",
+			storedItemSize.width(), storedItemSize.height()).formatted(Formatting.GRAY));
+		tooltip.add(Text.translatable("tooltip.tarkovcraft.med_weight",
+			String.format(Locale.ROOT, "%.2f", weightKg)).formatted(Formatting.DARK_GRAY));
+		if (basePrice > 0) {
+			tooltip.add(Text.translatable("tooltip.tarkovcraft.value_rubles", basePrice).formatted(Formatting.GOLD));
+		}
+	}
+
+	private static String formatCategory(String raw) {
+		if (raw == null || raw.isBlank()) {
+			return "Gear";
+		}
+		String spaced = raw.replace('_', ' ');
+		return Character.toUpperCase(spaced.charAt(0)) + spaced.substring(1);
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\item\TarkovGrenadeItem.java ==========
+package com.tarkovcraft.item;
+
+import com.tarkovcraft.entity.TarkovGrenadeEntity;
+import com.tarkovcraft.grid.ItemSize;
+import com.tarkovcraft.loadout.PlayerLoadoutHolder;
+import com.tarkovcraft.search.ItemRarityTier;
+import net.minecraft.client.item.TooltipContext;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.sound.SoundEvents;
+import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
+import net.minecraft.util.Hand;
+import net.minecraft.util.TypedActionResult;
+import net.minecraft.world.World;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * Throwable TarkovCraft tactical grenade (Frag, Impact Frag, Flashbang, Smoke, CS Gas).
+ */
+public class TarkovGrenadeItem extends Item implements TarkovSizedItem {
+	public enum Category {
+		FRAG,
+		IMPACT,
+		FLASH,
+		SMOKE,
+		GAS
+	}
+
+	public enum GrenadeType {
+		FRAG_F1(40, 0, 7.5f, 300.0f, 22, 0.70f, 0, Category.FRAG),
+		FRAG_V40(56, 0, 4.5f, 190.0f, 15, 0.45f, 0, Category.FRAG),
+		FRAG_RGN(70, 6, 5.5f, 230.0f, 18, 0.55f, 0, Category.IMPACT),
+		FRAG_RGO(70, 6, 7.0f, 280.0f, 24, 0.70f, 0, Category.IMPACT),
+		FLASH_M7290(40, 0, 11.0f, 0.0f, 0, 0.0f, 0, Category.FLASH),
+		SMOKE_M18(30, 0, 5.5f, 0.0f, 0, 0.0f, 300, Category.SMOKE),
+		GAS_CS(35, 0, 5.5f, 0.0f, 0, 0.0f, 240, Category.GAS);
+
+		private final int fuseTicks;
+		private final int armingTicks;
+		private final float blastRadius;
+		private final float maxDamage;
+		private final int penetrationPower;
+		private final float bleedChance;
+		private final int cloudTicks;
+		private final Category category;
+
+		GrenadeType(
+			int fuseTicks,
+			int armingTicks,
+			float blastRadius,
+			float maxDamage,
+			int penetrationPower,
+			float bleedChance,
+			int cloudTicks,
+			Category category
+		) {
+			this.fuseTicks = fuseTicks;
+			this.armingTicks = armingTicks;
+			this.blastRadius = blastRadius;
+			this.maxDamage = maxDamage;
+			this.penetrationPower = penetrationPower;
+			this.bleedChance = bleedChance;
+			this.cloudTicks = cloudTicks;
+			this.category = category;
+		}
+
+		public int getFuseTicks() {
+			return fuseTicks;
+		}
+
+		public int getArmingTicks() {
+			return armingTicks;
+		}
+
+		public boolean isImpactFuse() {
+			return armingTicks > 0;
+		}
+
+		public float getBlastRadius() {
+			return blastRadius;
+		}
+
+		public float getMaxDamage() {
+			return maxDamage;
+		}
+
+		public int getPenetrationPower() {
+			return penetrationPower;
+		}
+
+		public float getBleedChance() {
+			return bleedChance;
+		}
+
+		public int getCloudTicks() {
+			return cloudTicks;
+		}
+
+		public Category getCategory() {
+			return category;
+		}
+
+		public static GrenadeType fromString(String raw) {
+			if (raw == null || raw.isBlank()) {
+				return FRAG_F1;
+			}
+			for (GrenadeType type : values()) {
+				if (type.name().equalsIgnoreCase(raw.trim())) {
+					return type;
+				}
+			}
+			return FRAG_F1;
+		}
+	}
+
+	private final GrenadeType grenadeType;
+	private final ItemSize storedItemSize;
+	private final ItemRarityTier rarityTier;
+	private final float weightKg;
+
+	public TarkovGrenadeItem(
+		Settings settings,
+		GrenadeType grenadeType,
+		ItemSize storedItemSize,
+		ItemRarityTier rarityTier,
+		float weightKg
+	) {
+		super(settings.maxCount(4));
+		this.grenadeType = grenadeType != null ? grenadeType : GrenadeType.FRAG_F1;
+		this.storedItemSize = storedItemSize != null ? storedItemSize : ItemSize.ONE_BY_ONE;
+		this.rarityTier = rarityTier != null ? rarityTier : ItemRarityTier.RARE;
+		this.weightKg = Math.max(0.0f, weightKg);
+	}
+
+	public GrenadeType getGrenadeType() {
+		return grenadeType;
+	}
+
+	@Override
+	public ItemSize getStoredItemSize() {
+		return storedItemSize;
+	}
+
+	@Override
+	public ItemRarityTier getRarityTier() {
+		return rarityTier;
+	}
+
+	@Override
+	public float getWeightKg() {
+		return weightKg;
+	}
+
+	@Override
+	public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand) {
+		ItemStack stack = user.getStackInHand(hand);
+		user.getItemCooldownManager().set(this, 20);
+		world.playSound(null, user.getX(), user.getY(), user.getZ(),
+			SoundEvents.ENTITY_SNOWBALL_THROW, SoundCategory.PLAYERS, 0.6f, 0.75f);
+
+		if (!world.isClient) {
+			TarkovGrenadeEntity grenade = new TarkovGrenadeEntity(world, user, stack, grenadeType);
+			grenade.setVelocity(user, user.getPitch(), user.getYaw(), 0.0f, 1.35f, 1.0f);
+			world.spawnEntity(grenade);
+
+			if (!user.isCreative()) {
+				stack.decrement(1);
+				if (user instanceof ServerPlayerEntity && user instanceof PlayerLoadoutHolder holder) {
+					holder.tarkovcraft$syncLoadout();
+				}
+			}
+		}
+
+		return TypedActionResult.success(stack, world.isClient());
+	}
+
+	@Override
+	public void appendTooltip(ItemStack stack, @Nullable World world, List<Text> tooltip, TooltipContext context) {
+		String typeKey = switch (grenadeType.getCategory()) {
+			case FRAG -> "tooltip.tarkovcraft.grenade_type_frag";
+			case IMPACT -> "tooltip.tarkovcraft.grenade_type_impact";
+			case FLASH -> "tooltip.tarkovcraft.grenade_type_flash";
+			case SMOKE -> "tooltip.tarkovcraft.grenade_type_smoke";
+			case GAS -> "tooltip.tarkovcraft.grenade_type_gas";
+		};
+		Formatting typeColor = switch (grenadeType.getCategory()) {
+			case FRAG, IMPACT -> Formatting.RED;
+			case FLASH -> Formatting.YELLOW;
+			case SMOKE -> Formatting.GREEN;
+			case GAS -> Formatting.GOLD;
+		};
+		tooltip.add(Text.translatable(typeKey).formatted(typeColor));
+
+		String fuseSec = formatNumber(grenadeType.getFuseTicks() / 20.0f);
+		if (grenadeType.isImpactFuse()) {
+			tooltip.add(Text.translatable("tooltip.tarkovcraft.grenade_impact_fuse", fuseSec).formatted(Formatting.GRAY));
+		} else {
+			tooltip.add(Text.translatable("tooltip.tarkovcraft.grenade_fuse", fuseSec).formatted(Formatting.GRAY));
+		}
+
+		tooltip.add(Text.translatable("tooltip.tarkovcraft.grenade_radius", formatNumber(grenadeType.getBlastRadius()))
+			.formatted(Formatting.GRAY));
+
+		if (grenadeType.getCloudTicks() > 0) {
+			tooltip.add(Text.translatable("tooltip.tarkovcraft.grenade_cloud", grenadeType.getCloudTicks() / 20)
+				.formatted(Formatting.AQUA));
+		}
+
+		tooltip.add(Text.translatable("tooltip.tarkovcraft.item_size",
+			storedItemSize.width(), storedItemSize.height()).formatted(Formatting.GRAY));
+		tooltip.add(Text.translatable("tooltip.tarkovcraft.med_weight",
+			String.format(Locale.ROOT, "%.2f", weightKg)).formatted(Formatting.DARK_GRAY));
+	}
+
+	private static String formatNumber(float value) {
+		if (Math.abs(value - Math.round(value)) < 0.05f) {
+			return String.valueOf(Math.round(value));
+		}
+		return String.format(Locale.ROOT, "%.1f", value);
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\item\TarkovMedicalItem.java ==========
+package com.tarkovcraft.item;
+
+import com.tarkovcraft.grid.ItemSize;
+import com.tarkovcraft.health.BodyPartHealth;
+import com.tarkovcraft.health.MedicalHelper;
+import com.tarkovcraft.loadout.PlayerLoadoutHolder;
+import com.tarkovcraft.search.ItemRarityTier;
+import net.minecraft.client.item.TooltipContext;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
+import net.minecraft.util.Hand;
+import net.minecraft.util.TypedActionResult;
+import net.minecraft.world.World;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * TarkovCraft medical item (bandages, tourniquets, splints, painkillers, medkits, surgical kits).
+ * Tracks remaining uses or HP pool via NBT_REMAINING without item stacking.
+ */
+public class TarkovMedicalItem extends Item implements TarkovSizedItem {
+	public static final String NBT_REMAINING = "TarkovMedRemaining";
+
+	private final MedicalType medicalType;
+	private final ItemSize storedItemSize;
+	private final ItemRarityTier rarityTier;
+	private final float weightKg;
+
+	public TarkovMedicalItem(Settings settings, MedicalType medicalType) {
+		this(settings, medicalType, medicalType.getGridSize(), medicalType.getRarityTier(), medicalType.getWeightKg());
+	}
+
+	public TarkovMedicalItem(
+		Settings settings,
+		MedicalType medicalType,
+		ItemSize storedItemSize,
+		ItemRarityTier rarityTier,
+		float weightKg
+	) {
+		super(settings.maxCount(1));
+		this.medicalType = medicalType;
+		this.storedItemSize = storedItemSize != null ? storedItemSize : medicalType.getGridSize();
+		this.rarityTier = rarityTier != null ? rarityTier : medicalType.getRarityTier();
+		this.weightKg = weightKg >= 0.0f ? weightKg : medicalType.getWeightKg();
+	}
+
+	public MedicalType getMedicalType() {
+		return medicalType;
+	}
+
+	@Override
+	public ItemSize getStoredItemSize() {
+		return storedItemSize;
+	}
+
+	@Override
+	public float getWeightKg() {
+		return weightKg;
+	}
+
+	@Override
+	public ItemRarityTier getRarityTier() {
+		return rarityTier;
+	}
+
+	public static int getRemaining(ItemStack stack) {
+		if (stack == null || stack.isEmpty() || !(stack.getItem() instanceof TarkovMedicalItem med)) {
+			return 0;
+		}
+		int max = med.getMedicalType().getMaxCapacity();
+		NbtCompound nbt = stack.getNbt();
+		if (nbt == null || !nbt.contains(NBT_REMAINING)) {
+			return max;
+		}
+		return Math.max(0, Math.min(max, nbt.getInt(NBT_REMAINING)));
+	}
+
+	public static void setRemaining(ItemStack stack, int value) {
+		if (stack == null || stack.isEmpty() || !(stack.getItem() instanceof TarkovMedicalItem med)) {
+			return;
+		}
+		if (value <= 0) {
+			stack.setCount(0);
+			return;
+		}
+		int clamped = Math.min(med.getMedicalType().getMaxCapacity(), value);
+		stack.getOrCreateNbt().putInt(NBT_REMAINING, clamped);
+	}
+
+	@Override
+	public boolean isItemBarVisible(ItemStack stack) {
+		int max = medicalType.getMaxCapacity();
+		return max > 1 && getRemaining(stack) < max;
+	}
+
+	@Override
+	public int getItemBarStep(ItemStack stack) {
+		int max = Math.max(1, medicalType.getMaxCapacity());
+		int step = Math.round(13.0f * getRemaining(stack) / (float) max);
+		return Math.max(0, Math.min(13, step));
+	}
+
+	@Override
+	public int getItemBarColor(ItemStack stack) {
+		float ratio = getRemaining(stack) / (float) Math.max(1, medicalType.getMaxCapacity());
+		if (ratio >= 0.50f) return 0x55CC55;
+		if (ratio >= 0.25f) return 0xE0B23B;
+		return 0xE53935;
+	}
+
+	@Override
+	public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand) {
+		ItemStack stack = user.getStackInHand(hand);
+		if (world.isClient) {
+			return TypedActionResult.pass(stack);
+		}
+		if (!(user instanceof ServerPlayerEntity sp) || sp.isSpectator() || !sp.isAlive()) {
+			return TypedActionResult.fail(stack);
+		}
+		if (com.tarkovcraft.health.MedicalUseManager.startFromHand(sp, hand, stack)) {
+			return TypedActionResult.success(stack, false);
+		}
+		return TypedActionResult.fail(stack);
+	}
+
+	@Override
+	public void appendTooltip(ItemStack stack, @Nullable World world, List<Text> tooltip, TooltipContext context) {
+		int rem = getRemaining(stack);
+		int max = medicalType.getMaxCapacity();
+		float ratio = rem / (float) Math.max(1, max);
+		Formatting resCol = ratio >= 0.50f ? Formatting.GREEN : (ratio >= 0.25f ? Formatting.YELLOW : Formatting.RED);
+
+		if (medicalType.getCapacityMode() == MedicalType.CapacityMode.HP_POOL) {
+			tooltip.add(Text.translatable("tooltip.tarkovcraft.med_pool", rem, max).formatted(resCol));
+			tooltip.add(Text.translatable("tooltip.tarkovcraft.med_max_heal", medicalType.getMaxHealPerUse())
+				.formatted(Formatting.GRAY));
+		} else {
+			tooltip.add(Text.translatable("tooltip.tarkovcraft.med_uses", rem, max).formatted(resCol));
+		}
+
+		if (medicalType.isCuresLightBleed()) {
+			if (medicalType.getCapacityMode() == MedicalType.CapacityMode.HP_POOL) {
+				tooltip.add(Text.translatable("tooltip.tarkovcraft.med_cures_light_bleed_cost",
+					medicalType.getLightBleedCost()).formatted(Formatting.GOLD));
+			} else {
+				tooltip.add(Text.translatable("tooltip.tarkovcraft.med_cures_light_bleed").formatted(Formatting.GOLD));
+			}
+		}
+		if (medicalType.isCuresHeavyBleed()) {
+			if (medicalType.getCapacityMode() == MedicalType.CapacityMode.HP_POOL) {
+				tooltip.add(Text.translatable("tooltip.tarkovcraft.med_cures_heavy_bleed_cost",
+					medicalType.getHeavyBleedCost()).formatted(Formatting.RED));
+			} else {
+				tooltip.add(Text.translatable("tooltip.tarkovcraft.med_cures_heavy_bleed").formatted(Formatting.RED));
+			}
+		}
+		if (medicalType.isCuresFracture()) {
+			tooltip.add(Text.translatable("tooltip.tarkovcraft.med_cures_fracture").formatted(Formatting.YELLOW));
+		}
+		if (medicalType.getPainkillerTicks() > 0) {
+			tooltip.add(Text.translatable("tooltip.tarkovcraft.med_painkiller", medicalType.getPainkillerTicks() / 20)
+				.formatted(Formatting.AQUA));
+		}
+		if (medicalType.isSurgicalKit()) {
+			tooltip.add(Text.translatable("tooltip.tarkovcraft.med_surgery",
+				Math.round(medicalType.getSurgeryRetention() * 100.0f)).formatted(Formatting.LIGHT_PURPLE));
+		}
+
+		float secs = medicalType.getUseDurationTicks() / 20.0f;
+		String secStr = Math.abs(secs - Math.round(secs)) < 0.05f
+			? String.valueOf(Math.round(secs))
+			: String.format(Locale.ROOT, "%.2f", secs).replaceAll("0+$", "").replaceAll("\\.$", "");
+		tooltip.add(Text.translatable("tooltip.tarkovcraft.med_use_time", secStr).formatted(Formatting.DARK_AQUA));
+		tooltip.add(Text.translatable("tooltip.tarkovcraft.med_weight",
+			String.format(Locale.ROOT, "%.2f", weightKg)).formatted(Formatting.DARK_GRAY));
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\item\TarkovMeleeItem.java ==========
+package com.tarkovcraft.item;
+
+import com.tarkovcraft.grid.ItemSize;
+import com.tarkovcraft.search.ItemRarityTier;
+import net.minecraft.client.item.TooltipContext;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.SwordItem;
+import net.minecraft.item.ToolMaterials;
+import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
+import net.minecraft.world.World;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * TarkovCraft melee weapon compatible with EquipmentSlotType.MELEE.
+ */
+public class TarkovMeleeItem extends SwordItem implements TarkovSizedItem {
+	private final ItemSize storedItemSize;
+	private final ItemRarityTier rarityTier;
+	private final float weightKg;
+
+	public TarkovMeleeItem(
+		Settings settings,
+		float meleeDamage,
+		ItemSize storedItemSize,
+		ItemRarityTier rarityTier,
+		float weightKg
+	) {
+		super(
+			ToolMaterials.IRON,
+			Math.max(1, Math.round(meleeDamage - ToolMaterials.IRON.getAttackDamage() - 1.0f)),
+			-2.0f,
+			settings.maxDamage(2048)
+		);
+		this.storedItemSize = storedItemSize != null ? storedItemSize : new ItemSize(1, 2);
+		this.rarityTier = rarityTier != null ? rarityTier : ItemRarityTier.UNCOMMON;
+		this.weightKg = Math.max(0.0f, weightKg);
+	}
+
+	@Override
+	public ItemSize getStoredItemSize() {
+		return storedItemSize;
+	}
+
+	@Override
+	public ItemRarityTier getRarityTier() {
+		return rarityTier;
+	}
+
+	@Override
+	public float getWeightKg() {
+		return weightKg;
+	}
+
+	@Override
+	public void appendTooltip(ItemStack stack, @Nullable World world, List<Text> tooltip, TooltipContext context) {
+		super.appendTooltip(stack, world, tooltip, context);
+		tooltip.add(Text.translatable("tooltip.tarkovcraft.item_size",
+			storedItemSize.width(), storedItemSize.height()).formatted(Formatting.GRAY));
+		tooltip.add(Text.translatable("tooltip.tarkovcraft.med_weight",
+			String.format(Locale.ROOT, "%.2f", weightKg)).formatted(Formatting.DARK_GRAY));
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\item\TarkovSizedItem.java ==========
+package com.tarkovcraft.item;
+
+import com.tarkovcraft.grid.ItemSize;
+import com.tarkovcraft.search.ItemRarityTier;
+
+/**
+ * Common contract for TarkovCraft items that define grid dimensions, rarity tier, and optional weight.
+ */
+public interface TarkovSizedItem {
+	ItemSize getStoredItemSize();
+
+	ItemRarityTier getRarityTier();
+
+	default float getWeightKg() {
+		return -1.0f;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\item\TarkovStimulatorItem.java ==========
+package com.tarkovcraft.item;
+
+import com.tarkovcraft.grid.ItemSize;
+import com.tarkovcraft.health.BodyPart;
+import com.tarkovcraft.health.BodyPartHealth;
+import com.tarkovcraft.health.InjuryType;
+import com.tarkovcraft.loadout.PlayerLoadoutHolder;
+import com.tarkovcraft.search.ItemRarityTier;
+import net.minecraft.client.item.TooltipContext;
+import net.minecraft.entity.effect.StatusEffect;
+import net.minecraft.entity.effect.StatusEffectInstance;
+import net.minecraft.entity.effect.StatusEffects;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.sound.SoundEvents;
+import net.minecraft.text.MutableText;
+import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
+import net.minecraft.util.Hand;
+import net.minecraft.util.TypedActionResult;
+import net.minecraft.world.World;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
+import java.util.Locale;
+import java.util.function.Supplier;
+
+/**
+ * Functional EFT combat stimulator injectors with 22 unique presets,
+ * server-authoritative physiological & StatusEffect application, and auto-generated tooltips.
+ */
+public class TarkovStimulatorItem extends Item implements TarkovSizedItem {
+	public static final int COOLDOWN_TICKS = 30;
+	public static final int USE_DURATION_TICKS = 35;
+
+	public record EffectSpec(
+		Supplier<StatusEffect> effectSupplier,
+		int durationSeconds,
+		int amplifier,
+		boolean negative
+	) {
+		public StatusEffect getEffect() {
+			return effectSupplier.get();
+		}
+
+		public int getDurationTicks() {
+			return durationSeconds * 20;
+		}
+	}
+
+	public enum StimPreset {
+		MORPHINE(6000, 0.0f, false, false, List.of(
+			pos(() -> StatusEffects.RESISTANCE, 60, 0),
+			neg(() -> StatusEffects.HUNGER, 30, 0)
+		)),
+		PROPITAL(4800, 10.0f, false, false, List.of(
+			pos(() -> StatusEffects.REGENERATION, 180, 0)
+		)),
+		ETG_CHANGE(1200, 40.0f, false, false, List.of(
+			pos(() -> StatusEffects.REGENERATION, 45, 2),
+			pos(() -> StatusEffects.ABSORPTION, 45, 0),
+			neg(() -> StatusEffects.HUNGER, 45, 1)
+		)),
+		SJ1(0, 0.0f, false, false, List.of(
+			pos(() -> StatusEffects.STRENGTH, 180, 0),
+			pos(() -> StatusEffects.SPEED, 180, 0),
+			pos(() -> StatusEffects.HASTE, 180, 0),
+			neg(() -> StatusEffects.HUNGER, 60, 0)
+		)),
+		SJ6(0, 0.0f, false, false, List.of(
+			pos(() -> StatusEffects.SPEED, 240, 1),
+			pos(() -> StatusEffects.JUMP_BOOST, 240, 0)
+		)),
+		SJ9(0, 0.0f, false, false, List.of(
+			pos(() -> StatusEffects.FIRE_RESISTANCE, 300, 0),
+			pos(() -> StatusEffects.NIGHT_VISION, 180, 0),
+			pos(() -> StatusEffects.INVISIBILITY, 45, 0),
+			neg(() -> StatusEffects.WEAKNESS, 60, 0)
+		)),
+		SJ12(0, 15.0f, false, false, List.of(
+			pos(() -> StatusEffects.SATURATION, 30, 0),
+			pos(() -> StatusEffects.NIGHT_VISION, 240, 0),
+			pos(() -> StatusEffects.RESISTANCE, 180, 0),
+			neg(() -> StatusEffects.SLOWNESS, 20, 0)
+		)),
+		MULE(0, 0.0f, false, false, List.of(
+			pos(() -> StatusEffects.STRENGTH, 300, 1),
+			pos(() -> StatusEffects.HASTE, 300, 0),
+			neg(() -> StatusEffects.HUNGER, 120, 0)
+		)),
+		ZAGUSTIN(0, 0.0f, true, false, List.of(
+			pos(() -> StatusEffects.RESISTANCE, 120, 0),
+			neg(() -> StatusEffects.HUNGER, 40, 0)
+		)),
+		XTG12(0, 10.0f, false, true, List.of(
+			pos(() -> StatusEffects.REGENERATION, 45, 0),
+			pos(() -> StatusEffects.RESISTANCE, 60, 0)
+		)),
+		ADRENALINE(1300, 12.0f, false, false, List.of(
+			pos(() -> StatusEffects.SPEED, 60, 1),
+			pos(() -> StatusEffects.STRENGTH, 60, 0),
+			pos(() -> StatusEffects.REGENERATION, 15, 1),
+			neg(() -> StatusEffects.HUNGER, 30, 0)
+		)),
+		L1(2400, 0.0f, false, false, List.of(
+			pos(() -> StatusEffects.SPEED, 120, 0),
+			pos(() -> StatusEffects.STRENGTH, 120, 0),
+			pos(() -> StatusEffects.JUMP_BOOST, 120, 0),
+			neg(() -> StatusEffects.HUNGER, 40, 0)
+		)),
+		P22(0, 0.0f, false, false, List.of(
+			pos(() -> StatusEffects.RESISTANCE, 60, 1),
+			pos(() -> StatusEffects.ABSORPTION, 60, 1),
+			pos(() -> StatusEffects.REGENERATION, 45, 0),
+			neg(() -> StatusEffects.WEAKNESS, 30, 0)
+		)),
+		BTG_3(0, 0.0f, false, false, List.of(
+			pos(() -> StatusEffects.NIGHT_VISION, 240, 0),
+			pos(() -> StatusEffects.STRENGTH, 240, 0),
+			pos(() -> StatusEffects.HASTE, 240, 1),
+			neg(() -> StatusEffects.HUNGER, 60, 0)
+		)),
+		BTG_2A2(0, 0.0f, false, true, List.of(
+			pos(() -> StatusEffects.STRENGTH, 240, 0),
+			pos(() -> StatusEffects.SPEED, 240, 0),
+			pos(() -> StatusEffects.NIGHT_VISION, 180, 0)
+		)),
+		AHF1_M(0, 20.0f, true, false, List.of(
+			pos(() -> StatusEffects.ABSORPTION, 90, 0),
+			pos(() -> StatusEffects.RESISTANCE, 60, 0),
+			neg(() -> StatusEffects.HUNGER, 40, 0)
+		)),
+		MELDONIN(0, 0.0f, false, false, List.of(
+			pos(() -> StatusEffects.RESISTANCE, 300, 0),
+			pos(() -> StatusEffects.STRENGTH, 300, 0),
+			pos(() -> StatusEffects.SPEED, 300, 0),
+			neg(() -> StatusEffects.HUNGER, 90, 1)
+		)),
+		TRIMADOL(3600, 0.0f, false, false, List.of(
+			pos(() -> StatusEffects.SPEED, 180, 1),
+			pos(() -> StatusEffects.HASTE, 180, 1),
+			pos(() -> StatusEffects.JUMP_BOOST, 180, 0),
+			neg(() -> StatusEffects.HUNGER, 60, 1)
+		)),
+		PERFOTORAN(0, 18.0f, true, true, List.of(
+			pos(() -> StatusEffects.REGENERATION, 60, 1),
+			pos(() -> StatusEffects.WATER_BREATHING, 180, 0),
+			neg(() -> StatusEffects.WEAKNESS, 25, 0)
+		)),
+		PNB(0, 25.0f, false, false, List.of(
+			pos(() -> StatusEffects.STRENGTH, 40, 1),
+			pos(() -> StatusEffects.REGENERATION, 40, 1),
+			pos(() -> StatusEffects.RESISTANCE, 40, 1),
+			pos(() -> StatusEffects.SPEED, 40, 0),
+			neg(() -> StatusEffects.HUNGER, 60, 1),
+			neg(() -> StatusEffects.NAUSEA, 12, 0)
+		)),
+		OBDOLBOS(0, 0.0f, false, false, List.of(
+			pos(() -> StatusEffects.SPEED, 180, 1),
+			pos(() -> StatusEffects.STRENGTH, 180, 1),
+			pos(() -> StatusEffects.JUMP_BOOST, 180, 1),
+			pos(() -> StatusEffects.NIGHT_VISION, 180, 0),
+			neg(() -> StatusEffects.NAUSEA, 20, 0),
+			neg(() -> StatusEffects.HUNGER, 90, 1),
+			neg(() -> StatusEffects.POISON, 8, 0)
+		)),
+		OBDOLBOS_2(0, 0.0f, false, false, List.of(
+			pos(() -> StatusEffects.SPEED, 300, 1),
+			pos(() -> StatusEffects.STRENGTH, 300, 2),
+			pos(() -> StatusEffects.HASTE, 300, 1),
+			pos(() -> StatusEffects.ABSORPTION, 180, 1),
+			neg(() -> StatusEffects.POISON, 15, 0),
+			neg(() -> StatusEffects.NAUSEA, 25, 0),
+			neg(() -> StatusEffects.HUNGER, 120, 2)
+		));
+
+		private final int painkillerTicks;
+		private final float healAmount;
+		private final boolean stopsAllBleeds;
+		private final boolean clearsNegativeEffects;
+		private final List<EffectSpec> effects;
+
+		StimPreset(
+			int painkillerTicks,
+			float healAmount,
+			boolean stopsAllBleeds,
+			boolean clearsNegativeEffects,
+			List<EffectSpec> effects
+		) {
+			this.painkillerTicks = painkillerTicks;
+			this.healAmount = healAmount;
+			this.stopsAllBleeds = stopsAllBleeds;
+			this.clearsNegativeEffects = clearsNegativeEffects;
+			this.effects = effects;
+		}
+
+		private static EffectSpec pos(Supplier<StatusEffect> effect, int seconds, int amplifier) {
+			return new EffectSpec(effect, seconds, amplifier, false);
+		}
+
+		private static EffectSpec neg(Supplier<StatusEffect> effect, int seconds, int amplifier) {
+			return new EffectSpec(effect, seconds, amplifier, true);
+		}
+
+		public int getPainkillerTicks() {
+			return painkillerTicks;
+		}
+
+		public float getHealAmount() {
+			return healAmount;
+		}
+
+		public boolean isStopsAllBleeds() {
+			return stopsAllBleeds;
+		}
+
+		public boolean isClearsNegativeEffects() {
+			return clearsNegativeEffects;
+		}
+
+		public List<EffectSpec> getEffects() {
+			return effects;
+		}
+
+		public static StimPreset fromString(String raw) {
+			if (raw == null || raw.isBlank() || "COMBAT_STIM".equalsIgnoreCase(raw.trim())) {
+				return MORPHINE;
+			}
+			for (StimPreset preset : values()) {
+				if (preset.name().equalsIgnoreCase(raw.trim())) {
+					return preset;
+				}
+			}
+			return MORPHINE;
+		}
+	}
+
+	private final StimPreset preset;
+	private final ItemSize storedItemSize;
+	private final ItemRarityTier rarityTier;
+	private final float weightKg;
+
+	public TarkovStimulatorItem(
+		Settings settings,
+		StimPreset preset,
+		ItemSize storedItemSize,
+		ItemRarityTier rarityTier,
+		float weightKg
+	) {
+		super(settings.maxCount(4));
+		this.preset = preset != null ? preset : StimPreset.MORPHINE;
+		this.storedItemSize = storedItemSize != null ? storedItemSize : ItemSize.ONE_BY_ONE;
+		this.rarityTier = rarityTier != null ? rarityTier : ItemRarityTier.RARE;
+		this.weightKg = Math.max(0.0f, weightKg);
+	}
+
+	public StimPreset getPreset() {
+		return preset;
+	}
+
+	@Override
+	public ItemSize getStoredItemSize() {
+		return storedItemSize;
+	}
+
+	@Override
+	public ItemRarityTier getRarityTier() {
+		return rarityTier;
+	}
+
+	@Override
+	public float getWeightKg() {
+		return weightKg;
+	}
+
+	@Override
+	public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand) {
+		ItemStack stack = user.getStackInHand(hand);
+		if (world.isClient) {
+			return TypedActionResult.pass(stack);
+		}
+		if (!(user instanceof ServerPlayerEntity sp)) {
+			return TypedActionResult.fail(stack);
+		}
+		if (com.tarkovcraft.health.MedicalUseManager.startFromHand(sp, hand, stack)) {
+			return TypedActionResult.success(stack, false);
+		}
+		return TypedActionResult.fail(stack);
+	}
+
+	public static boolean applyStimulator(ServerPlayerEntity player, ItemStack stack) {
+		if (player == null || stack == null || stack.isEmpty() || !(stack.getItem() instanceof TarkovStimulatorItem stim)) {
+			return false;
+		}
+		if (player.isSpectator() || !player.isAlive() || !(player instanceof PlayerLoadoutHolder holder)) {
+			return false;
+		}
+		if (player.getItemCooldownManager().isCoolingDown(stim)) {
+			return false;
+		}
+
+		StimPreset preset = stim.getPreset();
+		BodyPartHealth health = holder.tarkovcraft$getBodyHealth();
+
+		// 1. Detox runs BEFORE applying this injector's own side effects
+		if (preset.isClearsNegativeEffects()) {
+			player.removeStatusEffect(StatusEffects.POISON);
+			player.removeStatusEffect(StatusEffects.WITHER);
+			player.removeStatusEffect(StatusEffects.HUNGER);
+			player.removeStatusEffect(StatusEffects.NAUSEA);
+			player.removeStatusEffect(StatusEffects.WEAKNESS);
+			player.removeStatusEffect(StatusEffects.SLOWNESS);
+			player.removeStatusEffect(StatusEffects.BLINDNESS);
+			player.removeStatusEffect(StatusEffects.DARKNESS);
+		}
+
+		// 2. Tarkov body-part physiological effects
+		if (preset.getPainkillerTicks() > 0) {
+			health.setPainkillerTicks(Math.max(health.getPainkillerTicks(), preset.getPainkillerTicks()));
+		}
+		if (preset.isStopsAllBleeds()) {
+			for (BodyPart part : BodyPart.values()) {
+				health.removeInjury(part, InjuryType.LIGHT_BLEED);
+				health.removeInjury(part, InjuryType.HEAVY_BLEED);
+			}
+		}
+		if (preset.getHealAmount() > 0.0f) {
+			health.healEvenly(preset.getHealAmount());
+			player.setHealth(Math.max(1.0f, health.getTotalRatio() * player.getMaxHealth()));
+		}
+
+		// 3. Preset StatusEffects
+		for (EffectSpec spec : preset.getEffects()) {
+			player.addStatusEffect(new StatusEffectInstance(spec.getEffect(), spec.getDurationTicks(), spec.amplifier()));
+		}
+
+		player.getItemCooldownManager().set(stim, COOLDOWN_TICKS);
+		if (!player.isCreative()) {
+			stack.decrement(1);
+		}
+
+		holder.tarkovcraft$syncBodyHealth();
+		holder.tarkovcraft$syncLoadout();
+		player.getWorld().playSound(null, player.getX(), player.getY(), player.getZ(),
+			SoundEvents.ENTITY_GENERIC_DRINK, SoundCategory.PLAYERS, 0.7f, 1.35f);
+		player.sendMessage(Text.translatable("message.tarkovcraft.stim_used", stim.getName()), true);
+		return true;
+	}
+
+	@Override
+	public void appendTooltip(ItemStack stack, @Nullable World world, List<Text> tooltip, TooltipContext context) {
+		tooltip.add(Text.translatable("tooltip.tarkovcraft.stim_use").formatted(Formatting.AQUA));
+		if (preset.getPainkillerTicks() > 0) {
+			tooltip.add(Text.translatable("tooltip.tarkovcraft.med_painkiller", preset.getPainkillerTicks() / 20)
+				.formatted(Formatting.GREEN));
+		}
+		if (preset.getHealAmount() > 0.0f) {
+			tooltip.add(Text.translatable("tooltip.tarkovcraft.stim_heal", Math.round(preset.getHealAmount()))
+				.formatted(Formatting.GREEN));
+		}
+		if (preset.isStopsAllBleeds()) {
+			tooltip.add(Text.translatable("tooltip.tarkovcraft.stim_stop_bleeds").formatted(Formatting.GREEN));
+		}
+		if (preset.isClearsNegativeEffects()) {
+			tooltip.add(Text.translatable("tooltip.tarkovcraft.stim_detox").formatted(Formatting.GREEN));
+		}
+		for (EffectSpec spec : preset.getEffects()) {
+			MutableText effText = spec.getEffect().getName().copy();
+			if (spec.amplifier() > 0) {
+				effText.append(" " + toRoman(spec.amplifier() + 1));
+			}
+			String key = spec.negative() ? "tooltip.tarkovcraft.stim_effect_neg" : "tooltip.tarkovcraft.stim_effect_pos";
+			Formatting color = spec.negative() ? Formatting.RED : Formatting.BLUE;
+			tooltip.add(Text.translatable(key, effText, spec.durationSeconds()).formatted(color));
+		}
+		tooltip.add(Text.translatable("tooltip.tarkovcraft.med_use_time", "1.75").formatted(Formatting.DARK_AQUA));
+		tooltip.add(Text.translatable("tooltip.tarkovcraft.item_size",
+			storedItemSize.width(), storedItemSize.height()).formatted(Formatting.GRAY));
+		tooltip.add(Text.translatable("tooltip.tarkovcraft.med_weight",
+			String.format(Locale.ROOT, "%.2f", weightKg)).formatted(Formatting.DARK_GRAY));
+	}
+
+	private static String toRoman(int level) {
+		return switch (level) {
+			case 1 -> "I";
+			case 2 -> "II";
+			case 3 -> "III";
+			case 4 -> "IV";
+			case 5 -> "V";
+			default -> String.valueOf(level);
+		};
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\loadout\EquipmentSlotType.java ==========
+package com.tarkovcraft.loadout;
+
 import com.tarkovcraft.grid.ItemSizeRegistry;
 import com.tarkovcraft.item.BackpackItem;
 import com.tarkovcraft.item.TacticalRigItem;
 import com.tarkovcraft.item.TarkovArmorItem;
-import com.tarkovcraft.item.TarkovCaseItem;
-import com.tarkovcraft.item.TarkovGrenadeItem;
-import com.tarkovcraft.item.TarkovMedicalItem;
-import com.tarkovcraft.item.TarkovStimulatorItem;
-import com.tarkovcraft.screen.TarkovScreenHandler;
-import net.fabricmc.api.EnvType;
-import net.fabricmc.api.Environment;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
+import com.tarkovcraft.item.TarkovFunctionalItem;
 import net.minecraft.item.AxeItem;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.SwordItem;
 import net.minecraft.registry.Registries;
-import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
-import net.minecraft.util.math.RotationAxis;
 
+public enum EquipmentSlotType {
+	PRIMARY_1("primary_1", "Primary 1"),
+	PRIMARY_2("primary_2", "Primary 2"),
+	PISTOL("pistol", "Pistol"),
+	MELEE("melee", "Melee"),
+	HELMET("helmet", "Helmet"),
+	FACE_MASK("face_mask", "Face Mask"),
+	BODY_ARMOR("body_armor", "Body Armor"),
+	RIG("rig", "Tactical Rig"),
+	BACKPACK("backpack", "Backpack"),
+	HEADSET("headset", "Headset");
+
+	private final String id;
+	private final String displayName;
+
+	EquipmentSlotType(String id, String displayName) {
+		this.id = id;
+		this.displayName = displayName;
+	}
+
+	public String getId() {
+		return id;
+	}
+
+	public String getDisplayName() {
+		return displayName;
+	}
+
+	public boolean accepts(ItemStack stack) {
+		if (stack == null || stack.isEmpty()) {
+			return true;
+		}
+		Item item = stack.getItem();
+		Identifier itemId = Registries.ITEM.getId(item);
+		boolean isHeadset = item instanceof TarkovFunctionalItem functional && functional.isHeadset();
+		boolean isTaczGun = "tacz".equals(itemId.getNamespace()) && itemId.getPath().contains("gun");
+
+		return switch (this) {
+			case BACKPACK -> item instanceof BackpackItem;
+			case RIG -> item instanceof TacticalRigItem;
+			case HELMET -> item instanceof TarkovArmorItem a && a.getTargetSlot() == HELMET;
+			case FACE_MASK -> item instanceof TarkovArmorItem a && a.getTargetSlot() == FACE_MASK;
+			case HEADSET -> isHeadset;
+			case BODY_ARMOR -> item instanceof TarkovArmorItem a && a.getTargetSlot() == BODY_ARMOR;
+			case PISTOL -> isTaczGun && ItemSizeRegistry.isPistolLike(stack)
+				|| (!isTaczGun && !(item instanceof BackpackItem) && !(item instanceof TacticalRigItem) && !(item instanceof TarkovArmorItem) && !isHeadset && ItemSizeRegistry.isPistolLike(stack));
+			case PRIMARY_1, PRIMARY_2 -> isTaczGun
+				|| (!(item instanceof BackpackItem) && !(item instanceof TacticalRigItem) && !(item instanceof TarkovArmorItem) && !isHeadset);
+			case MELEE -> item instanceof SwordItem || item instanceof AxeItem
+				|| itemId.getPath().contains("knife") || itemId.getPath().contains("melee");
+		};
+	}
+
+	public static EquipmentSlotType byId(String id) {
+		for (EquipmentSlotType type : values()) {
+			if (type.id.equals(id)) {
+				return type;
+			}
+		}
+		return null;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\loadout\PlayerLoadout.java ==========
+package com.tarkovcraft.loadout;
+
+import com.tarkovcraft.grid.ContainerItemHelper;
+import com.tarkovcraft.grid.GridContainer;
+import com.tarkovcraft.grid.GridEntry;
+import com.tarkovcraft.grid.ItemSize;
+import com.tarkovcraft.grid.ItemSizeRegistry;
+import com.tarkovcraft.item.BackpackItem;
+import com.tarkovcraft.item.TacticalRigItem;
+import com.tarkovcraft.item.TarkovArmorItem;
+import com.tarkovcraft.item.TarkovMedicalItem;
+import com.tarkovcraft.item.TarkovSizedItem;
+import com.tarkovcraft.search.ContainerSearchMemory;
+import net.minecraft.item.ItemStack;
+import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.item.TarkovFunctionalItem;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtElement;
+import net.minecraft.nbt.NbtList;
+import net.minecraft.registry.Registries;
+import net.minecraft.util.Identifier;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * Holds a player's Tarkov equipment slots, 6x (1x1) pockets, and hotbar mapping:
+ * - Hotbar 0..2 (Keys 1..3): PRIMARY_1, PRIMARY_2, PISTOL
+ * - Hotbar 3..8 (Keys 4..9): Pockets 0..5 (strictly 1x1)
+ * - Melee is separate and only overrides the active hand when meleeSelected == true.
+ */
+public final class PlayerLoadout {
+	public static final int POCKET_COUNT = 6;
+	public static final int HOTBAR_SIZE = 9;
+
+	private final Map<EquipmentSlotType, ItemStack> equipment = new EnumMap<>(EquipmentSlotType.class);
+	private final ItemStack[] pockets = new ItemStack[POCKET_COUNT];
+	private boolean meleeSelected = false;
+	private GridContainer secureContainer = new GridContainer(2, 2);
+
+	private transient long exposedCacheTick = Long.MIN_VALUE;
+	private transient boolean exposedCacheIncludeBp = false;
+	@Nullable
+	private transient List<ItemStack> exposedCache = null;
+
+	public PlayerLoadout() {
+		for (EquipmentSlotType slot : EquipmentSlotType.values()) {
+			equipment.put(slot, ItemStack.EMPTY);
+		}
+		for (int i = 0; i < POCKET_COUNT; i++) {
+			pockets[i] = ItemStack.EMPTY;
+		}
+	}
+
+	public ItemStack getEquipment(EquipmentSlotType slot) {
+		return equipment.getOrDefault(slot, ItemStack.EMPTY);
+	}
+
+	public GridContainer getSecureContainer() {
+		return secureContainer;
+	}
+
+	public void copySecureContainerFrom(PlayerLoadout old) {
+		secureContainer = GridContainer.fromNbt(old.secureContainer.toNbt(), 2, 2);
+		invalidateExposedCache();
+	}
+
+	public static boolean canPlaceInSecureContainer(ItemStack stack) {
+		return SecureContainerValidator.allows(stack);
+	}
+
+	public boolean blocksHeadset() {
+		return blocksHeadset(getEquipment(EquipmentSlotType.HELMET))
+			|| blocksHeadset(getEquipment(EquipmentSlotType.FACE_MASK));
+	}
+
+	private static boolean blocksHeadset(ItemStack stack) {
+		return stack.getItem() instanceof TarkovArmorItem armor && armor.blocksHeadset();
+	}
+
+	public boolean canEquip(EquipmentSlotType slot, ItemStack stack) {
+		return slot.accepts(stack) && (slot != EquipmentSlotType.HEADSET || stack.isEmpty() || !blocksHeadset());
+	}
+
+	public void invalidateExposedCache() {
+		exposedCache = null;
+		exposedCacheTick = Long.MIN_VALUE;
+	}
+
+	public void setEquipment(EquipmentSlotType slot, ItemStack stack) {
+		equipment.put(slot, stack == null ? ItemStack.EMPTY : stack);
+		invalidateExposedCache();
+	}
+
+	public ItemStack getPocket(int index) {
+		if (index < 0 || index >= POCKET_COUNT) {
+			return ItemStack.EMPTY;
+		}
+		return pockets[index];
+	}
+
+	public boolean canPlaceInPocket(ItemStack stack) {
+		if (stack == null || stack.isEmpty()) {
+			return true;
+		}
+		ItemSize size = ItemSizeRegistry.getSize(stack);
+		return size.width() == 1 && size.height() == 1;
+	}
+
+	public boolean setPocket(int index, ItemStack stack) {
+		if (index < 0 || index >= POCKET_COUNT) {
+			return false;
+		}
+		if (stack != null && !stack.isEmpty() && !canPlaceInPocket(stack)) {
+			return false;
+		}
+		pockets[index] = stack == null ? ItemStack.EMPTY : stack;
+		return true;
+	}
+
+	public boolean isMeleeSelected() {
+		return meleeSelected;
+	}
+
+	public void setMeleeSelected(boolean meleeSelected) {
+		this.meleeSelected = meleeSelected;
+	}
+
+	/**
+	 * Always returns the stack for hotbar slot 0..8 for HUD display,
+	 * NEVER overridden by meleeSelected (fixes the bug where all 9 slots showed the melee weapon).
+	 */
+	public ItemStack getHotbarDisplayStack(int hotbarSlot) {
+		return switch (hotbarSlot) {
+			case 0 -> getEquipment(EquipmentSlotType.PRIMARY_1);
+			case 1 -> getEquipment(EquipmentSlotType.PRIMARY_2);
+			case 2 -> getEquipment(EquipmentSlotType.PISTOL);
+			default -> {
+				int pocketIdx = hotbarSlot - 3;
+				yield (pocketIdx >= 0 && pocketIdx < POCKET_COUNT) ? getPocket(pocketIdx) : ItemStack.EMPTY;
+			}
+		};
+	}
+
+	/**
+	 * Returns what the player is actually holding in their main hand.
+	 */
+	public ItemStack getActiveHandStack(int hotbarSlot) {
+		if (meleeSelected) {
+			return getEquipment(EquipmentSlotType.MELEE);
+		}
+		return getHotbarDisplayStack(hotbarSlot);
+	}
+
+	/**
+	 * Smart pickup (used when pressing F on a world item):
+	 * 1. If item is wearable gear (Backpack / Rig / Armor) and that equipment slot is empty -> equip immediately!
+	 * 2. If item is a gun/melee weapon and matching weapon slot is empty -> equip immediately!
+	 * 3. Otherwise auto-fit into Pockets -> Rig -> Backpack.
+	 */
+	public boolean trySmartPickup(ItemStack incoming, @Nullable UUID playerId) {
+		if (incoming == null || incoming.isEmpty()) {
+			return false;
+		}
+
+		// Direct equip for wearable gear if slot is empty
+		if (incoming.getItem() instanceof BackpackItem && getEquipment(EquipmentSlotType.BACKPACK).isEmpty()) {
+			setEquipment(EquipmentSlotType.BACKPACK, incoming.copy());
+			incoming.setCount(0);
+			return true;
+		}
+		if (incoming.getItem() instanceof TacticalRigItem && getEquipment(EquipmentSlotType.RIG).isEmpty()) {
+			setEquipment(EquipmentSlotType.RIG, incoming.copy());
+			incoming.setCount(0);
+			return true;
+		}
+		if (incoming.getItem() instanceof TarkovArmorItem armor) {
+			EquipmentSlotType slot = armor.getTargetSlot();
+			if (getEquipment(slot).isEmpty()) {
+				setEquipment(slot, incoming.copy());
+				incoming.setCount(0);
+				return true;
+			}
+		}
+
+		if (incoming.getItem() instanceof TarkovFunctionalItem functional && functional.isHeadset()
+			&& getEquipment(EquipmentSlotType.HEADSET).isEmpty() && canEquip(EquipmentSlotType.HEADSET, incoming)) {
+			setEquipment(EquipmentSlotType.HEADSET, incoming.copy());
+			incoming.setCount(0);
+			return true;
+		}
+
+		// Direct equip for TaCZ guns into empty weapon slots
+		Identifier id = Registries.ITEM.getId(incoming.getItem());
+		boolean isTaczGun = "tacz".equals(id.getNamespace()) && id.getPath().contains("gun");
+		if (isTaczGun) {
+			if (ItemSizeRegistry.isPistolLike(incoming) && getEquipment(EquipmentSlotType.PISTOL).isEmpty()) {
+				setEquipment(EquipmentSlotType.PISTOL, incoming.copy());
+				incoming.setCount(0);
+				return true;
+			}
+			if (getEquipment(EquipmentSlotType.PRIMARY_1).isEmpty()) {
+				setEquipment(EquipmentSlotType.PRIMARY_1, incoming.copy());
+				incoming.setCount(0);
+				return true;
+			}
+			if (getEquipment(EquipmentSlotType.PRIMARY_2).isEmpty()) {
+				setEquipment(EquipmentSlotType.PRIMARY_2, incoming.copy());
+				incoming.setCount(0);
+				return true;
+			}
+		}
+
+		// Direct equip for melee weapons if melee slot is empty
+		if (EquipmentSlotType.MELEE.accepts(incoming) && getEquipment(EquipmentSlotType.MELEE).isEmpty()) {
+			setEquipment(EquipmentSlotType.MELEE, incoming.copy());
+			incoming.setCount(0);
+			return true;
+		}
+
+		// Fallback to storage grids
+		return tryInsertItem(incoming, playerId);
+	}
+
+	/**
+	 * Attempts to auto-insert an ItemStack into Pockets -> Rig -> Backpack.
+	 */
+	public boolean tryInsertItem(ItemStack incoming, @Nullable UUID playerId) {
+		if (incoming == null || incoming.isEmpty()) {
+			return false;
+		}
+
+		// 1. Try 1x1 pockets first (stacking, then empty slot)
+		if (canPlaceInPocket(incoming)) {
+			if (incoming.isStackable()) {
+				for (int i = 0; i < POCKET_COUNT; i++) {
+					ItemStack pocket = pockets[i];
+					if (!pocket.isEmpty() && ItemStack.canCombine(pocket, incoming) && pocket.getCount() < pocket.getMaxCount()) {
+						int transfer = Math.min(pocket.getMaxCount() - pocket.getCount(), incoming.getCount());
+						pocket.increment(transfer);
+						incoming.decrement(transfer);
+						if (incoming.isEmpty()) {
+							return true;
+						}
+					}
+				}
+			}
+			for (int i = 0; i < POCKET_COUNT; i++) {
+				if (pockets[i].isEmpty()) {
+					pockets[i] = incoming.copy();
+					incoming.setCount(0);
+					return true;
+				}
+			}
+		}
+
+		// 2. Try Equipped Tactical Rig sub-grids (only if not blocked by unsearched state)
+		ItemStack rigStack = getEquipment(EquipmentSlotType.RIG);
+		if (!rigStack.isEmpty() && rigStack.getItem() instanceof TacticalRigItem) {
+			boolean canPutInRig = !ContainerItemHelper.requiresSearch(rigStack)
+				|| (playerId != null && ContainerItemHelper.getSearchMemory(rigStack).isGridRevealed(playerId));
+			if (canPutInRig) {
+				List<GridContainer> rigGrids = ContainerItemHelper.readRigGrids(rigStack);
+				boolean changed = false;
+				for (GridContainer grid : rigGrids) {
+					int beforeGrid = incoming.getCount();
+					boolean full = grid.tryAutoPlace(incoming);
+					if (full || incoming.getCount() < beforeGrid) {
+						changed = true;
+						if (incoming.isEmpty()) {
+							break;
+						}
+					}
+				}
+				if (changed) {
+					ContainerItemHelper.writeRigGrids(rigStack, rigGrids);
+					invalidateExposedCache();
+					if (incoming.isEmpty()) {
+						return true;
+					}
+				}
+			}
+		}
+
+		// 3. Try Equipped Backpack grid (only if not blocked by unsearched state)
+		ItemStack bpStack = getEquipment(EquipmentSlotType.BACKPACK);
+		if (!bpStack.isEmpty() && bpStack.getItem() instanceof BackpackItem) {
+			boolean canPutInBp = !ContainerItemHelper.requiresSearch(bpStack)
+				|| (playerId != null && ContainerItemHelper.getSearchMemory(bpStack).isGridRevealed(playerId));
+			if (canPutInBp) {
+				GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bpStack);
+				int beforeBp = incoming.getCount();
+				boolean full = bpGrid.tryAutoPlace(incoming);
+				if (full || incoming.getCount() < beforeBp) {
+					ContainerItemHelper.writeBackpackGrid(bpStack, bpGrid);
+					invalidateExposedCache();
+					if (incoming.isEmpty()) {
+						return true;
+					}
+				}
+			}
+		}
+
+		return incoming.isEmpty();
+	}
+
+	/**
+	 * Exposes live stacks inside the equipped Tactical Rig (and ONLY the Rig in combat;
+	 * when crafting at a workbench, includeBackpack = true also appends Backpack items so
+	 * the TaCZ Gunsmith Table can consume crafting materials from the Backpack too!).
+	 */
+	public ItemStack getRigExposedStack(int rigSlotIndex, @Nullable UUID playerId) {
+		return getExposedStorageStack(rigSlotIndex, playerId, false);
+	}
+
+	@Nullable
+	private static ContainerSearchMemory requiredSearch(ItemStack container) {
+		return ContainerItemHelper.requiresSearch(container) ? ContainerItemHelper.getSearchMemory(container) : null;
+	}
+
+	private static boolean isGridExposed(@Nullable ContainerSearchMemory search, @Nullable UUID playerId) {
+		return search == null || (playerId != null && search.isGridRevealed(playerId));
+	}
+
+	private static boolean isEntryExposed(@Nullable ContainerSearchMemory search, @Nullable UUID playerId, GridEntry entry) {
+		return search == null || search.isEntryDiscovered(playerId, entry.getEntryId());
+	}
+
+	private static boolean tryAutoPlaceInExposedGrid(GridContainer grid, ItemStack stack,
+			@Nullable ContainerSearchMemory search, @Nullable UUID playerId) {
+		if (search == null) return grid.tryAutoPlace(stack);
+		List<GridEntry> previous = grid.getEntries();
+		if (!grid.tryAutoPlace(stack, id -> search.isEntryDiscovered(playerId, id))) return false;
+		for (GridEntry entry : grid.getEntries()) {
+			if (!previous.contains(entry)) search.markEntryDiscovered(playerId, entry.getEntryId());
+		}
+		return true;
+	}
+
+	public ItemStack getExposedStorageStackCached(int slotIndex, @Nullable UUID playerId, boolean includeBackpack, long worldTick) {
+		if (slotIndex < 0) return ItemStack.EMPTY;
+		if (exposedCache == null || exposedCacheTick != worldTick || exposedCacheIncludeBp != includeBackpack) {
+			java.util.ArrayList<ItemStack> rebuilt = new java.util.ArrayList<>();
+			for (GridEntry entry : secureContainer.getEntries()) {
+				if (AmmoTier.isTaczAmmoStack(entry.getStack())) rebuilt.add(entry.getStack());
+			}
+			ItemStack rig = getEquipment(EquipmentSlotType.RIG);
+			if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
+				ContainerSearchMemory search = requiredSearch(rig);
+				if (isGridExposed(search, playerId)) {
+					for (GridContainer g : ContainerItemHelper.readRigGrids(rig)) {
+						for (var entry : g.getEntries()) {
+							if (isEntryExposed(search, playerId, entry)) rebuilt.add(entry.getStack());
+						}
+					}
+				}
+			}
+			if (includeBackpack) {
+				ItemStack bp = getEquipment(EquipmentSlotType.BACKPACK);
+				if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem) {
+					ContainerSearchMemory search = requiredSearch(bp);
+					if (isGridExposed(search, playerId)) {
+						GridContainer g = ContainerItemHelper.readBackpackGrid(bp);
+						for (var entry : g.getEntries()) {
+							if (isEntryExposed(search, playerId, entry)) rebuilt.add(entry.getStack());
+						}
+					}
+				}
+			}
+			exposedCache = rebuilt;
+			exposedCacheTick = worldTick;
+			exposedCacheIncludeBp = includeBackpack;
+		}
+		return slotIndex < exposedCache.size() ? exposedCache.get(slotIndex) : ItemStack.EMPTY;
+	}
+
+	public ItemStack getExposedStorageStack(int slotIndex, @Nullable UUID playerId, boolean includeBackpack) {
+		if (slotIndex < 0) return ItemStack.EMPTY;
+		int cursor = 0;
+		for (GridEntry entry : secureContainer.getEntries()) {
+			if (AmmoTier.isTaczAmmoStack(entry.getStack()) && cursor++ == slotIndex) return entry.getStack();
+		}
+
+		ItemStack rig = getEquipment(EquipmentSlotType.RIG);
+		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
+			ContainerSearchMemory search = requiredSearch(rig);
+			if (isGridExposed(search, playerId)) {
+				for (GridContainer g : ContainerItemHelper.readRigGrids(rig)) {
+					for (var entry : g.getEntries()) {
+						if (!isEntryExposed(search, playerId, entry)) continue;
+						if (cursor == slotIndex) {
+							return entry.getStack();
+						}
+						cursor++;
+					}
+				}
+			}
+		}
+
+		if (includeBackpack) {
+			ItemStack bp = getEquipment(EquipmentSlotType.BACKPACK);
+			if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem) {
+				ContainerSearchMemory search = requiredSearch(bp);
+				if (isGridExposed(search, playerId)) {
+					GridContainer g = ContainerItemHelper.readBackpackGrid(bp);
+					for (var entry : g.getEntries()) {
+						if (!isEntryExposed(search, playerId, entry)) continue;
+						if (cursor == slotIndex) {
+							return entry.getStack();
+						}
+						cursor++;
+					}
+				}
+			}
+		}
+		return ItemStack.EMPTY;
+	}
+
+	public ItemStack removeRigExposedStack(int rigSlotIndex, int amount, @Nullable UUID playerId) {
+		return removeExposedStorageStack(rigSlotIndex, amount, playerId, false);
+	}
+
+	public ItemStack removeExposedStorageStack(int slotIndex, int amount, @Nullable UUID playerId, boolean includeBackpack) {
+		if (slotIndex < 0 || amount <= 0) return ItemStack.EMPTY;
+		int cursor = 0;
+		for (GridEntry entry : secureContainer.getEntries()) {
+			if (!AmmoTier.isTaczAmmoStack(entry.getStack()) || cursor++ != slotIndex) continue;
+			ItemStack removed = entry.getStack().split(amount);
+			if (entry.getStack().isEmpty()) secureContainer.remove(entry.getEntryId());
+			invalidateExposedCache();
+			return removed;
+		}
+
+		ItemStack rig = getEquipment(EquipmentSlotType.RIG);
+		ContainerSearchMemory rigSearch = requiredSearch(rig);
+		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem && isGridExposed(rigSearch, playerId)) {
+			List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
+			for (GridContainer g : grids) {
+				for (var entry : g.getEntries()) {
+					if (!isEntryExposed(rigSearch, playerId, entry)) continue;
+					if (cursor == slotIndex) {
+						ItemStack st = entry.getStack();
+						ItemStack extracted = st.split(amount);
+						if (st.isEmpty()) {
+							g.remove(entry.getEntryId());
+						}
+						ContainerItemHelper.writeRigGrids(rig, grids);
+						invalidateExposedCache();
+						return extracted;
+					}
+					cursor++;
+				}
+			}
+		}
+
+		if (includeBackpack) {
+			ItemStack bp = getEquipment(EquipmentSlotType.BACKPACK);
+			ContainerSearchMemory backpackSearch = requiredSearch(bp);
+			if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem && isGridExposed(backpackSearch, playerId)) {
+				GridContainer g = ContainerItemHelper.readBackpackGrid(bp);
+				for (var entry : g.getEntries()) {
+					if (!isEntryExposed(backpackSearch, playerId, entry)) continue;
+					if (cursor == slotIndex) {
+						ItemStack st = entry.getStack();
+						ItemStack extracted = st.split(amount);
+						if (st.isEmpty()) {
+							g.remove(entry.getEntryId());
+						}
+						ContainerItemHelper.writeBackpackGrid(bp, g);
+						invalidateExposedCache();
+						return extracted;
+					}
+					cursor++;
+				}
+			}
+		}
+		return ItemStack.EMPTY;
+	}
+
+	public boolean setRigExposedStack(int rigSlotIndex, ItemStack incoming) {
+		return setExposedStorageStack(rigSlotIndex, incoming, null, false);
+	}
+
+	public boolean setExposedStorageStack(int slotIndex, ItemStack incoming, @Nullable UUID playerId, boolean includeBackpack) {
+		if (slotIndex < 0) return false;
+		int cursor = 0;
+		for (GridEntry entry : secureContainer.getEntries()) {
+			if (!AmmoTier.isTaczAmmoStack(entry.getStack()) || cursor++ != slotIndex) continue;
+			if (incoming == null || incoming.isEmpty()) {
+				secureContainer.remove(entry.getEntryId());
+			} else {
+				if (!AmmoTier.isTaczAmmoStack(incoming) || !incoming.isOf(entry.getStack().getItem())
+					|| !canPlaceInSecureContainer(incoming)
+					|| !ItemSizeRegistry.getSize(incoming).equals(ItemSizeRegistry.getSize(entry.getStack()))) return false;
+				entry.setStack(incoming.copy());
+			}
+			invalidateExposedCache();
+			return true;
+		}
+
+		ItemStack rig = getEquipment(EquipmentSlotType.RIG);
+		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
+			ContainerSearchMemory search = requiredSearch(rig);
+			if (isGridExposed(search, playerId)) {
+				List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
+				for (GridContainer g : grids) {
+					for (var entry : g.getEntries()) {
+						if (!isEntryExposed(search, playerId, entry)) continue;
+						if (cursor == slotIndex) {
+							if (incoming == null || incoming.isEmpty()) {
+								g.remove(entry.getEntryId());
+							} else {
+								entry.setStack(incoming.copy());
+							}
+							ContainerItemHelper.writeRigGrids(rig, grids);
+							invalidateExposedCache();
+							return true;
+						}
+						cursor++;
+					}
+				}
+			}
+		}
+
+		if (includeBackpack) {
+			ItemStack bp = getEquipment(EquipmentSlotType.BACKPACK);
+			if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem) {
+				ContainerSearchMemory search = requiredSearch(bp);
+				if (isGridExposed(search, playerId)) {
+					GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
+					for (var entry : bpGrid.getEntries()) {
+						if (!isEntryExposed(search, playerId, entry)) continue;
+						if (cursor == slotIndex) {
+							if (incoming == null || incoming.isEmpty()) {
+								bpGrid.remove(entry.getEntryId());
+							} else {
+								entry.setStack(incoming.copy());
+							}
+							ContainerItemHelper.writeBackpackGrid(bp, bpGrid);
+							invalidateExposedCache();
+							return true;
+						}
+						cursor++;
+					}
+				}
+			}
+		}
+
+		// New item pushed back into an empty exposed slot (e.g. TaCZ unloading or workbench crafting output)
+		if (incoming != null && !incoming.isEmpty()) {
+			ItemStack copy = incoming.copy();
+			if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
+				ContainerSearchMemory search = requiredSearch(rig);
+				if (isGridExposed(search, playerId)) {
+					List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
+					for (GridContainer g : grids) {
+						if (tryAutoPlaceInExposedGrid(g, copy, search, playerId)) {
+							ContainerItemHelper.writeRigGrids(rig, grids);
+							if (search != null) ContainerItemHelper.saveSearchMemory(rig, search);
+							invalidateExposedCache();
+							return true;
+						}
+					}
+				}
+			}
+			if (includeBackpack) {
+				ItemStack bp = getEquipment(EquipmentSlotType.BACKPACK);
+				if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem) {
+					ContainerSearchMemory search = requiredSearch(bp);
+					if (isGridExposed(search, playerId)) {
+						GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
+						if (tryAutoPlaceInExposedGrid(bpGrid, copy, search, playerId)) {
+							ContainerItemHelper.writeBackpackGrid(bp, bpGrid);
+							if (search != null) ContainerItemHelper.saveSearchMemory(bp, search);
+							invalidateExposedCache();
+							return true;
+						}
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Estimates rough carried weight in kg for the Tarkov UI stats bar.
+	 */
+	public float calculateWeightKg() {
+		float kg = 0.0f;
+		for (ItemStack st : equipment.values()) {
+			kg += estimateItemWeight(st);
+		}
+		for (ItemStack st : pockets) {
+			kg += estimateItemWeight(st);
+		}
+		for (GridEntry entry : secureContainer.getEntries()) {
+			kg += estimateItemWeight(entry.getStack());
+		}
+		return kg;
+	}
+
+	public static float estimateItemWeight(ItemStack stack) {
+		if (stack == null || stack.isEmpty()) return 0.0f;
+		if (stack.getItem() instanceof TarkovArmorItem armor) {
+			return armor.getWeightKg();
+		}
+		if (stack.getItem() instanceof TarkovMedicalItem med) {
+			return med.getWeightKg();
+		}
+		boolean isContainer = ContainerItemHelper.isContainerItem(stack);
+		float base;
+		if (stack.getItem() instanceof TarkovSizedItem sized && sized.getWeightKg() >= 0.0f) {
+			base = sized.getWeightKg() * Math.max(1, stack.getCount());
+		} else {
+			ItemSize sz = ItemSizeRegistry.getSize(stack);
+			base = sz.width() * sz.height() * 0.35f + (stack.getCount() - 1) * 0.05f;
+		}
+		if (isContainer) {
+			for (GridContainer g : ContainerItemHelper.readAllGrids(stack)) {
+				for (var e : g.getEntries()) {
+					base += estimateItemWeight(e.getStack());
+				}
+			}
+		}
+		return base;
+	}
+
+	public boolean isEmpty() {
+		return isLootEmpty() && secureContainer.isEmpty();
+	}
+
+	public boolean isLootEmpty() {
+		for (ItemStack s : equipment.values()) {
+			if (!s.isEmpty()) return false;
+		}
+		for (ItemStack s : pockets) {
+			if (!s.isEmpty()) return false;
+		}
+		return true;
+	}
+
+	public void clear() {
+		clearLoot();
+		secureContainer = new GridContainer(2, 2);
+	}
+
+	public void clearLoot() {
+		for (EquipmentSlotType slot : EquipmentSlotType.values()) {
+			equipment.put(slot, ItemStack.EMPTY);
+		}
+		for (int i = 0; i < POCKET_COUNT; i++) {
+			pockets[i] = ItemStack.EMPTY;
+		}
+		meleeSelected = false;
+		invalidateExposedCache();
+	}
+
+	public PlayerLoadout copy() {
+		PlayerLoadout clone = new PlayerLoadout();
+		clone.readNbt(writeNbt());
+		return clone;
+	}
+
+	public PlayerLoadout copyLoot() {
+		PlayerLoadout clone = new PlayerLoadout();
+		clone.readNbt(writeLootNbt());
+		return clone;
+	}
+
+	public NbtCompound writeNbt() {
+		NbtCompound root = writeLootNbt();
+		root.put("SecureContainer", secureContainer.toNbt());
+		return root;
+	}
+
+	public NbtCompound writeLootNbt() {
+		NbtCompound root = new NbtCompound();
+		NbtCompound eqNbt = new NbtCompound();
+		for (Map.Entry<EquipmentSlotType, ItemStack> entry : equipment.entrySet()) {
+			if (!entry.getValue().isEmpty()) {
+				eqNbt.put(entry.getKey().getId(), entry.getValue().writeNbt(new NbtCompound()));
+			}
+		}
+		root.put("Equipment", eqNbt);
+
+		NbtList pocketList = new NbtList();
+		for (int i = 0; i < POCKET_COUNT; i++) {
+			NbtCompound slotNbt = new NbtCompound();
+			slotNbt.putInt("Slot", i);
+			if (!pockets[i].isEmpty()) {
+				slotNbt.put("Stack", pockets[i].writeNbt(new NbtCompound()));
+			}
+			pocketList.add(slotNbt);
+		}
+		root.put("Pockets", pocketList);
+		root.putBoolean("MeleeSelected", meleeSelected);
+		return root;
+	}
+
+	public void readNbt(NbtCompound root) {
+		clear();
+		if (root == null) {
+			return;
+		}
+		if (root.contains("Equipment", NbtElement.COMPOUND_TYPE)) {
+			NbtCompound eqNbt = root.getCompound("Equipment");
+			for (EquipmentSlotType slot : EquipmentSlotType.values()) {
+				if (eqNbt.contains(slot.getId(), NbtElement.COMPOUND_TYPE)) {
+					equipment.put(slot, ItemStack.fromNbt(eqNbt.getCompound(slot.getId())));
+				}
+			}
+		}
+		if (root.contains("Pockets", NbtElement.LIST_TYPE)) {
+			NbtList pocketList = root.getList("Pockets", NbtElement.COMPOUND_TYPE);
+			for (int i = 0; i < pocketList.size(); i++) {
+				NbtCompound slotNbt = pocketList.getCompound(i);
+				int idx = slotNbt.getInt("Slot");
+				if (idx >= 0 && idx < POCKET_COUNT && slotNbt.contains("Stack", NbtElement.COMPOUND_TYPE)) {
+					pockets[idx] = ItemStack.fromNbt(slotNbt.getCompound("Stack"));
+				}
+			}
+		}
+		ItemStack oldMask = getEquipment(EquipmentSlotType.FACE_MASK);
+		if (EquipmentSlotType.HEADSET.accepts(oldMask) && !oldMask.isEmpty() && getEquipment(EquipmentSlotType.HEADSET).isEmpty()) {
+			setEquipment(EquipmentSlotType.HEADSET, oldMask);
+			setEquipment(EquipmentSlotType.FACE_MASK, ItemStack.EMPTY);
+		}
+		if (root.contains("SecureContainer", NbtElement.COMPOUND_TYPE)) {
+			secureContainer = GridContainer.fromNbt(root.getCompound("SecureContainer"), 2, 2);
+		}
+		meleeSelected = root.getBoolean("MeleeSelected");
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\loadout\PlayerLoadoutHolder.java ==========
+package com.tarkovcraft.loadout;
+
+import com.tarkovcraft.health.BodyPartHealth;
+
+public interface PlayerLoadoutHolder {
+	PlayerLoadout tarkovcraft$getLoadout();
+
+	void tarkovcraft$syncLoadout();
+
+	BodyPartHealth tarkovcraft$getBodyHealth();
+
+	void tarkovcraft$syncBodyHealth();
+}
+
+// ========== .\src\main\java\com\tarkovcraft\loadout\SecureContainerValidator.java ==========
+package com.tarkovcraft.loadout;
+
+import com.tarkovcraft.grid.ContainerItemHelper;
+import com.tarkovcraft.item.TarkovArmorRepairItem;
+import com.tarkovcraft.item.TarkovCaseItem;
+import com.tarkovcraft.item.TarkovFunctionalItem;
+import com.tarkovcraft.item.TarkovMedicalItem;
+import com.tarkovcraft.item.TarkovStimulatorItem;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.registry.Registries;
+import net.minecraft.util.Identifier;
+
+public final class SecureContainerValidator {
+	private SecureContainerValidator() {
+	}
+
+	public static boolean allows(ItemStack stack) {
+		if (!(stack.getItem() instanceof TarkovCaseItem container)) {
+			return allowsLooseItem(stack);
+		}
+		return switch (container.getCaseRole()) {
+			case INJECTOR, MONEY, MEDICAL -> ContainerItemHelper.allCaseContentsMatch(stack,
+				content -> allowsLooseItem(content) && container.canAcceptItem(content));
+			default -> false;
+		};
+	}
+
+	public static boolean allowsCaseInsertion(ItemStack caseStack, ItemStack incoming) {
+		return caseStack.getItem() instanceof TarkovCaseItem container
+			&& allowsLooseItem(incoming) && container.canAcceptItem(incoming) && allows(caseStack);
+	}
+
+	private static boolean allowsLooseItem(ItemStack stack) {
+		if (stack.isEmpty() || ContainerItemHelper.isContainerItem(stack)) return false;
+		var item = stack.getItem();
+		Identifier id = Registries.ITEM.getId(item);
+		return item instanceof TarkovMedicalItem || item instanceof TarkovStimulatorItem
+			|| item instanceof TarkovFunctionalItem functional && functional.isValuable()
+			|| item instanceof TarkovArmorRepairItem || ("tacz".equals(id.getNamespace()) && "ammo".equals(id.getPath()))
+			|| stack.isFood()
+			|| item == Items.EMERALD || item == Items.DIAMOND || item == Items.GOLD_INGOT
+			|| item == Items.GOLD_NUGGET || item == Items.NETHERITE_INGOT || item == Items.NETHERITE_SCRAP
+			|| item == Items.AMETHYST_SHARD || item == Items.PAPER || item == Items.NETHER_STAR
+			|| item == Items.HEART_OF_THE_SEA || item == Items.TOTEM_OF_UNDYING;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\loot\CityZoneClassifier.java ==========
+package com.tarkovcraft.loot;
+
+import net.minecraft.block.BedBlock;
+import net.minecraft.block.Block;
+import net.minecraft.block.BlockState;
+import net.minecraft.block.Blocks;
+import net.minecraft.block.CarpetBlock;
+import net.minecraft.block.ShulkerBoxBlock;
+import net.minecraft.registry.tag.FluidTags;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.math.BlockPos;
+
+/**
+ * Context-aware classifier that determines the most fitting war-torn city loot pool
+ * for any container based on surrounding interior/building blocks.
+ */
+public final class CityZoneClassifier {
+	private CityZoneClassifier() {
+	}
+
+	public static TarkovLootPool classify(ServerWorld world, BlockPos pos, Block containerBlock) {
+		if (world == null || pos == null) {
+			return TarkovLootPool.RESIDENTIAL;
+		}
+
+		int medicalScore = 0;
+		int factoryScore = 0;
+		int garageScore = 0;
+		int schoolScore = 0;
+		int officeScore = 0;
+		int cafeScore = 0;
+		int supermarketScore = 0;
+		int residentialScore = 0;
+		int policeScore = 0;
+		int militaryScore = 0;
+		int portScore = 0;
+
+		if (containerBlock instanceof ShulkerBoxBlock) {
+			militaryScore += 8;
+			portScore += 4;
+		}
+
+		BlockPos.Mutable m = new BlockPos.Mutable();
+		for (int dx = -6; dx <= 6; dx++) {
+			for (int dy = -2; dy <= 3; dy++) {
+				for (int dz = -6; dz <= 6; dz++) {
+					m.set(pos.getX() + dx, pos.getY() + dy, pos.getZ() + dz);
+					BlockState st = world.getBlockState(m);
+					Block b = st.getBlock();
+					if (st.isAir()) {
+						continue;
+					}
+
+					if (b == Blocks.BREWING_STAND) {
+						medicalScore += 10;
+					} else if (b == Blocks.BLAST_FURNACE || b == Blocks.ANVIL || b == Blocks.CHIPPED_ANVIL || b == Blocks.DAMAGED_ANVIL) {
+						factoryScore += 7;
+						garageScore += 4;
+					} else if (b == Blocks.HOPPER || b == Blocks.IRON_BLOCK || b == Blocks.COPPER_BLOCK || b == Blocks.GRINDSTONE || b == Blocks.STONECUTTER) {
+						factoryScore += 4;
+						garageScore += 3;
+					} else if (b == Blocks.SMITHING_TABLE || b == Blocks.COAL_BLOCK || b == Blocks.RAIL || b == Blocks.POWERED_RAIL) {
+						garageScore += 5;
+						factoryScore += 3;
+					} else if (b == Blocks.LECTERN) {
+						schoolScore += 9;
+						officeScore += 6;
+					} else if (b == Blocks.BOOKSHELF || b == Blocks.CHISELED_BOOKSHELF) {
+						schoolScore += 2;
+						officeScore += 2;
+					} else if (b == Blocks.SMOKER || b == Blocks.CAMPFIRE || b == Blocks.SOUL_CAMPFIRE || b == Blocks.CAKE) {
+						cafeScore += 7;
+						supermarketScore += 3;
+					} else if (b == Blocks.CAULDRON || b == Blocks.WATER_CAULDRON) {
+						cafeScore += 3;
+						medicalScore += 2;
+					} else if (b instanceof BedBlock) {
+						residentialScore += 6;
+					} else if (b == Blocks.FURNACE || b == Blocks.JUKEBOX || b instanceof CarpetBlock) {
+						residentialScore += 2;
+					} else if (b == Blocks.IRON_BARS || b == Blocks.IRON_DOOR) {
+						policeScore += 4;
+						militaryScore += 2;
+					} else if (b == Blocks.TNT || b == Blocks.OBSIDIAN || b == Blocks.DISPENSER || b == Blocks.DROPPER || b == Blocks.SPAWNER) {
+						militaryScore += 6;
+						policeScore += 3;
+					} else if (b == Blocks.BARREL) {
+						supermarketScore += 1;
+						portScore += 1;
+					} else if (b == Blocks.WHITE_CONCRETE || b == Blocks.RED_CONCRETE) {
+						medicalScore += 1;
+					} else if (b == Blocks.BLACK_CONCRETE || b == Blocks.GRAY_CONCRETE) {
+						garageScore += 1;
+					}
+				}
+			}
+		}
+
+		// Harbor / Port water proximity check (8 cardinal & diagonal rays at 12..24 blocks)
+		int waterHits = 0;
+		int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, 1}, {1, -1}, {-1, -1}};
+		for (int[] d : dirs) {
+			for (int dist = 12; dist <= 24; dist += 6) {
+				m.set(pos.getX() + d[0] * dist, Math.max(world.getBottomY() + 1, pos.getY() - 2), pos.getZ() + d[1] * dist);
+				if (world.getFluidState(m).isIn(FluidTags.WATER)) {
+					waterHits++;
+					break;
+				}
+			}
+		}
+		if (waterHits >= 3) {
+			portScore += waterHits * 4;
+		}
+
+		// Open sky / street barricade check
+		boolean underSky = world.isSkyVisible(pos.up());
+		if (underSky && militaryScore < 6 && portScore < 12) {
+			militaryScore += 6;
+		}
+
+		// Pick highest-scoring zone if clear signal exists
+		int bestScore = 8;
+		TarkovLootPool best = null;
+
+		if (medicalScore >= bestScore) {
+			bestScore = medicalScore;
+			best = residentialScore >= 6 ? TarkovLootPool.MEDICAL : TarkovLootPool.PHARMACY;
+		}
+		if (militaryScore > bestScore) {
+			bestScore = militaryScore;
+			best = underSky ? TarkovLootPool.BATTLEFIELD : TarkovLootPool.MILITARY;
+		}
+		if (policeScore > bestScore) {
+			bestScore = policeScore;
+			best = TarkovLootPool.POLICE;
+		}
+		if (portScore > bestScore) {
+			bestScore = portScore;
+			best = TarkovLootPool.PORT;
+		}
+		if (factoryScore > bestScore) {
+			bestScore = factoryScore;
+			best = TarkovLootPool.FACTORY;
+		}
+		if (garageScore > bestScore) {
+			bestScore = garageScore;
+			best = TarkovLootPool.GARAGE;
+		}
+		if (cafeScore > bestScore) {
+			bestScore = cafeScore;
+			best = supermarketScore >= 12 ? TarkovLootPool.SUPERMARKET : TarkovLootPool.CAFE;
+		}
+		if (schoolScore > bestScore && residentialScore < 6) {
+			bestScore = schoolScore;
+			best = officeScore > schoolScore ? TarkovLootPool.OFFICE : TarkovLootPool.SCHOOL;
+		}
+		if (residentialScore > bestScore) {
+			bestScore = residentialScore;
+			best = TarkovLootPool.RESIDENTIAL;
+		}
+
+		if (best != null) {
+			return best;
+		}
+
+		// Deterministic per-building-block fallback (32x32 block districts) so one building shares a coherent theme
+		int districtX = pos.getX() >> 5;
+		int districtZ = pos.getZ() >> 5;
+		int hash = Math.abs(districtX * 73856093 ^ districtZ * 19349663) % 100;
+		if (hash < 32) return TarkovLootPool.RESIDENTIAL;
+		if (hash < 46) return TarkovLootPool.OFFICE;
+		if (hash < 58) return TarkovLootPool.CAFE;
+		if (hash < 68) return TarkovLootPool.SUPERMARKET;
+		if (hash < 78) return TarkovLootPool.GARAGE;
+		if (hash < 86) return TarkovLootPool.SCHOOL;
+		if (hash < 93) return TarkovLootPool.POLICE;
+		return TarkovLootPool.BATTLEFIELD;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\loot\TarkovLootGenerator.java ==========
+package com.tarkovcraft.loot;
+
+import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.ammo.TaCZCaliberCatalog;
+import com.tarkovcraft.config.TarkovConfig;
+import com.tarkovcraft.grid.GridContainer;
+import com.tarkovcraft.grid.ItemSize;
+import com.tarkovcraft.grid.ItemSizeRegistry;
+import com.tarkovcraft.item.BackpackItem;
+import com.tarkovcraft.item.TacticalRigItem;
+import com.tarkovcraft.item.TarkovArmorItem;
+import com.tarkovcraft.item.TarkovArmorRepairItem;
+import com.tarkovcraft.item.TarkovCaseItem;
+import com.tarkovcraft.item.TarkovFoodItem;
+import com.tarkovcraft.item.TarkovFunctionalItem;
+import com.tarkovcraft.item.TarkovGrenadeItem;
+import com.tarkovcraft.item.TarkovMedicalItem;
+import com.tarkovcraft.item.TarkovMeleeItem;
+import com.tarkovcraft.item.TarkovStimulatorItem;
+import com.tarkovcraft.loadout.EquipmentSlotType;
+import com.tarkovcraft.registry.ModItems;
+import com.tarkovcraft.registry.TarkovItemCatalog;
+import net.minecraft.enchantment.Enchantments;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.registry.Registries;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.math.random.Random;
+
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Shared EFT-inspired flat translucent visual theme, typography, Z-layers, and render helpers.
+ * Rich catalog-driven loot generator spanning all TarkovCraft items, tiered TaCZ ammunition,
+ * real TaCZ firearms, TaCZ weapon attachments, and war-torn city zone loot tables.
  */
-@Environment(EnvType.CLIENT)
-public final class TarkovUiTheme {
-	// Backgrounds & Translucency
-	public static final int BG_WORLD_OVERLAY = 0x85000000;
-	public static final int BG_TOP_BAR = 0xE00C0D0F;
-	public static final int BG_PANEL = 0xC80D0E10;
-	public static final int BG_QUICK_BAR = 0xCC0D0E10;
-	public static final int BG_SLOT = 0x99121417;
-	public static final int BG_CELL_EMPTY = 0x99101215;
-	public static final int BG_CELL_OCCUPIED_DEFAULT = 0xCC1C2026;
-	public static final int BG_CELL_SILHOUETTE = 0xDD090B0D;
-	public static final int BG_DIM_DRAG_SOURCE = 0x9907080A;
-	public static final int BG_TOOLTIP = 0xE60B0C0E;
-	public static final int BG_CONTEXT_MENU = 0xF0111316;
-	public static final int BG_MODAL = 0xEE0E1013;
-	public static final int BG_MODAL_HEADER = 0xF515181C;
+public final class TarkovLootGenerator {
+	private static boolean poolsInitialized = false;
 
-	// Borders & Accents
-	public static final int BORDER_PANEL = 0xFF2D3035;
-	public static final int BORDER_SLOT = 0xFF32363C;
-	public static final int BORDER_CELL = 0xFF272B30;
-	public static final int BORDER_OCCUPIED = 0xFF3E454E;
-	public static final int BORDER_HOVER = 0xFF8C877B;
-	public static final int BORDER_TOOLTIP = 0xFF3E4249;
-	public static final int BORDER_POPUP = 0xFF42464D;
-	public static final int BORDER_BROKEN = 0xFFC93838;
-	public static final int ACCENT_SAND = 0xFFD4B46A;
-	public static final int HOVER_MENU_BG = 0xFFDCD6C8;
-	public static final int HOVER_MENU_TEXT = 0xFF111214;
-	public static final int DROP_VALID_FILL = 0x553B7A3B;
-	public static final int DROP_VALID_BORDER = 0xFF4CAF50;
-	public static final int DROP_INVALID_FILL = 0x558F2B2B;
-	public static final int DROP_INVALID_BORDER = 0xFFE53935;
+	private static final List<Item> ARMOR_1_TO_3 = new ArrayList<>();
+	private static final List<Item> ARMOR_2_TO_4 = new ArrayList<>();
+	private static final List<Item> ARMOR_4_TO_6 = new ArrayList<>();
+	private static final List<Item> HELMETS_1_TO_3 = new ArrayList<>();
+	private static final List<Item> HELMETS_2_TO_4 = new ArrayList<>();
+	private static final List<Item> HELMETS_4_TO_6 = new ArrayList<>();
+	private static final List<Item> COSMETIC_MASKS = new ArrayList<>();
+	private static final List<Item> TACTICAL_MASKS = new ArrayList<>();
+	private static final List<Item> REPAIR_KITS = new ArrayList<>();
+	private static final List<Item> ALL_RIGS = new ArrayList<>();
+	private static final List<Item> LIGHT_RIGS = new ArrayList<>();
+	private static final List<Item> LARGE_RIGS = new ArrayList<>();
+	private static final List<Item> ALL_BACKPACKS = new ArrayList<>();
+	private static final List<Item> LIGHT_BACKPACKS = new ArrayList<>();
+	private static final List<Item> MEDIUM_BACKPACKS = new ArrayList<>();
+	private static final List<Item> LARGE_BACKPACKS = new ArrayList<>();
+	private static final List<Item> ALL_MEDS = new ArrayList<>();
+	private static final List<Item> BASIC_MEDS = new ArrayList<>();
+	private static final List<Item> ONE_BY_ONE_MEDS = new ArrayList<>();
+	private static final List<Item> HIGH_TIER_MEDS = new ArrayList<>();
+	private static final List<Item> ALL_STIMS = new ArrayList<>();
+	private static final List<Item> TOP_STIMS = new ArrayList<>();
+	private static final List<Item> ONE_BY_ONE_STIMS = new ArrayList<>();
+	private static final List<Item> ALL_FOOD = new ArrayList<>();
+	private static final List<Item> SMALL_FOOD = new ArrayList<>();
+	private static final List<Item> ALL_GRENADES = new ArrayList<>();
+	private static final List<Item> ONE_BY_ONE_GRENADES = new ArrayList<>();
+	private static final List<Item> ALL_CASES = new ArrayList<>();
+	private static final List<Item> MED_CASES = new ArrayList<>();
+	private static final List<Item> SMALL_CASES = new ArrayList<>();
+	private static final List<Item> LARGE_CASES = new ArrayList<>();
+	private static final List<Item> MELEE_WEAPONS = new ArrayList<>();
+	private static final List<Item> HEADSETS = new ArrayList<>();
+	private static final List<Item> BARTER_COMPONENTS = new ArrayList<>();
+	private static final List<Item> VALUABLES = new ArrayList<>();
+	private static final List<Item> COMMON_VALUABLES = new ArrayList<>();
+	private static final List<Item> ARMOR_4_TO_5 = new ArrayList<>();
+	private static final List<Item> HELMETS_4_TO_5 = new ArrayList<>();
+	private static final List<Item> ARMOR_5_TO_6 = new ArrayList<>();
+	private static final List<Item> HELMETS_5_TO_6 = new ArrayList<>();
+	private static final List<Item> CLASS_6_PROTECTION = new ArrayList<>();
 
-	// Text & Typography
-	public static final int TEXT_PRIMARY = 0xFFE6E1D6;
-	public static final int TEXT_SECONDARY = 0xB8CFCAC0;
-	public static final int TEXT_MUTED = 0xFF848B94;
-	public static final float TEXT_SCALE_SMALL = 0.72f;
-	public static final float TEXT_SCALE_HEADER = 0.85f;
-
-	// Layout Proportions & Drag
-	public static final int TOP_BAR_H = 26;
-	public static final int QUICK_BAR_H = 30;
-	public static final int STATS_BAR_H = 18;
-	public static final int OUTER_PAD = 6;
-	public static final int COL_GAP = 6;
-	public static final double DRAG_THRESHOLD_PX = 4.0;
-
-	// Z Layers
-	public static final int Z_PLAYER = 0;
-	public static final int Z_SLOTS = 130;
-	public static final int Z_DRAG_HIGHLIGHT = 260;
-	public static final int Z_DRAG_GHOST = 320;
-	public static final int Z_MODAL = 420;
-	public static final int Z_POPUP = 500;
-
-	private TarkovUiTheme() {
+	private TarkovLootGenerator() {
 	}
 
-	public static void drawFlatText(DrawContext ctx, TextRenderer tr, String text, int x, int y, int color, float scale) {
-		ctx.getMatrices().push();
-		ctx.getMatrices().scale(scale, scale, 1.0f);
-		ctx.drawText(tr, text, Math.round(x / scale), Math.round(y / scale), color, false);
-		ctx.getMatrices().pop();
-	}
-
-	public static void drawCenteredFlatText(DrawContext ctx, TextRenderer tr, String text, int cx, int y, int color, float scale) {
-		int w = Math.round(tr.getWidth(text) * scale);
-		drawFlatText(ctx, tr, text, cx - w / 2, y, color, scale);
-	}
-
-	public static void drawRightAlignedFlatText(DrawContext ctx, TextRenderer tr, String text, int rightX, int y, int color, float scale) {
-		int w = Math.round(tr.getWidth(text) * scale);
-		drawFlatText(ctx, tr, text, rightX - w, y, color, scale);
-	}
-
-	public static void drawCellCornerBadge(
-		DrawContext ctx, TextRenderer tr, String text,
-		int cellX, int cellY, int cellW, int cellH, int color
-	) {
-		if (text == null || text.isEmpty()) {
+	private static synchronized void ensurePools() {
+		if (poolsInitialized) {
 			return;
 		}
-		int rawW = Math.max(1, tr.getWidth(text));
-		int maxW = Math.max(8, cellW - 4);
-		float scale = Math.min(0.62f, maxW / (float) rawW);
-		int drawnW = Math.round(rawW * scale);
-		int drawnH = Math.max(4, Math.round(7.0f * scale));
+		poolsInitialized = true;
 
-		int tx = cellX + cellW - 2 - drawnW;
-		int ty = cellY + cellH - 2 - drawnH;
+		List<Item> all = new ArrayList<>();
+		all.add(ModItems.SLING_BACKPACK);
+		all.add(ModItems.BERKUT_BACKPACK);
+		all.add(ModItems.TRIZIP_BACKPACK);
+		all.add(ModItems.SCAV_VEST);
+		all.add(ModItems.BANK_ROBBER_RIG);
+		all.add(ModItems.TRITON_RIG);
+		all.add(ModItems.SSH68_HELMET);
+		all.add(ModItems.RATNIK_6B47_HELMET);
+		all.add(ModItems.ALTYN_HELMET);
+		all.add(ModItems.BALACLAVA_MASK);
+		all.add(ModItems.DEATH_SHADOW_MASK);
+		all.add(ModItems.PACA_ARMOR);
+		all.add(ModItems.PRESS_ARMOR);
+		all.add(ModItems.ZABRALO_ARMOR);
+		all.add(ModItems.BANDAGE);
+		all.add(ModItems.CAT_TOURNIQUET);
+		all.add(ModItems.SPLINT);
+		all.add(ModItems.ALU_SPLINT);
+		all.add(ModItems.ANALGIN);
+		all.add(ModItems.AI2_MEDKIT);
+		all.add(ModItems.SALEWA_MEDKIT);
+		all.add(ModItems.CMS_KIT);
+		all.add(ModItems.SURV12_KIT);
+		all.addAll(TarkovItemCatalog.getArmorItems());
+		all.addAll(TarkovItemCatalog.getRigItems());
+		all.addAll(TarkovItemCatalog.getBackpackItems());
+		all.addAll(TarkovItemCatalog.getMedicalItems());
+		all.addAll(TarkovItemCatalog.getFoodItems());
+		all.addAll(TarkovItemCatalog.getTacticalItems());
 
-		ctx.getMatrices().push();
-		ctx.getMatrices().translate(0.0f, 0.0f, 165.0f);
-		ctx.fill(tx - 1, ty - 1, tx + drawnW + 1, ty + drawnH + 1, 0xA608090C);
-		ctx.getMatrices().translate(tx, ty, 1.0f);
-		ctx.getMatrices().scale(scale, scale, 1.0f);
-		ctx.drawText(tr, text, 0, 0, color, false);
-		ctx.getMatrices().pop();
-	}
+		for (Item item : all) {
+			ItemSize sz = ItemSizeRegistry.getSize(new ItemStack(item));
+			boolean is1x1 = sz.width() == 1 && sz.height() == 1;
 
-	public static String trimWithEllipsis(TextRenderer tr, String text, int maxPx, float scale) {
-		int maxRaw = Math.max(6, Math.round(maxPx / scale));
-		if (tr.getWidth(text) <= maxRaw) {
-			return text;
+			if (item instanceof TarkovArmorItem armor) {
+				int ac = armor.getArmorClass();
+				if (armor.getTargetSlot() == EquipmentSlotType.BODY_ARMOR) {
+					if (ac >= 1 && ac <= 3) ARMOR_1_TO_3.add(item);
+					if (ac >= 2 && ac <= 4) ARMOR_2_TO_4.add(item);
+					if (ac >= 4 && ac <= 6) ARMOR_4_TO_6.add(item);
+					if (ac >= 4 && ac <= 5) ARMOR_4_TO_5.add(item);
+					if (ac >= 5 && ac <= 6) ARMOR_5_TO_6.add(item);
+					if (ac == 6) CLASS_6_PROTECTION.add(item);
+				} else if (armor.getTargetSlot() == EquipmentSlotType.HELMET) {
+					if (ac >= 1 && ac <= 3) HELMETS_1_TO_3.add(item);
+					if (ac >= 2 && ac <= 4) HELMETS_2_TO_4.add(item);
+					if (ac >= 4 && ac <= 6) HELMETS_4_TO_6.add(item);
+					if (ac >= 4 && ac <= 5) HELMETS_4_TO_5.add(item);
+					if (ac >= 5 && ac <= 6) HELMETS_5_TO_6.add(item);
+					if (ac == 6) CLASS_6_PROTECTION.add(item);
+				} else if (armor.getTargetSlot() == EquipmentSlotType.FACE_MASK) {
+					if (ac <= 1) COSMETIC_MASKS.add(item);
+					if (ac >= 2 && ac <= 4) TACTICAL_MASKS.add(item);
+				}
+			} else if (item instanceof TarkovArmorRepairItem) {
+				REPAIR_KITS.add(item);
+			} else if (item instanceof TacticalRigItem rig) {
+				ALL_RIGS.add(item);
+				int cells = rig.getCompartmentLayouts().stream().mapToInt(s -> s.width() * s.height()).sum();
+				if (cells <= 20) LIGHT_RIGS.add(item);
+				if (cells >= 16) LARGE_RIGS.add(item);
+			} else if (item instanceof BackpackItem bp) {
+				ALL_BACKPACKS.add(item);
+				int cells = bp.getGridWidth() * bp.getGridHeight();
+				if (cells <= 20) LIGHT_BACKPACKS.add(item);
+				if (cells >= 12 && cells <= 30) MEDIUM_BACKPACKS.add(item);
+				if (cells >= 24) LARGE_BACKPACKS.add(item);
+			} else if (item instanceof TarkovMedicalItem med) {
+				ALL_MEDS.add(item);
+				if (is1x1) ONE_BY_ONE_MEDS.add(item);
+				switch (med.getMedicalType()) {
+					case BANDAGE, ARMY_BANDAGE, CAT_TOURNIQUET, ESMARCH, SPLINT, ANALGIN, AI2_MEDKIT, CAR_MEDKIT ->
+						BASIC_MEDS.add(item);
+					case CMS_KIT, SURV12_KIT, GRIZZLY, AFAK, IFAK, SALEWA_MEDKIT ->
+						HIGH_TIER_MEDS.add(item);
+					default -> {
+					}
+				}
+			} else if (item instanceof TarkovStimulatorItem stim) {
+				ALL_STIMS.add(item);
+				if (is1x1) ONE_BY_ONE_STIMS.add(item);
+				switch (stim.getPreset()) {
+					case PROPITAL, ETG_CHANGE, SJ6, MULE, OBDOLBOS_2, PNB, TRIMADOL, ZAGUSTIN, PERFOTORAN ->
+						TOP_STIMS.add(item);
+					default -> {
+					}
+				}
+			} else if (item instanceof TarkovFoodItem) {
+				ALL_FOOD.add(item);
+				if (is1x1) SMALL_FOOD.add(item);
+			} else if (item instanceof TarkovGrenadeItem) {
+				ALL_GRENADES.add(item);
+				if (is1x1) ONE_BY_ONE_GRENADES.add(item);
+			} else if (item instanceof TarkovCaseItem caze) {
+				ALL_CASES.add(item);
+				if (caze.isMedicalCase()) MED_CASES.add(item);
+				if (sz.width() * sz.height() <= 2) SMALL_CASES.add(item);
+				if (caze.getGridWidth() * caze.getGridHeight() >= 25) LARGE_CASES.add(item);
+			} else if (item instanceof TarkovMeleeItem) {
+				MELEE_WEAPONS.add(item);
+			} else if (item instanceof TarkovFunctionalItem functional) {
+				if (functional.isHeadset()) HEADSETS.add(item);
+				if ("barter".equals(functional.getCategory())) BARTER_COMPONENTS.add(item);
+				if (functional.isValuable()) {
+					VALUABLES.add(item);
+					if (functional.getBasePrice() <= 60_000) COMMON_VALUABLES.add(item);
+				}
+			}
 		}
-		int dotsW = tr.getWidth("...");
-		if (maxRaw <= dotsW) {
-			return tr.trimToWidth(text, maxRaw);
+	}
+
+	private record GunPreset(String gunId, String ammoId, int magSize, String fireMode) {
+	}
+
+	private static final Identifier TACZ_GUN_ITEM_ID = new Identifier("tacz", "modern_kinetic_gun");
+	private static final Identifier TACZ_ATTACHMENT_ITEM_ID = new Identifier("tacz", "attachment");
+
+	private static final List<GunPreset> CIVILIAN_POLICE_GUNS = List.of(
+		new GunPreset("tacz:glock_17", "tacz:9mm", 17, "SEMI"),
+		new GunPreset("tacz:cz75", "tacz:9mm", 16, "AUTO"),
+		new GunPreset("tacz:m1911", "tacz:45acp", 7, "SEMI"),
+		new GunPreset("tacz:hk_mk23", "tacz:45acp", 12, "SEMI"),
+		new GunPreset("tacz:m870", "tacz:12g", 5, "SEMI"),
+		new GunPreset("tacz:m1014", "tacz:12g", 6, "SEMI"),
+		new GunPreset("tacz:hk_mp5a5", "tacz:9mm", 30, "AUTO")
+	);
+
+	private static final List<GunPreset> MILITARY_GUNS = List.of(
+		new GunPreset("tacz:glock_17", "tacz:9mm", 17, "SEMI"),
+		new GunPreset("tacz:cz75", "tacz:9mm", 16, "AUTO"),
+		new GunPreset("tacz:m1911", "tacz:45acp", 7, "SEMI"),
+		new GunPreset("tacz:hk_mk23", "tacz:45acp", 12, "SEMI"),
+		new GunPreset("tacz:hk_mp5a5", "tacz:9mm", 30, "AUTO"),
+		new GunPreset("tacz:hk_mp7a1", "tacz:46x30", 20, "AUTO"),
+		new GunPreset("tacz:m870", "tacz:12g", 5, "SEMI"),
+		new GunPreset("tacz:m1014", "tacz:12g", 6, "SEMI"),
+		new GunPreset("tacz:ak74m", "tacz:545x39", 30, "AUTO"),
+		new GunPreset("tacz:ak47", "tacz:762x39", 30, "AUTO"),
+		new GunPreset("tacz:m16a4", "tacz:556x45", 30, "BURST"),
+		new GunPreset("tacz:g36k", "tacz:556x45", 30, "AUTO"),
+		new GunPreset("tacz:aug", "tacz:556x45", 30, "AUTO"),
+		new GunPreset("tacz:kar98", "tacz:792x57", 4, "SEMI")
+	);
+
+	private static final List<GunPreset> AIRDROP_GUNS = List.of(
+		new GunPreset("tacz:ak12", "tacz:545x39", 30, "AUTO"),
+		new GunPreset("tacz:m4a1", "tacz:556x45", 30, "AUTO"),
+		new GunPreset("tacz:hk416d", "tacz:556x45", 30, "AUTO"),
+		new GunPreset("tacz:fn_fal", "tacz:308", 20, "AUTO"),
+		new GunPreset("tacz:hk_g3", "tacz:308", 20, "AUTO"),
+		new GunPreset("tacz:aa12", "tacz:12g", 8, "AUTO"),
+		new GunPreset("tacz:deagle", "tacz:50ae", 7, "SEMI"),
+		new GunPreset("tacz:m700", "tacz:30_06", 5, "SEMI"),
+		new GunPreset("tacz:ai_awp", "tacz:338", 5, "SEMI"),
+		new GunPreset("tacz:m107", "tacz:50bmg", 10, "SEMI"),
+		new GunPreset("tacz:m249", "tacz:556x45", 75, "AUTO"),
+		new GunPreset("tacz:fn_evolys", "tacz:308", 75, "AUTO")
+	);
+
+	/**
+	 * Verified non-hidden TaCZ default gunpack attachments split into 3 progression tiers.
+	 */
+	public static final List<String> COMMON_ATTACHMENTS = List.of(
+		// Red dots & basic optics
+		"tacz:sight_coyote",
+		"tacz:sight_okp7",
+		"tacz:sight_pk06_pistol",
+		"tacz:sight_pk06_rifle",
+		"tacz:sight_rmr_dot",
+		"tacz:sight_sro_dot",
+		"tacz:sight_fastfire_pistol",
+		"tacz:sight_fastfire_rifle",
+		"tacz:sight_deltapoint_pistol",
+		"tacz:sight_deltapoint_rifle",
+		"tacz:sight_t1",
+		"tacz:sight_552",
+		"tacz:scope_retro_2x",
+		"tacz:scope_98k",
+		// Basic foregrips
+		"tacz:grip_magpul_afg",
+		"tacz:grip_magpul_afg_2",
+		"tacz:grip_rk0",
+		"tacz:grip_rk6",
+		"tacz:grip_td",
+		"tacz:grip_cobra",
+		// Basic muzzles & bayonets
+		"tacz:muzzle_brake_pioneer",
+		"tacz:muzzle_brake_cthulhu",
+		"tacz:muzzle_compensator_trident",
+		"tacz:muzzle_choke_sg",
+		"tacz:muzzle_duckbill_sg",
+		"tacz:bayonet_6h3",
+		"tacz:bayonet_m9",
+		// Basic stocks
+		"tacz:stock_moe",
+		"tacz:stock_m4ss",
+		"tacz:stock_sba3",
+		"tacz:stock_hk_slim_line",
+		"tacz:stock_ak12",
+		// Tier 1 extended mags
+		"tacz:light_extended_mag_1",
+		"tacz:extended_mag_1",
+		"tacz:shotgun_extended_mag_1",
+		"tacz:sniper_extended_mag_1",
+		// Compact lasers
+		"tacz:laser_compact",
+		"tacz:laser_nightstick"
+	);
+
+	public static final List<String> TACTICAL_ATTACHMENTS = List.of(
+		// Holographic & mid-range tactical optics
+		"tacz:sight_exp3",
+		"tacz:sight_uh1",
+		"tacz:sight_1p87",
+		"tacz:sight_t2",
+		"tacz:sight_acro_pistol",
+		"tacz:sight_acro_rifle",
+		"tacz:sight_srs_02",
+		"tacz:sight_apm4s",
+		"tacz:scope_acog_ta31",
+		"tacz:scope_elcan_4x",
+		"tacz:scope_c79",
+		"tacz:scope_hamr",
+		"tacz:scope_lpvo_1_6",
+		"tacz:scope_qmk152",
+		// Suppressors & heavy brakes
+		"tacz:muzzle_brake_cyclone_d2",
+		"tacz:muzzle_brake_trex",
+		"tacz:muzzle_brake_mastiff_sg",
+		"tacz:muzzle_silencer_mirage",
+		"tacz:muzzle_silencer_phantom_s1",
+		"tacz:muzzle_silencer_ptilopsis",
+		"tacz:muzzle_silencer_sg",
+		"tacz:muzzle_silencer_ursus",
+		// Tactical foregrips
+		"tacz:grip_osovets_black",
+		"tacz:grip_rk1_b25u",
+		"tacz:grip_se_5",
+		"tacz:grip_troy",
+		"tacz:grip_vertical_military",
+		"tacz:grip_vertical_ranger",
+		"tacz:grip_vertical_talon",
+		// Tactical stocks
+		"tacz:stock_tactical_ar",
+		"tacz:stock_militech_b5",
+		"tacz:stock_heavy_ctr",
+		"tacz:stock_ripstock",
+		"tacz:stock_carbon_bone_c5",
+		// Tier 2 extended mags
+		"tacz:light_extended_mag_2",
+		"tacz:extended_mag_2",
+		"tacz:shotgun_extended_mag_2",
+		"tacz:sniper_extended_mag_2",
+		// Military lasers
+		"tacz:laser_lopro",
+		"tacz:laser_peq6"
+	);
+
+	public static final List<String> ELITE_ATTACHMENTS = List.of(
+		// High-end LPVO, sniper & thermal optics
+		"tacz:scope_vudu",
+		"tacz:scope_mk4ert",
+		"tacz:scope_mk5hd",
+		"tacz:scope_standard_8x",
+		"tacz:scope_amg_10",
+		"tacz:scope_xl50",
+		"tacz:scope_xm157",
+		"tacz:scope_reap_ir",
+		"tacz:sight_infitac_fmp13",
+		// Top-tier suppressors & .50 brake
+		"tacz:muzzle_silencer_knight_qd",
+		"tacz:muzzle_silencer_socom_rc1",
+		"tacz:muzzle_silencer_vulture",
+		"tacz:muzzle_silencer_wraith",
+		"tacz:muzzle_brake_timeless50",
+		// Tier 3 drum / high-cap mags
+		"tacz:light_extended_mag_3",
+		"tacz:extended_mag_3",
+		"tacz:shotgun_extended_mag_3",
+		"tacz:sniper_extended_mag_3",
+		// Top lasers & sniper stock
+		"tacz:laser_ngal",
+		"tacz:stock_psg"
+	);
+
+	public static ItemStack createTaczGunStack(GunPreset preset, AmmoTier loadedTier, Random random) {
+		if (preset == null || !Registries.ITEM.containsId(TACZ_GUN_ITEM_ID)) {
+			return ItemStack.EMPTY;
 		}
-		return tr.trimToWidth(text, maxRaw - dotsW) + "...";
+		Item gunItem = Registries.ITEM.get(TACZ_GUN_ITEM_ID);
+		ItemStack stack = new ItemStack(gunItem, 1);
+		NbtCompound nbt = stack.getOrCreateNbt();
+		nbt.putString("GunId", preset.gunId());
+		nbt.putString("GunFireMode", preset.fireMode());
+		int minAmmo = Math.max(1, preset.magSize() / 2);
+		int loadedCount = minAmmo + random.nextInt(Math.max(1, preset.magSize() - minAmmo + 1));
+		nbt.putInt("GunCurrentAmmoCount", loadedCount);
+		nbt.putBoolean("HasBulletInBarrel", true);
+		AmmoTier.stampLoadedTierOnGun(stack, loadedTier != null ? loadedTier : AmmoTier.FMJ);
+		return stack;
 	}
 
-	public static void drawScaledItem(DrawContext ctx, ItemStack stack, int x, int y, int w, int h) {
-		drawScaledItem(ctx, stack, x, y, w, h, false);
+	public static ItemStack createTaczAttachmentStack(String attachmentId) {
+		if (attachmentId == null || attachmentId.isBlank() || !Registries.ITEM.containsId(TACZ_ATTACHMENT_ITEM_ID)) {
+			return ItemStack.EMPTY;
+		}
+		Item attItem = Registries.ITEM.get(TACZ_ATTACHMENT_ITEM_ID);
+		ItemStack stack = new ItemStack(attItem, 1);
+		stack.getOrCreateNbt().putString("AttachmentId", attachmentId);
+		return stack;
 	}
 
-	public static void drawScaledItem(DrawContext ctx, ItemStack stack, int x, int y, int w, int h, boolean rotated) {
-		if (stack == null || stack.isEmpty() || w <= 0 || h <= 0) {
+	public static ItemStack rollAttachment(Random random, int wCommon, int wTactical, int wElite) {
+		int total = Math.max(1, wCommon + wTactical + wElite);
+		int r = random.nextInt(total);
+		List<String> list;
+		if (r < wCommon) {
+			list = COMMON_ATTACHMENTS;
+		} else if (r < wCommon + wTactical) {
+			list = TACTICAL_ATTACHMENTS;
+		} else {
+			list = ELITE_ATTACHMENTS;
+		}
+		if (list.isEmpty()) {
+			return ItemStack.EMPTY;
+		}
+		return createTaczAttachmentStack(list.get(random.nextInt(list.size())));
+	}
+
+	public static void populateLootGrid(GridContainer grid, TarkovLootPool pool, Random random) {
+		if (grid == null || pool == null || random == null) {
 			return;
 		}
-		Identifier id = Registries.ITEM.getId(stack.getItem());
-		int minDim = Math.min(w, h);
-		int maxDim = Math.max(w, h);
-		float targetPx;
-		if ("tarkovcraft".equals(id.getNamespace())) {
-			ItemSize itemSize = ItemSizeRegistry.getSize(stack);
-			boolean rectangularItem = itemSize.width() != itemSize.height();
-			if (rectangularItem && maxDim > minDim * 1.25f) {
-				targetPx = Math.min(maxDim * 0.86f, minDim * 2.0f);
-			} else {
-				targetPx = Math.min(38.0f, minDim * 0.80f);
+		ensurePools();
+
+		if (pool == TarkovLootPool.AIRDROP) {
+			tryPlaceNonEmpty(grid, pickStack(VALUABLES, random, 1));
+			tryPlaceNonEmpty(grid, random.nextBoolean()
+				? pickStack(ARMOR_5_TO_6, random, 1) : pickStack(HELMETS_5_TO_6, random, 1));
+			int gunCount = random.nextBoolean() ? 2 : 1;
+			for (int gun = 0; gun < gunCount; gun++) {
+				tryPlaceGunWithAmmo(grid, AIRDROP_GUNS, random.nextFloat() < 0.45f ? AmmoTier.IGN : AmmoTier.AP, random);
+			}
+			int attachmentCount = 1 + random.nextInt(2);
+			for (int attachment = 0; attachment < attachmentCount; attachment++) {
+				tryPlaceNonEmpty(grid, rollAttachment(random, 10, 45, 45));
 			}
 		} else {
-			targetPx = Math.min(38.0f, minDim * 0.82f);
+			populateZoneWeapons(grid, pool, false, random);
 		}
-		float scale = targetPx / 16.0f;
-		ctx.enableScissor(x, y, x + w, y + h);
-		try {
-			ctx.getMatrices().push();
-			ctx.getMatrices().translate(x + w * 0.5f, y + h * 0.5f, 0.0f);
-			if (rotated) {
-				ctx.getMatrices().multiply(RotationAxis.POSITIVE_Z.rotationDegrees(90.0f));
+
+		int baseRolls = switch (pool) {
+			case MILITARY, MEDICAL, BATTLEFIELD, PORT -> 4 + random.nextInt(4);
+			case CIVILIAN, CAFE, SCHOOL, RESIDENTIAL, OFFICE -> 3 + random.nextInt(4);
+			case FACTORY, SUPERMARKET, PHARMACY, POLICE, GARAGE -> 4 + random.nextInt(3);
+			case AIRDROP -> 8 + random.nextInt(5);
+			case SCAV_POCKET -> 1 + random.nextInt(3);
+		};
+		float mult = TarkovConfig.get().lootDensityMultiplier;
+		int rolls = Math.max(1, Math.round(baseRolls * mult));
+
+		for (int i = 0; i < rolls; i++) {
+			ItemStack candidate = rollItem(pool, random);
+			if (!candidate.isEmpty()) {
+				grid.tryAutoPlace(candidate);
 			}
-			ctx.getMatrices().scale(scale, scale, 1.0f);
-			ctx.drawItem(stack, -8, -8);
-			ctx.getMatrices().pop();
-		} finally {
-			ctx.disableScissor();
 		}
 	}
 
-	public static int itemCategoryTint(ItemStack stack) {
-		if (stack == null || stack.isEmpty()) {
-			return BG_CELL_OCCUPIED_DEFAULT;
-		}
-		Item item = stack.getItem();
-		if (item instanceof TarkovArmorItem) {
-			return 0xCC18242C;
-		}
-		if (item instanceof TarkovMedicalItem || item instanceof TarkovStimulatorItem) {
-			return 0xCC182824;
-		}
-		if (item instanceof BackpackItem || item instanceof TacticalRigItem || item instanceof TarkovCaseItem) {
-			return 0xCC1E241C;
-		}
-		Identifier id = Registries.ITEM.getId(item);
-		boolean isWeapon = ("tacz".equals(id.getNamespace()) && id.getPath().contains("gun"))
-			|| item instanceof SwordItem
-			|| item instanceof AxeItem
-			|| item instanceof TarkovGrenadeItem;
-		if (isWeapon || AmmoTier.isTaczAmmoStack(stack)) {
-			return 0xCC26221A;
-		}
-		if (TarkovScreenHandler.isConsumableItem(stack)) {
-			return 0xCC182620;
-		}
-		return BG_CELL_OCCUPIED_DEFAULT;
-	}
-
-	public static void drawFlatTooltip(
-		DrawContext ctx,
-		TextRenderer tr,
-		List<Text> lines,
-		int mouseX,
-		int mouseY,
-		int screenW,
-		int screenH
+	/**
+	 * Balanced loot population for vanilla city containers (barrels, chests, shulker boxes)
+	 * so dense city interiors (10k+ containers) feel authentic like EFT rather than oversaturated.
+	 */
+	public static void populateVanillaContainerGrid(
+		GridContainer grid,
+		TarkovLootPool pool,
+		boolean isShulker,
+		boolean isDouble,
+		Random random
 	) {
-		if (lines == null || lines.isEmpty()) {
+		if (grid == null || pool == null || random == null) {
 			return;
 		}
-		int pad = 5;
-		int lineH = 10;
-		int maxW = 0;
-		for (Text line : lines) {
-			maxW = Math.max(maxW, tr.getWidth(line));
+		if (isShulker || isDouble || pool == TarkovLootPool.AIRDROP) {
+			populateLootGrid(grid, pool, random);
+			return;
 		}
-		int boxW = maxW + pad * 2;
-		int boxH = lines.size() * lineH + pad * 2 - 2;
+		ensurePools();
 
-		int bx = mouseX + 10;
-		int by = mouseY - 6;
-		if (bx + boxW > screenW - 4) {
-			bx = Math.max(4, mouseX - boxW - 8);
+		populateZoneWeapons(grid, pool, true, random);
+
+		int baseRolls = 2 + random.nextInt(3); // 2..4 items per barrel/single chest
+		float mult = TarkovConfig.get().lootDensityMultiplier;
+		int rolls = Math.max(1, Math.round(baseRolls * mult));
+		for (int i = 0; i < rolls; i++) {
+			ItemStack candidate = rollItem(pool, random);
+			if (!candidate.isEmpty()) {
+				grid.tryAutoPlace(candidate);
+			}
 		}
-		if (by + boxH > screenH - 4) {
-			by = Math.max(4, screenH - boxH - 4);
-		}
-		if (by < 4) {
-			by = 4;
+	}
+
+	private static void populateZoneWeapons(GridContainer grid, TarkovLootPool pool, boolean small, Random random) {
+		float gunChance = switch (pool) {
+			case MILITARY, BATTLEFIELD -> 0.65f;
+			case PORT, POLICE -> 0.55f;
+			case FACTORY, GARAGE -> 0.34f;
+			case OFFICE, CIVILIAN -> 0.24f;
+			case RESIDENTIAL, SCHOOL -> 0.18f;
+			case CAFE, SUPERMARKET -> 0.12f;
+			default -> 0.0f;
+		};
+		boolean military = isMilitaryZone(pool);
+		if (gunChance > 0 && random.nextFloat() < gunChance * (small ? 0.65f : 1.0f)) {
+			List<GunPreset> guns = military || pool == TarkovLootPool.FACTORY ? MILITARY_GUNS : CIVILIAN_POLICE_GUNS;
+			tryPlaceGunWithAmmo(grid, guns, random.nextBoolean() ? AmmoTier.HP : AmmoTier.FMJ, random);
 		}
 
-		ctx.getMatrices().push();
-		ctx.getMatrices().translate(0.0f, 0.0f, Z_POPUP);
-		ctx.fill(bx, by, bx + boxW, by + boxH, BG_TOOLTIP);
-		ctx.drawBorder(bx, by, boxW, boxH, BORDER_TOOLTIP);
-
-		int ty = by + pad;
-		for (int i = 0; i < lines.size(); i++) {
-			Text line = lines.get(i);
-			int col = i == 0 ? TEXT_PRIMARY : TEXT_SECONDARY;
-			ctx.drawText(tr, line, bx + pad, ty, col, false);
-			ty += lineH;
+		float attachmentChance = switch (pool) {
+			case MILITARY, BATTLEFIELD -> 0.55f;
+			case PORT -> 0.50f;
+			case POLICE -> 0.45f;
+			case FACTORY, GARAGE -> 0.30f;
+			case OFFICE -> 0.25f;
+			case RESIDENTIAL, SCHOOL -> 0.15f;
+			default -> 0.0f;
+		};
+		if (attachmentChance > 0 && random.nextFloat() < attachmentChance * (small ? 0.65f : 1.0f)) {
+			tryPlaceNonEmpty(grid, military ? rollAttachment(random, 40, 48, 12) : rollAttachment(random, 70, 28, 2));
 		}
-		ctx.getMatrices().pop();
+	}
+
+	private static boolean isMilitaryZone(TarkovLootPool pool) {
+		return pool == TarkovLootPool.MILITARY || pool == TarkovLootPool.BATTLEFIELD || pool == TarkovLootPool.PORT;
+	}
+
+	private static void tryPlaceGunWithAmmo(GridContainer grid, List<GunPreset> pool, AmmoTier requestedTier, Random random) {
+		GunPreset gun = pool.get(random.nextInt(pool.size()));
+		var caliber = TaCZCaliberCatalog.getSpecOrDynamic(gun.ammoId());
+		ItemStack gunStack = createTaczGunStack(gun, caliber.clampTier(requestedTier), random);
+		if (grid.tryPlaceInFreeCell(gunStack) == null) {
+			return;
+		}
+		int stacks = 2 + random.nextInt(2);
+		for (int i = 0; i < stacks; i++) {
+			AmmoTier spareTier = requestedTier == AmmoTier.AP || requestedTier == AmmoTier.IGN
+				? requestedTier : random.nextBoolean() ? AmmoTier.HP : AmmoTier.FMJ;
+			ItemStack ammo = AmmoTier.createTaczAmmoStack(gun.ammoId(), caliber.clampTier(spareTier), gun.magSize());
+			ammo.setCount(Math.min(ammo.getCount(), ammo.getMaxCount()));
+			grid.tryPlaceInFreeCell(ammo);
+		}
+	}
+
+	private static void tryPlaceNonEmpty(GridContainer grid, ItemStack stack) {
+		if (!stack.isEmpty()) {
+			grid.tryAutoPlace(stack);
+		}
+	}
+
+	public static ItemStack rollItem(TarkovLootPool pool, Random random) {
+		ensurePools();
+		ItemStack stack = switch (pool) {
+			case MILITARY -> rollMilitary(random);
+			case MEDICAL -> rollMedical(random);
+			case CIVILIAN -> rollCivilian(random);
+			case AIRDROP -> rollAirdrop(random);
+			case SCAV_POCKET -> rollScavPocket(random);
+			case CAFE -> rollCafe(random);
+			case SCHOOL -> rollSchool(random);
+			case FACTORY -> rollFactory(random);
+			case PORT -> rollPort(random);
+			case RESIDENTIAL -> rollResidential(random);
+			case SUPERMARKET -> rollSupermarket(random);
+			case PHARMACY -> rollPharmacy(random);
+			case POLICE -> rollPolice(random);
+			case OFFICE -> rollOffice(random);
+			case GARAGE -> rollGarage(random);
+			case BATTLEFIELD -> rollBattlefield(random);
+		};
+		return stack.getItem() instanceof TarkovFoodItem && random.nextInt(8) >= 3
+			? pickStack(BARTER_COMPONENTS, random, 1 + random.nextInt(2)) : stack;
+	}
+
+	private static ItemStack rollMilitary(Random random) {
+		int p = random.nextInt(100);
+		if (p < 25) {
+			return rollAmmo(random, 58, 21, 18, 3, 12, 30);
+		}
+		if (p < 43) {
+			return rollAttachmentOrFallback(random, 40, 48, 12, REPAIR_KITS);
+		}
+		if (p < 60) {
+			return rollMilitaryArmor(p - 43, random);
+		}
+		if (p < 70) {
+			return pickStack(REPAIR_KITS, random, 1);
+		}
+		if (p < 82) {
+			return random.nextBoolean() ? pickStack(ALL_RIGS, random, 1) : pickStack(MEDIUM_BACKPACKS, random, 1);
+		}
+		if (p < 92) {
+			return pickStack(ALL_GRENADES, random, 1 + random.nextInt(2));
+		}
+		int sub = random.nextInt(3);
+		if (sub == 0) return pickStack(HEADSETS, random, 1);
+		if (sub == 1) return pickStack(TACTICAL_MASKS, random, 1);
+		return pickStack(MELEE_WEAPONS, random, 1);
+	}
+
+	private static ItemStack rollMilitaryArmor(int roll, Random random) {
+		if (roll < 2) {
+			return pickStack(CLASS_6_PROTECTION, random, 1);
+		}
+		boolean helmet = random.nextBoolean();
+		if (roll < 7) {
+			return pickStack(helmet ? HELMETS_4_TO_5 : ARMOR_4_TO_5, random, 1);
+		}
+		return pickStack(helmet ? HELMETS_1_TO_3 : ARMOR_1_TO_3, random, 1);
+	}
+
+	public record BossLoot(ItemStack bodyArmor, ItemStack helmet, ItemStack weapon, List<ItemStack> trophies) {
+	}
+
+	public static BossLoot createBossLoot(Random random) {
+		ensurePools();
+		GunPreset gun = AIRDROP_GUNS.get(random.nextInt(AIRDROP_GUNS.size()));
+		AmmoTier tier = TaCZCaliberCatalog.getSpecOrDynamic(gun.ammoId()).clampTier(AmmoTier.IGN);
+		ItemStack weapon = createTaczGunStack(gun, tier, random);
+		if (weapon.isEmpty()) {
+			weapon = new ItemStack(Items.CROSSBOW);
+			weapon.addEnchantment(Enchantments.QUICK_CHARGE, 2);
+			weapon.addEnchantment(Enchantments.PIERCING, 2);
+		}
+		return new BossLoot(pickStack(ARMOR_5_TO_6, random, 1), pickStack(HELMETS_5_TO_6, random, 1),
+			weapon, List.of(pickStack(VALUABLES, random, 1), pickStack(VALUABLES, random, 1)));
+	}
+
+	private static ItemStack rollMedical(Random random) {
+		int p = random.nextInt(100);
+		if (p < 48) {
+			return pickStack(ALL_MEDS, random, 1);
+		}
+		if (p < 82) {
+			return pickStack(ALL_STIMS, random, 1);
+		}
+		if (p < 96) {
+			return pickStack(ALL_FOOD, random, 1 + random.nextInt(2));
+		}
+		return pickStack(MED_CASES.isEmpty() ? ALL_CASES : MED_CASES, random, 1);
+	}
+
+	private static ItemStack rollCivilian(Random random) {
+		int p = random.nextInt(100);
+		if (p < 35) {
+			return pickStack(ALL_FOOD, random, 1 + random.nextInt(3));
+		}
+		if (p < 55) {
+			return pickStack(COSMETIC_MASKS, random, 1);
+		}
+		if (p < 67) {
+			return random.nextBoolean() ? pickStack(LIGHT_RIGS, random, 1) : pickStack(LIGHT_BACKPACKS, random, 1);
+		}
+		if (p < 81) {
+			return pickStack(BASIC_MEDS, random, 1);
+		}
+		if (p < 91) {
+			return pickStack(BARTER_COMPONENTS, random, 2 + random.nextInt(5));
+		}
+		if (p < 96) {
+			return rollAttachmentOrFallback(random, 85, 15, 0, BASIC_MEDS);
+		}
+		return pickStack(SMALL_CASES.isEmpty() ? ALL_CASES : SMALL_CASES, random, 1);
+	}
+
+	private static ItemStack rollAirdrop(Random random) {
+		int p = random.nextInt(100);
+		if (p < 22) {
+			return random.nextBoolean() ? pickStack(ARMOR_4_TO_6, random, 1) : pickStack(HELMETS_4_TO_6, random, 1);
+		}
+		if (p < 40) {
+			return rollAmmo(random, 0, 0, 55, 45, 20, 40);
+		}
+		if (p < 56) {
+			return rollAttachmentOrFallback(random, 10, 45, 45, REPAIR_KITS);
+		}
+		if (p < 68) {
+			return pickStack(TOP_STIMS.isEmpty() ? ALL_STIMS : TOP_STIMS, random, 1);
+		}
+		if (p < 80) {
+			return random.nextBoolean() ? pickStack(LARGE_BACKPACKS, random, 1) : pickStack(LARGE_RIGS, random, 1);
+		}
+		if (p < 89) {
+			return pickStack(LARGE_CASES.isEmpty() ? ALL_CASES : LARGE_CASES, random, 1);
+		}
+		int sub = random.nextInt(3);
+		if (sub == 0) return pickStack(ALL_GRENADES, random, 1 + random.nextInt(3));
+		if (sub == 1) return pickStack(HIGH_TIER_MEDS.isEmpty() ? ALL_MEDS : HIGH_TIER_MEDS, random, 1);
+		return pickStack(REPAIR_KITS, random, 1);
+	}
+
+	private static ItemStack rollScavPocket(Random random) {
+		int p = random.nextInt(100);
+		if (p < 32) {
+			return pickStack(SMALL_FOOD.isEmpty() ? ALL_FOOD : SMALL_FOOD, random, 1 + random.nextInt(2));
+		}
+		if (p < 54) {
+			return pickStack(ONE_BY_ONE_MEDS.isEmpty() ? BASIC_MEDS : ONE_BY_ONE_MEDS, random, 1);
+		}
+		if (p < 74) {
+			return rollAmmo(random, 70, 30, 0, 0, 8, 16);
+		}
+		if (p < 82) {
+			return pickStack(ONE_BY_ONE_STIMS.isEmpty() ? ALL_STIMS : ONE_BY_ONE_STIMS, random, 1);
+		}
+		if (p < 89) {
+			return pickStack(ONE_BY_ONE_GRENADES.isEmpty() ? ALL_GRENADES : ONE_BY_ONE_GRENADES, random, 1);
+		}
+		if (p < 95) {
+			return rollAttachmentOrFallback(random, 85, 15, 0, ONE_BY_ONE_MEDS);
+		}
+		return pickStack(BARTER_COMPONENTS, random, 1 + random.nextInt(3));
+	}
+
+	// ==================== Abandoned War-Torn City Zones ====================
+
+	/** Abandoned cafe / diner: food, drinks, light bags, occasional scav leftovers. */
+	private static ItemStack rollCafe(Random random) {
+		int p = random.nextInt(100);
+		if (p < 56) {
+			return pickStack(ALL_FOOD, random, 1 + random.nextInt(3));
+		}
+		if (p < 70) {
+			return pickStack(BASIC_MEDS, random, 1);
+		}
+		if (p < 80) {
+			return pickStack(LIGHT_BACKPACKS.isEmpty() ? ALL_BACKPACKS : LIGHT_BACKPACKS, random, 1);
+		}
+		if (p < 88) {
+			return pickStack(COSMETIC_MASKS, random, 1);
+		}
+		if (p < 94) {
+			return rollAmmo(random, 60, 40, 0, 0, 6, 14);
+		}
+		if (p < 98) {
+			return pickStack(SMALL_CASES.isEmpty() ? ALL_CASES : SMALL_CASES, random, 1);
+		}
+		return pickStack(MELEE_WEAPONS, random, 1);
+	}
+
+	/** Abandoned school (former evacuation shelter): backpacks, first aid, rations, stray militia gear. */
+	private static ItemStack rollSchool(Random random) {
+		int p = random.nextInt(100);
+		if (p < 28) {
+			return pickStack(ALL_FOOD, random, 1 + random.nextInt(2));
+		}
+		if (p < 48) {
+			return random.nextBoolean()
+				? pickStack(LIGHT_BACKPACKS.isEmpty() ? ALL_BACKPACKS : LIGHT_BACKPACKS, random, 1)
+				: pickStack(MEDIUM_BACKPACKS.isEmpty() ? ALL_BACKPACKS : MEDIUM_BACKPACKS, random, 1);
+		}
+		if (p < 66) {
+			return pickStack(BASIC_MEDS, random, 1);
+		}
+		if (p < 76) {
+			return random.nextBoolean() ? pickStack(ARMOR_1_TO_3, random, 1) : pickStack(HELMETS_1_TO_3, random, 1);
+		}
+		if (p < 85) {
+			return rollAmmo(random, 60, 35, 5, 0, 8, 18);
+		}
+		if (p < 92) {
+			return rollAttachmentOrFallback(random, 80, 20, 0, BASIC_MEDS);
+		}
+		if (p < 96) {
+			return pickStack(ALL_GRENADES, random, 1);
+		}
+		return pickStack(BARTER_COMPONENTS, random, 2 + random.nextInt(4));
+	}
+
+	/** Industrial factory: crafting metals, armor repair kits, rigs, melee tools, attachments & ammo. */
+	private static ItemStack rollFactory(Random random) {
+		int p = random.nextInt(100);
+		if (p < 26) {
+			return pickStack(BARTER_COMPONENTS, random, 3 + random.nextInt(6));
+		}
+		if (p < 42) {
+			return pickStack(REPAIR_KITS, random, 1);
+		}
+		if (p < 56) {
+			return rollAttachmentOrFallback(random, 60, 35, 5, REPAIR_KITS);
+		}
+		if (p < 68) {
+			return rollAmmo(random, 50, 25, 25, 0, 10, 24);
+		}
+		if (p < 78) {
+			return random.nextBoolean() ? pickStack(ALL_RIGS, random, 1) : pickStack(MEDIUM_BACKPACKS, random, 1);
+		}
+		if (p < 86) {
+			return pickStack(MELEE_WEAPONS, random, 1);
+		}
+		if (p < 93) {
+			return random.nextBoolean() ? pickStack(HEADSETS, random, 1) : pickStack(TACTICAL_MASKS, random, 1);
+		}
+		return pickStack(ALL_CASES, random, 1);
+	}
+
+	/** Harbor / shipping port: smuggling & military cargo crates, attachments, cases, large bags, AP ammo. */
+	private static ItemStack rollPort(Random random) {
+		int p = random.nextInt(100);
+		if (p < 22) {
+			return rollAttachmentOrFallback(random, 30, 50, 20, REPAIR_KITS);
+		}
+		if (p < 40) {
+			return rollAmmo(random, 58, 21, 18, 3, 14, 30);
+		}
+		if (p < 54) {
+			return random.nextBoolean() ? pickStack(LARGE_BACKPACKS, random, 1) : pickStack(LARGE_RIGS, random, 1);
+		}
+		if (p < 68) {
+			return rollMilitaryArmor(p - 54, random);
+		}
+		if (p < 78) {
+			return pickStack(ALL_CASES, random, 1);
+		}
+		if (p < 88) {
+			return pickStack(ALL_GRENADES, random, 1 + random.nextInt(2));
+		}
+		if (p < 94) {
+			return pickStack(ALL_FOOD, random, 1 + random.nextInt(2));
+		}
+		return pickStack(BARTER_COMPONENTS, random, 2 + random.nextInt(5));
+	}
+
+	/** Residential apartments: food, basic meds, clothes/masks, light bags, occasional civilian defense gear. */
+	private static ItemStack rollResidential(Random random) {
+		int p = random.nextInt(100);
+		if (p < 34) {
+			return pickStack(ALL_FOOD, random, 1 + random.nextInt(2));
+		}
+		if (p < 52) {
+			return pickStack(BASIC_MEDS, random, 1);
+		}
+		if (p < 66) {
+			return pickStack(COSMETIC_MASKS, random, 1);
+		}
+		if (p < 78) {
+			return random.nextBoolean() ? pickStack(LIGHT_BACKPACKS, random, 1) : pickStack(LIGHT_RIGS, random, 1);
+		}
+		if (p < 86) {
+			return rollAmmo(random, 55, 45, 0, 0, 6, 15);
+		}
+		if (p < 92) {
+			return rollAttachmentOrFallback(random, 85, 15, 0, BASIC_MEDS);
+		}
+		if (p < 97) {
+			return pickStack(BARTER_COMPONENTS, random, 1 + random.nextInt(4));
+		}
+		return pickStack(SMALL_CASES.isEmpty() ? ALL_CASES : SMALL_CASES, random, 1);
+	}
+
+	/** Looted supermarket / grocery store: heavy food & drink supply, small bags, basic meds. */
+	private static ItemStack rollSupermarket(Random random) {
+		int p = random.nextInt(100);
+		if (p < 64) {
+			return pickStack(ALL_FOOD, random, 1 + random.nextInt(3));
+		}
+		if (p < 76) {
+			return pickStack(LIGHT_BACKPACKS.isEmpty() ? ALL_BACKPACKS : LIGHT_BACKPACKS, random, 1);
+		}
+		if (p < 86) {
+			return pickStack(BASIC_MEDS, random, 1);
+		}
+		if (p < 94) {
+			return pickStack(BARTER_COMPONENTS, random, 2 + random.nextInt(4));
+		}
+		return random.nextBoolean() ? pickStack(COSMETIC_MASKS, random, 1) : pickStack(MELEE_WEAPONS, random, 1);
+	}
+
+	/** Abandoned pharmacy / clinic: abundant meds, stimulators, med cases. */
+	private static ItemStack rollPharmacy(Random random) {
+		int p = random.nextInt(100);
+		if (p < 54) {
+			return random.nextFloat() < 0.72f ? pickStack(BASIC_MEDS, random, 1) : pickStack(HIGH_TIER_MEDS, random, 1);
+		}
+		if (p < 84) {
+			return pickStack(ALL_STIMS, random, 1);
+		}
+		if (p < 94) {
+			return pickStack(SMALL_FOOD.isEmpty() ? ALL_FOOD : SMALL_FOOD, random, 1 + random.nextInt(2));
+		}
+		return pickStack(MED_CASES.isEmpty() ? ALL_CASES : MED_CASES, random, 1);
+	}
+
+	/** Police station / checkpoint: tactical armor 2-4, rigs, attachments, ammo, grenades, first aid. */
+	private static ItemStack rollPolice(Random random) {
+		int p = random.nextInt(100);
+		if (p < 24) {
+			return rollAmmo(random, 55, 20, 25, 0, 12, 26);
+		}
+		if (p < 44) {
+			return rollAttachmentOrFallback(random, 55, 40, 5, REPAIR_KITS);
+		}
+		if (p < 62) {
+			return random.nextBoolean() ? pickStack(ARMOR_2_TO_4, random, 1) : pickStack(HELMETS_2_TO_4, random, 1);
+		}
+		if (p < 74) {
+			return random.nextBoolean() ? pickStack(ALL_RIGS, random, 1) : pickStack(TACTICAL_MASKS, random, 1);
+		}
+		if (p < 85) {
+			return pickStack(ALL_GRENADES, random, 1 + random.nextInt(2));
+		}
+		if (p < 94) {
+			return pickStack(BASIC_MEDS, random, 1);
+		}
+		return pickStack(HEADSETS, random, 1);
+	}
+
+	/** Offices / administration / HQ: valuables, cases, headsets, stims, tactical attachments. */
+	private static ItemStack rollOffice(Random random) {
+		int p = random.nextInt(100);
+		if (p < 7) {
+			return pickStack(COMMON_VALUABLES, random, 1);
+		}
+		if (p < 26) {
+			return pickStack(BARTER_COMPONENTS, random, 1 + random.nextInt(4));
+		}
+		if (p < 42) {
+			return pickStack(ALL_FOOD, random, 1 + random.nextInt(2));
+		}
+		if (p < 56) {
+			return pickStack(SMALL_CASES.isEmpty() ? ALL_CASES : SMALL_CASES, random, 1);
+		}
+		if (p < 70) {
+			return rollAttachmentOrFallback(random, 55, 40, 5, HEADSETS);
+		}
+		if (p < 82) {
+			return pickStack(ALL_STIMS, random, 1);
+		}
+		if (p < 92) {
+			return random.nextBoolean() ? pickStack(HEADSETS, random, 1) : pickStack(LIGHT_BACKPACKS, random, 1);
+		}
+		return rollAmmo(random, 60, 20, 20, 0, 8, 18);
+	}
+
+	/** Garages / auto-repair / storage lockups: armor repair kits, scrap metals, melee tools, attachments, ammo. */
+	private static ItemStack rollGarage(Random random) {
+		int p = random.nextInt(100);
+		if (p < 28) {
+			return pickStack(BARTER_COMPONENTS, random, 2 + random.nextInt(6));
+		}
+		if (p < 46) {
+			return pickStack(REPAIR_KITS, random, 1);
+		}
+		if (p < 62) {
+			return rollAttachmentOrFallback(random, 70, 28, 2, REPAIR_KITS);
+		}
+		if (p < 74) {
+			return pickStack(MELEE_WEAPONS, random, 1);
+		}
+		if (p < 85) {
+			return rollAmmo(random, 60, 30, 10, 0, 8, 20);
+		}
+		if (p < 93) {
+			return random.nextBoolean() ? pickStack(LIGHT_RIGS, random, 1) : pickStack(MEDIUM_BACKPACKS, random, 1);
+		}
+		return pickStack(ALL_FOOD, random, 1 + random.nextInt(2));
+	}
+
+	/** Urban frontline / trenches / barricades: combat ammo, tactical attachments, grenades, field meds, military armor. */
+	private static ItemStack rollBattlefield(Random random) {
+		int p = random.nextInt(100);
+		if (p < 24) {
+			return rollAmmo(random, 58, 21, 18, 3, 14, 30);
+		}
+		if (p < 44) {
+			return rollAttachmentOrFallback(random, 30, 52, 18, REPAIR_KITS);
+		}
+		if (p < 60) {
+			return rollMilitaryArmor(p - 44, random);
+		}
+		if (p < 74) {
+			return pickStack(ALL_GRENADES, random, 1 + random.nextInt(2));
+		}
+		if (p < 86) {
+			return random.nextBoolean() ? pickStack(HIGH_TIER_MEDS, random, 1) : pickStack(ALL_STIMS, random, 1);
+		}
+		if (p < 94) {
+			return random.nextBoolean() ? pickStack(ALL_RIGS, random, 1) : pickStack(REPAIR_KITS, random, 1);
+		}
+		return random.nextBoolean() ? pickStack(HEADSETS, random, 1) : pickStack(TACTICAL_MASKS, random, 1);
+	}
+
+	private static ItemStack rollAttachmentOrFallback(
+		Random random,
+		int wCommon,
+		int wTactical,
+		int wElite,
+		List<Item> fallbackPool
+	) {
+		ItemStack att = rollAttachment(random, wCommon, wTactical, wElite);
+		if (!att.isEmpty()) {
+			return att;
+		}
+		return pickStack(fallbackPool, random, 1);
+	}
+
+	private static ItemStack rollAmmo(
+		Random random,
+		int wFmj,
+		int wHp,
+		int wAp,
+		int wIgn,
+		int minCount,
+		int maxCount
+	) {
+		List<TaCZCaliberCatalog.CaliberSpec> calibers = TaCZCaliberCatalog.getDefaultCalibers();
+		TaCZCaliberCatalog.CaliberSpec spec = calibers.get(random.nextInt(calibers.size()));
+		int total = Math.max(1, wFmj + wHp + wAp + wIgn);
+		int roll = random.nextInt(total);
+		AmmoTier tier;
+		if (roll < wFmj) {
+			tier = AmmoTier.FMJ;
+		} else if (roll < wFmj + wHp) {
+			tier = AmmoTier.HP;
+		} else if (roll < wFmj + wHp + wAp) {
+			tier = AmmoTier.AP;
+		} else {
+			tier = AmmoTier.IGN;
+		}
+		tier = spec.clampTier(tier);
+		int count = minCount + random.nextInt(Math.max(1, maxCount - minCount + 1));
+		return AmmoTier.createTaczAmmoStack(spec.ammoId(), tier, count);
+	}
+
+	private static ItemStack pickStack(List<Item> pool, Random random, int count) {
+		if (pool.isEmpty()) {
+			return ItemStack.EMPTY;
+		}
+		Item item = pool.get(random.nextInt(pool.size()));
+		int clampedCount = Math.min(count, item.getMaxCount());
+		return new ItemStack(item, Math.max(1, clampedCount));
+	}
+
+	public static ItemStack pickRandomLightHelmet(Random random) {
+		ensurePools();
+		return pickStack(HELMETS_1_TO_3, random, 1);
+	}
+
+	public static ItemStack pickRandomLightArmor(Random random) {
+		ensurePools();
+		return pickStack(ARMOR_1_TO_3, random, 1);
+	}
+
+	public static ItemStack pickRandomScavRig(Random random) {
+		ensurePools();
+		return pickStack(LIGHT_RIGS.isEmpty() ? ALL_RIGS : LIGHT_RIGS, random, 1);
+	}
+
+	public static ItemStack pickRandomScavBackpack(Random random) {
+		ensurePools();
+		return pickStack(LIGHT_BACKPACKS.isEmpty() ? ALL_BACKPACKS : LIGHT_BACKPACKS, random, 1);
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\loot\TarkovLootPool.java ==========
+package com.tarkovcraft.loot;
+
+import org.jetbrains.annotations.Nullable;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * Loot table categories for TarkovCraft crates, structures, airdrops, scav pockets,
+ * and abandoned war-torn city locations.
+ */
+public enum TarkovLootPool {
+	MILITARY("military", "weapon_crate", 6, 4),
+	MEDICAL("medical", "medbag", 3, 3),
+	CIVILIAN("civilian", "technical_crate", 4, 4),
+	AIRDROP("airdrop", "airdrop_crate", 6, 6),
+	SCAV_POCKET("scav_pocket", "technical_crate", 3, 3),
+
+	// Abandoned war-torn city zones
+	CAFE("cafe", "technical_crate", 4, 4),
+	SCHOOL("school", "technical_crate", 4, 4),
+	FACTORY("factory", "technical_crate", 5, 4),
+	PORT("port", "weapon_crate", 6, 4),
+	RESIDENTIAL("residential", "technical_crate", 4, 4),
+	SUPERMARKET("supermarket", "technical_crate", 5, 4),
+	PHARMACY("pharmacy", "medbag", 4, 3),
+	POLICE("police", "weapon_crate", 5, 4),
+	OFFICE("office", "technical_crate", 4, 4),
+	GARAGE("garage", "technical_crate", 5, 4),
+	BATTLEFIELD("battlefield", "weapon_crate", 6, 4);
+
+	private final String id;
+	private final String defaultBlockKey;
+	private final int defaultGridWidth;
+	private final int defaultGridHeight;
+
+	TarkovLootPool(String id, String defaultBlockKey, int defaultGridWidth, int defaultGridHeight) {
+		this.id = id;
+		this.defaultBlockKey = defaultBlockKey;
+		this.defaultGridWidth = defaultGridWidth;
+		this.defaultGridHeight = defaultGridHeight;
+	}
+
+	public String getId() {
+		return id;
+	}
+
+	public String getDefaultBlockKey() {
+		return defaultBlockKey;
+	}
+
+	public int getDefaultGridWidth() {
+		return defaultGridWidth;
+	}
+
+	public int getDefaultGridHeight() {
+		return defaultGridHeight;
+	}
+
+	public String getTranslationKey() {
+		return "lootpool.tarkovcraft." + id;
+	}
+
+	public boolean isCityZone() {
+		return switch (this) {
+			case CAFE, SCHOOL, FACTORY, PORT, RESIDENTIAL, SUPERMARKET, PHARMACY, POLICE, OFFICE, GARAGE, BATTLEFIELD -> true;
+			default -> false;
+		};
+	}
+
+	@Nullable
+	public static TarkovLootPool byId(@Nullable String raw) {
+		if (raw == null || raw.isBlank()) {
+			return null;
+		}
+		String norm = raw.trim().toLowerCase(Locale.ROOT);
+		for (TarkovLootPool pool : values()) {
+			if (pool.id.equals(norm) || pool.name().equalsIgnoreCase(norm)) {
+				return pool;
+			}
+		}
+		return null;
+	}
+
+	public static List<String> allIds() {
+		return Arrays.stream(values()).map(TarkovLootPool::getId).toList();
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\mixin\ArmorItemMixin.java ==========
+package com.tarkovcraft.mixin;
+
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.ArmorItem;
+import net.minecraft.item.ItemStack;
+import net.minecraft.text.Text;
+import net.minecraft.util.Hand;
+import net.minecraft.util.TypedActionResult;
+import net.minecraft.world.World;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+/**
+ * Prevents vanilla ArmorItem right-click equipAndSwap in Survival/Adventure mode
+ * so players do not lose items into hidden vanilla armor slots.
+ */
+@Mixin(ArmorItem.class)
+public abstract class ArmorItemMixin {
+	@Inject(
+		method = "use(Lnet/minecraft/world/World;Lnet/minecraft/entity/player/PlayerEntity;Lnet/minecraft/util/Hand;)Lnet/minecraft/util/TypedActionResult;",
+		at = @At("HEAD"),
+		cancellable = true
+	)
+	private void tarkovcraft$disableVanillaArmorUse(World world, PlayerEntity user, Hand hand, CallbackInfoReturnable<TypedActionResult<ItemStack>> cir) {
+		if (user != null && !user.isCreative() && !user.isSpectator()) {
+			if (!world.isClient) {
+				user.sendMessage(Text.translatable("message.tarkovcraft.vanilla_armor_disabled"), true);
+			}
+			cir.setReturnValue(TypedActionResult.fail(user.getStackInHand(hand)));
+		}
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\mixin\BlockStateMixin.java ==========
+package com.tarkovcraft.mixin;
+
+import com.tarkovcraft.container.VanillaContainerBridge;
+import com.tarkovcraft.item.HeldItemInteraction;
+import net.minecraft.block.AbstractBlock;
+import net.minecraft.block.Block;
+import net.minecraft.block.DoorBlock;
+import net.minecraft.block.FenceGateBlock;
+import net.minecraft.block.TrapdoorBlock;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.util.ActionResult;
+import net.minecraft.util.Hand;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.world.World;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+@Mixin(AbstractBlock.AbstractBlockState.class)
+public abstract class BlockStateMixin {
+	@Shadow
+	public abstract Block getBlock();
+
+	@Inject(method = "onUse", at = @At("HEAD"), cancellable = true)
+	private void tarkovcraft$passToHeldItem(World world, PlayerEntity player, Hand hand, BlockHitResult hit,
+			CallbackInfoReturnable<ActionResult> result) {
+		Block block = getBlock();
+		if ((block instanceof DoorBlock || block instanceof TrapdoorBlock || block instanceof FenceGateBlock
+				|| VanillaContainerBridge.isSupportedBlock(block)) && HeldItemInteraction.takesPriority(player, hand)) {
+			result.setReturnValue(ActionResult.PASS);
+		}
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\mixin\InGameHudMixin.java ==========
+package com.tarkovcraft.mixin;
+
+import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.block.SearchableLootBlock;
+import com.tarkovcraft.block.TarkovWorkbenchBlock;
+import com.tarkovcraft.client.ClientLoadoutCache;
+import com.tarkovcraft.client.TaCZGunInfoHelper;
+import com.tarkovcraft.client.TarkovCraftClient;
+import com.tarkovcraft.client.WorldInteractState;
+import com.tarkovcraft.client.hud.BodyHealthHudHelper;
+import com.tarkovcraft.client.screen.TarkovUiTheme;
+import com.tarkovcraft.entity.CorpseEntity;
+import com.tarkovcraft.health.BodyPartHealth;
+import com.tarkovcraft.item.BackpackItem;
+import com.tarkovcraft.item.TacticalRigItem;
+import com.tarkovcraft.item.TarkovArmorItem;
+import com.tarkovcraft.loadout.EquipmentSlotType;
+import com.tarkovcraft.loadout.PlayerLoadout;
+import com.tarkovcraft.network.TarkovNetworking;
+import net.minecraft.block.BlockState;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.hud.InGameHud;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.ItemEntity;
+import net.minecraft.entity.projectile.ProjectileUtil;
+import net.minecraft.item.ItemStack;
+import net.minecraft.text.Text;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.EntityHitResult;
+import net.minecraft.util.hit.HitResult;
+import net.minecraft.util.math.Box;
+import net.minecraft.util.math.Vec3d;
+import org.jetbrains.annotations.Nullable;
+import org.spongepowered.asm.mixin.Final;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+import com.tarkovcraft.client.screen.TarkovDeathScreen;
+import com.tarkovcraft.client.screen.TarkovInventoryScreen;
+
+/**
+ * Replaces vanilla Survival HUD:
+ * - Hides vanilla hearts, hunger, armor, and XP bar.
+ * - Draws Tarkov-style quick-use hotbar with dynamic keybind badges.
+ * - Draws compact top-right Body-Part Health Silhouette HUD.
+ * - Draws EFT-style crosshair [F] interaction prompt — including a scrollable 2-option
+ *   menu (Search / Equip) when looking at a Backpack or Tactical Rig lying on the ground!
+ */
+@Mixin(InGameHud.class)
+public abstract class InGameHudMixin {
+	@Shadow
+	@Final
+	private MinecraftClient client;
+
+	@Inject(method = "renderStatusBars", at = @At("HEAD"), cancellable = true)
+	private void tarkovcraft$hideVanillaStatusBars(DrawContext context, CallbackInfo ci) {
+		if (client.player != null && !client.player.isCreative() && !client.player.isSpectator()) {
+			ci.cancel();
+		}
+	}
+
+	@Inject(method = "renderExperienceBar", at = @At("HEAD"), cancellable = true)
+	private void tarkovcraft$hideVanillaXpBar(DrawContext context, int x, CallbackInfo ci) {
+		if (client.player != null && !client.player.isCreative() && !client.player.isSpectator()) {
+			ci.cancel();
+		}
+	}
+
+	@Inject(method = "renderHotbar", at = @At("HEAD"), cancellable = true)
+	private void tarkovcraft$renderTarkovHud(float tickDelta, DrawContext context, CallbackInfo ci) {
+		if (client.player == null) {
+			WorldInteractState.updateTarget(null);
+			return;
+		}
+		int screenW = client.getWindow().getScaledWidth();
+		int screenH = client.getWindow().getScaledHeight();
+		if (client.currentScreen == null && !client.player.isSpectator()) {
+			renderLoadedAmmoHud(context, screenW, screenH);
+		}
+		if (client.player.isCreative() || client.player.isSpectator()) {
+			WorldInteractState.updateTarget(null);
+			return;
+		}
+		ci.cancel();
+
+		if (client.currentScreen instanceof TarkovInventoryScreen || client.currentScreen instanceof TarkovDeathScreen) {
+			WorldInteractState.updateTarget(null);
+			return;
+		}
+
+		PlayerLoadout loadout = ClientLoadoutCache.getLoadout();
+
+		// 1. Top-right Tarkov Body-Part Silhouette HUD
+		BodyHealthHudHelper.drawCompactTopRight(context, client.textRenderer, client.player, screenW);
+
+		// 2. Center crosshair [F] prompt / scrollable action menu
+		if (client.currentScreen == null) {
+			renderWorldInteractPrompt(context, loadout, screenW, screenH);
+		} else {
+			WorldInteractState.updateTarget(null);
+		}
+
+		// 2b. Active medical application progress bar centered above hotbar
+		renderMedUseProgressBar(context, screenW, screenH);
+
+		// 3. Tarkov Quick-Use Hotbar (dynamic keybind labels)
+		int slotSize = 24;
+		int gap = 2;
+		int groupGap = 8;
+		int totalW = slotSize + groupGap + (3 * slotSize + 2 * gap) + groupGap + (6 * slotSize + 5 * gap);
+		int startX = (screenW - totalW) / 2;
+		int y = screenH - slotSize - 6;
+
+		int selected = client.player.getInventory().selectedSlot;
+		boolean meleeActive = loadout.isMeleeSelected();
+
+		int x = startX;
+		String meleeKey = TarkovCraftClient.getShortKeyLabel(TarkovCraftClient.toggleMeleeKey);
+		int mBg = meleeActive ? 0xDD3D3628 : 0xBB14171B;
+		int mBorder = meleeActive ? 0xFFD4B46A : 0xFF424A52;
+		drawHotbarBox(context, x, y, slotSize, mBg, mBorder, meleeKey, loadout.getEquipment(EquipmentSlotType.MELEE));
+		x += slotSize + groupGap;
+
+		for (int i = 0; i < 3; i++) {
+			boolean isSel = !meleeActive && selected == i;
+			int bg = isSel ? 0xDD2E3A2B : 0xBB14171B;
+			int border = isSel ? 0xFFD4B46A : 0xFF424A52;
+			String keyLabel = TarkovCraftClient.getShortKeyLabel(client.options.hotbarKeys[i]);
+			drawHotbarBox(context, x, y, slotSize, bg, border, keyLabel, loadout.getHotbarDisplayStack(i));
+			x += slotSize + gap;
+		}
+		x += groupGap - gap;
+
+		for (int i = 3; i < 9; i++) {
+			boolean isSel = !meleeActive && selected == i;
+			int bg = isSel ? 0xDD2E3A2B : 0xBB181C20;
+			int border = isSel ? 0xFFD4B46A : 0xFF3A4148;
+			String keyLabel = TarkovCraftClient.getShortKeyLabel(client.options.hotbarKeys[i]);
+			drawHotbarBox(context, x, y, slotSize, bg, border, keyLabel, loadout.getHotbarDisplayStack(i));
+			x += slotSize + gap;
+		}
+	}
+
+	@Unique
+	private void renderWorldInteractPrompt(DrawContext context, PlayerLoadout loadout, int screenW, int screenH) {
+		if (client.player == null || client.world == null) return;
+		String key = TarkovCraftClient.getShortKeyLabel(TarkovCraftClient.interactKey);
+
+		double reach = 4.2;
+		Vec3d eye = client.player.getCameraPosVec(1.0f);
+		Vec3d look = client.player.getRotationVec(1.0f);
+		Vec3d end = eye.add(look.multiply(reach));
+
+		double maxDist = reach;
+		if (client.crosshairTarget != null && client.crosshairTarget.getType() == HitResult.Type.BLOCK) {
+			maxDist = Math.min(reach, eye.distanceTo(client.crosshairTarget.getPos()));
+		}
+
+		Box searchBox = client.player.getBoundingBox().stretch(look.multiply(reach)).expand(1.2);
+		EntityHitResult eHit = ProjectileUtil.raycast(
+			client.player, eye, end, searchBox,
+			e -> (e instanceof CorpseEntity || e instanceof ItemEntity) && !e.isRemoved(),
+			maxDist * maxDist
+		);
+		Entity target = eHit != null ? eHit.getEntity() : TarkovNetworking.findClosestLookedItem(client.player, eye, look, maxDist);
+
+		WorldInteractState.updateTarget(target);
+
+		// EFT Scrollable 2-Action Menu for Backpacks & Rigs on the ground!
+		if (WorldInteractState.hasMultiActionMenu() && target instanceof ItemEntity itemEntity) {
+			ItemStack st = itemEntity.getStack();
+			boolean slotEmpty = (st.getItem() instanceof BackpackItem && loadout.getEquipment(EquipmentSlotType.BACKPACK).isEmpty())
+				|| (st.getItem() instanceof TacticalRigItem && loadout.getEquipment(EquipmentSlotType.RIG).isEmpty());
+
+			String itemTitle = st.getName().getString();
+			String opt0 = Text.translatable("action.tarkovcraft.search").getString();
+			String opt1 = Text.translatable(slotEmpty ? "action.tarkovcraft.equip" : "action.tarkovcraft.take").getString();
+			int sel = WorldInteractState.getSelectedAction();
+
+			int boxW = Math.max(120, Math.max(client.textRenderer.getWidth(itemTitle) + 18, 132));
+			int bx = screenW / 2 + 12;
+			int by = screenH / 2 - 14;
+
+			// Header with item name
+			context.fill(bx, by, bx + boxW, by + 13, 0xDD0C0F12);
+			context.drawBorder(bx, by, boxW, 43, 0xFF3A424A);
+			context.drawTextWithShadow(client.textRenderer, itemTitle, bx + 4, by + 3, 0xFFB8C0C8);
+
+			// Option 0: Search (top, default)
+			drawWorldMenuRow(context, bx + 1, by + 13, boxW - 2, 14, key, opt0, sel == WorldInteractState.ACTION_SEARCH, "↑↓");
+			// Option 1: Equip / Take (bottom, scroll down)
+			drawWorldMenuRow(context, bx + 1, by + 27, boxW - 2, 15, key, opt1, sel == WorldInteractState.ACTION_EQUIP_OR_TAKE, "");
+			return;
+		}
+
+		// Standard single-line prompt
+		Text prompt = null;
+		if (target instanceof CorpseEntity corpse) {
+			prompt = Text.translatable("prompt.tarkovcraft.search", key, corpse.getOwnerName());
+		} else if (target instanceof ItemEntity itemEntity && !itemEntity.getStack().isEmpty()) {
+			ItemStack st = itemEntity.getStack();
+			boolean willEquip = st.getItem() instanceof TarkovArmorItem a && loadout.getEquipment(a.getTargetSlot()).isEmpty();
+			prompt = Text.translatable(willEquip ? "prompt.tarkovcraft.equip" : "prompt.tarkovcraft.take", key, st.getName().getString());
+		} else if (client.crosshairTarget instanceof BlockHitResult bhr && bhr.getType() == HitResult.Type.BLOCK) {
+			BlockState state = client.world.getBlockState(bhr.getBlockPos());
+			if (state.getBlock() instanceof SearchableLootBlock lootBlock) {
+				prompt = Text.translatable("prompt.tarkovcraft.search", key, Text.translatable(lootBlock.getContainerTitleKey()).getString());
+			} else if (state.getBlock() instanceof TarkovWorkbenchBlock wb) {
+				prompt = Text.translatable("prompt.tarkovcraft.workbench", key, wb.getName().getString());
+			} else if (com.tarkovcraft.container.VanillaContainerBridge.isSupportedBlock(state.getBlock())) {
+				prompt = Text.translatable("prompt.tarkovcraft.search", key, state.getBlock().getName().getString());
+			}
+		}
+
+		if (prompt != null) {
+			int pw = client.textRenderer.getWidth(prompt) + 14;
+			int px = (screenW - pw) / 2;
+			int py = screenH / 2 + 18;
+			context.fill(px, py, px + pw, py + 16, 0xCC121619);
+			context.drawBorder(px, py, pw, 16, 0xFFD4B46A);
+			context.drawCenteredTextWithShadow(client.textRenderer, prompt, screenW / 2, py + 4, 0xFFF2F2F2);
+		}
+	}
+
+	@Unique
+	private void drawWorldMenuRow(DrawContext context, int x, int y, int w, int h, String key, String label, boolean selected, String hint) {
+		int bg = selected ? 0xE6343D30 : 0xCC15191D;
+		int textCol = selected ? 0xFFF4F4F4 : 0xFF8C96A0;
+		context.fill(x, y, x + w, y + h, bg);
+		if (selected) {
+			context.fill(x, y, x + 2, y + h, 0xFFD4B46A);
+			context.drawTextWithShadow(client.textRenderer, "[" + key + "] " + label, x + 5, y + 3, 0xFFD4B46A);
+		} else {
+			context.drawTextWithShadow(client.textRenderer, "    " + label, x + 5, y + 3, textCol);
+		}
+		if (!hint.isEmpty()) {
+			int hw = client.textRenderer.getWidth(hint);
+			context.drawTextWithShadow(client.textRenderer, hint, x + w - hw - 4, y + 3, 0xFF7D8791);
+		}
+	}
+
+	@Unique
+	private void renderLoadedAmmoHud(DrawContext context, int screenW, int screenH) {
+		if (client.player == null) return;
+		ItemStack held = client.player.getMainHandStack();
+		if (!AmmoTier.isTaczGunStack(held)) {
+			return;
+		}
+		TaCZGunInfoHelper.GunSummary info = TaCZGunInfoHelper.inspectGun(held);
+		String badge = "[" + info.loadedTier().getBadge() + "] ";
+		String fullText = badge + info.caliberName();
+		float scale = 0.78f;
+		int maxTextW = 132;
+		int badgeW = Math.round(client.textRenderer.getWidth(badge) * scale);
+		String caliberTrim = TarkovUiTheme.trimWithEllipsis(client.textRenderer, info.caliberName(),
+			Math.max(24, maxTextW - badgeW), scale);
+		int totalW = badgeW + Math.round(client.textRenderer.getWidth(caliberTrim) * scale);
+		int boxW = Math.min(144, totalW + 12);
+		int boxH = 14;
+		int bx = screenW - boxW - 8;
+		int by = screenH - 64;
+
+		context.fill(bx, by, bx + boxW, by + boxH, 0xCC0D0E10);
+		context.fill(bx, by, bx + 2, by + boxH, info.loadedTier().getArgbColor());
+		context.drawBorder(bx, by, boxW, boxH, 0xFF2D3035);
+		TarkovUiTheme.drawFlatText(context, client.textRenderer, badge, bx + 6, by + 4,
+			info.loadedTier().getArgbColor(), scale);
+		TarkovUiTheme.drawFlatText(context, client.textRenderer, caliberTrim, bx + 6 + badgeW, by + 4,
+			TarkovUiTheme.TEXT_PRIMARY, scale);
+	}
+
+	@Unique
+	private void renderMedUseProgressBar(DrawContext context, int screenW, int screenH) {
+		BodyPartHealth health = ClientLoadoutCache.getBodyHealth();
+		if (!health.isMedUseActive()) {
+			return;
+		}
+		net.minecraft.util.Identifier id = net.minecraft.util.Identifier.tryParse(health.getActiveMedItemId());
+		ItemStack icon = (id != null && net.minecraft.registry.Registries.ITEM.containsId(id))
+			? new ItemStack(net.minecraft.registry.Registries.ITEM.get(id))
+			: ItemStack.EMPTY;
+		String itemName = icon.isEmpty() ? "Med" : icon.getName().getString();
+		String secStr = String.format(java.util.Locale.ROOT, "%.1f", health.getActiveMedRemainingSeconds());
+		String label = Text.translatable("ui.tarkovcraft.med_using", itemName, secStr).getString();
+
+		int boxW = 156;
+		int boxH = 18;
+		int bx = (screenW - boxW) / 2;
+		int by = screenH - 52;
+
+		context.fill(bx, by, bx + boxW, by + boxH, 0xDD0D0E10);
+		context.drawBorder(bx, by, boxW, boxH, 0xFF3A424A);
+		if (!icon.isEmpty()) {
+			TarkovUiTheme.drawScaledItem(context, icon, bx + 2, by + 1, 14, 14);
+		}
+		int barX = bx + 18;
+		int barW = boxW - 22;
+		int barY = by + 12;
+		context.fill(barX, barY, barX + barW, barY + 3, 0xFF1E2228);
+		context.fill(barX, barY, barX + Math.round(barW * health.getActiveMedProgress()), barY + 3, 0xFF4CAF50);
+		String trimmed = TarkovUiTheme.trimWithEllipsis(client.textRenderer, label, barW, 0.68f);
+		TarkovUiTheme.drawFlatText(context, client.textRenderer, trimmed, barX, by + 3, 0xFFE6E1D6, 0.68f);
+	}
+
+	@Unique
+	private void drawHotbarBox(DrawContext context, int x, int y, int size, int bg, int border, String label, ItemStack stack) {
+		context.fill(x, y, x + size, y + size, bg);
+		context.drawBorder(x, y, size, size, border);
+		if (!stack.isEmpty()) {
+			context.drawItem(stack, x + 4, y + 4);
+			context.drawItemInSlot(client.textRenderer, stack, x + 4, y + 4);
+		}
+		context.getMatrices().push();
+		context.getMatrices().scale(0.65f, 0.65f, 1.0f);
+		int bx = (int) ((x + 2) / 0.65f);
+		int by = (int) ((y + 2) / 0.65f);
+		context.drawTextWithShadow(client.textRenderer, label, bx, by, 0xFFD8DEE4);
+		context.getMatrices().pop();
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\mixin\ItemEntityPickupMixin.java ==========
+package com.tarkovcraft.mixin;
+
+import net.minecraft.entity.ItemEntity;
+import net.minecraft.entity.player.PlayerEntity;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+/**
+ * Disables automatic vacuum pickup in Survival/Adventure mode so dropped backpacks,
+ * rigs, weapons, and loot remain lying on the ground until picked up / equipped with [F].
+ */
+@Mixin(ItemEntity.class)
+public abstract class ItemEntityPickupMixin {
+	@Inject(method = "onPlayerCollision", at = @At("HEAD"), cancellable = true)
+	private void tarkovcraft$disableAutoVacuumInSurvival(PlayerEntity player, CallbackInfo ci) {
+		if (!player.isCreative() && !player.isSpectator()) {
+			ci.cancel();
+		}
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\mixin\ItemEntityRendererMixin.java ==========
+package com.tarkovcraft.mixin;
+
+import com.tarkovcraft.client.model.GearModel;
+import com.tarkovcraft.client.renderer.GearAppearance;
+import net.minecraft.client.render.VertexConsumerProvider;
+import net.minecraft.client.render.entity.ItemEntityRenderer;
+import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.entity.ItemEntity;
+import net.minecraft.item.ItemStack;
+import net.minecraft.util.math.RotationAxis;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+@Mixin(ItemEntityRenderer.class)
+public abstract class ItemEntityRendererMixin {
+	@Inject(method = "render(Lnet/minecraft/entity/ItemEntity;FFLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V",
+		at = @At("HEAD"), cancellable = true)
+	private void tarkovcraft$renderGroundedGear(
+		ItemEntity entity, float yaw, float tickDelta,
+		MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light,
+		CallbackInfo ci
+	) {
+		ItemStack stack = entity.getStack();
+		GearModel model = GearAppearance.ground(stack);
+		if (model == null) {
+			return;
+		}
+
+		ci.cancel();
+		matrices.push();
+		// Stable orientation while the entity is resting or moving.
+		float groundYaw = (entity.getUuid().hashCode() & 0xFF) * (360.0f / 256.0f);
+		matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(groundYaw));
+		model.renderOnGround(matrices, vertexConsumers, light, stack.getItem());
+		matrices.pop();
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\mixin\KeyBindingMixin.java ==========
+package com.tarkovcraft.mixin;
+
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.util.InputUtil;
+import org.spongepowered.asm.mixin.Final;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Allows multiple KeyBindings on the same physical key (e.g. F for TarkovCraft interact + vanilla swapOffhand,
+ * or TaCZ shoot/aim alongside vanilla attack/use) without overwriting each other in KEY_TO_BINDINGS.
+ */
+@Environment(EnvType.CLIENT)
+@Mixin(KeyBinding.class)
+public abstract class KeyBindingMixin {
+	@Shadow
+	@Final
+	private static Map<String, KeyBinding> KEYS_BY_ID;
+
+	@Shadow
+	@Final
+	private static Map<InputUtil.Key, KeyBinding> KEY_TO_BINDINGS;
+
+	@Shadow
+	private InputUtil.Key boundKey;
+
+	@Shadow
+	private int timesPressed;
+
+	@Unique
+	private static final Map<InputUtil.Key, List<KeyBinding>> TARKOV_KEY_TO_BINDINGS = new HashMap<>();
+
+	@Unique
+	private static void tarkovcraft$registerKey(KeyBinding kb) {
+		InputUtil.Key k = ((KeyBindingMixin) (Object) kb).boundKey;
+		if (k == null || k.equals(InputUtil.UNKNOWN_KEY)) {
+			return;
+		}
+		List<KeyBinding> list = TARKOV_KEY_TO_BINDINGS.computeIfAbsent(k, ignored -> new ArrayList<>(2));
+		if (!list.contains(kb)) {
+			list.add(kb);
+		}
+	}
+
+	@Inject(method = "<init>(Ljava/lang/String;Lnet/minecraft/client/util/InputUtil$Type;ILjava/lang/String;)V", at = @At("TAIL"))
+	private void tarkovcraft$onConstruct(String translationKey, InputUtil.Type type, int code, String category, CallbackInfo ci) {
+		tarkovcraft$registerKey((KeyBinding) (Object) this);
+	}
+
+	@Inject(method = "updateKeysByCode", at = @At("TAIL"))
+	private static void tarkovcraft$onUpdateKeysByCode(CallbackInfo ci) {
+		TARKOV_KEY_TO_BINDINGS.clear();
+		for (KeyBinding kb : KEYS_BY_ID.values()) {
+			tarkovcraft$registerKey(kb);
+		}
+	}
+
+	@Inject(method = "onKeyPressed", at = @At("TAIL"))
+	private static void tarkovcraft$onKeyPressed(InputUtil.Key key, CallbackInfo ci) {
+		if (key == null || key.equals(InputUtil.UNKNOWN_KEY)) {
+			return;
+		}
+		List<KeyBinding> list = TARKOV_KEY_TO_BINDINGS.get(key);
+		if (list == null || list.size() <= 1) {
+			return;
+		}
+		KeyBinding vanillaHandled = KEY_TO_BINDINGS.get(key);
+		for (KeyBinding kb : list) {
+			if (kb != vanillaHandled) {
+				((KeyBindingMixin) (Object) kb).timesPressed++;
+			}
+		}
+	}
+
+	@Inject(method = "setKeyPressed", at = @At("TAIL"))
+	private static void tarkovcraft$onSetKeyPressed(InputUtil.Key key, boolean pressed, CallbackInfo ci) {
+		if (key == null || key.equals(InputUtil.UNKNOWN_KEY)) {
+			return;
+		}
+		List<KeyBinding> list = TARKOV_KEY_TO_BINDINGS.get(key);
+		if (list == null || list.size() <= 1) {
+			return;
+		}
+		KeyBinding vanillaHandled = KEY_TO_BINDINGS.get(key);
+		for (KeyBinding kb : list) {
+			if (kb != vanillaHandled) {
+				kb.setPressed(pressed);
+			}
+		}
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\mixin\LivingEntityDeathMixin.java ==========
+package com.tarkovcraft.mixin;
+
+import com.tarkovcraft.config.TarkovConfig;
+import com.tarkovcraft.entity.CorpseEntity;
+import com.tarkovcraft.entity.MobGearSpawner;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.damage.DamageSource;
+import net.minecraft.entity.mob.HostileEntity;
+import net.minecraft.entity.mob.IllagerEntity;
+import net.minecraft.entity.mob.PiglinEntity;
+import net.minecraft.entity.mob.SkeletonEntity;
+import net.minecraft.entity.mob.ZombieEntity;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+/**
+ * Spawns a lootable CorpseEntity when humanoid hostile mobs die so players
+ * can loot them and strip their unsearched backpacks whole.
+ */
+@Mixin(LivingEntity.class)
+public abstract class LivingEntityDeathMixin {
+	@Inject(method = "onDeath", at = @At("TAIL"))
+	private void tarkovcraft$spawnMobCorpse(DamageSource damageSource, CallbackInfo ci) {
+		LivingEntity self = (LivingEntity) (Object) this;
+		if (self.getWorld().isClient) {
+			return;
+		}
+		if (self instanceof ZombieEntity
+			|| self instanceof SkeletonEntity
+			|| self instanceof IllagerEntity
+			|| self instanceof PiglinEntity
+			|| (self instanceof HostileEntity && self.getHeight() >= 1.6f)) {
+			CorpseEntity corpse = null;
+			if (self.getCommandTags().contains(MobGearSpawner.TAG_GEARED_MOB)) {
+				corpse = CorpseEntity.fromGearedMob(self.getWorld(), self);
+			} else if (self.getWorld().random.nextFloat() < TarkovConfig.get().corpseBaseLootChance) {
+				corpse = CorpseEntity.fromRegularMob(self.getWorld(), self);
+			}
+			if (corpse != null) {
+				self.getWorld().spawnEntity(corpse);
+			}
+		}
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\mixin\MinecraftClientMixin.java ==========
+package com.tarkovcraft.mixin;
+
+import com.tarkovcraft.client.screen.TarkovDeathScreen;
+import com.tarkovcraft.network.TarkovNetworking;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.screen.DeathScreen;
+import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.screen.ingame.InventoryScreen;
+import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.client.option.GameOptions;
+import org.jetbrains.annotations.Nullable;
+import org.spongepowered.asm.mixin.Final;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+/**
+ * 1. Redirects Survival InventoryScreen to our server-backed TarkovInventoryScreen.
+ * 2. Redirects Survival DeathScreen to our Tarkov KIA Death Screen!
+ * 3. Kills vanilla swapHandsKey (offhand swap on F) in Survival/Adventure mode.
+ */
+@Mixin(MinecraftClient.class)
+public abstract class MinecraftClientMixin {
+	@Shadow
+	@Nullable
+	public ClientPlayerEntity player;
+
+	@Shadow
+	@Final
+	public GameOptions options;
+
+	@Shadow
+	public abstract void setScreen(@Nullable Screen screen);
+
+	@Inject(method = "setScreen", at = @At("HEAD"), cancellable = true)
+	private void tarkovcraft$redirectScreens(@Nullable Screen screen, CallbackInfo ci) {
+		if (player != null && !player.isCreative()) {
+			if (screen instanceof InventoryScreen) {
+				TarkovNetworking.sendOpenOwnInventory();
+				ci.cancel();
+			} else if (screen instanceof DeathScreen) {
+				ci.cancel();
+				this.setScreen(new TarkovDeathScreen());
+			}
+		}
+	}
+
+	@Inject(method = "handleInputEvents", at = @At("HEAD"))
+	private void tarkovcraft$consumeSwapHandsKey(CallbackInfo ci) {
+		if (player != null && !player.isCreative()) {
+			while (options.swapHandsKey.wasPressed()) {
+				// Intentionally swallowed — offhand swap is disabled in TarkovCraft
+			}
+		}
 	}
 }

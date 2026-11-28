@@ -1,1194 +1,876 @@
 
-// ========== .\src\main\java\com\tarkovcraft\entity\MobGearSpawner.java ==========
-package com.tarkovcraft.entity;
+// ========== .\src\main\java\com\tarkovcraft\workbench\WorkbenchInventoryHelper.java ==========
+package com.tarkovcraft.workbench;
 
-import com.tarkovcraft.config.TarkovConfig;
-import com.tarkovcraft.loot.TarkovLootGenerator;
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.mob.HuskEntity;
-import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.entity.mob.PillagerEntity;
-import net.minecraft.entity.mob.SkeletonEntity;
-import net.minecraft.entity.mob.StrayEntity;
-import net.minecraft.entity.mob.VindicatorEntity;
-import net.minecraft.entity.mob.ZombieEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.random.Random;
-
-/**
- * Assigns Tarkov Scav/Raider gear tags and visible armor pieces to eligible Overworld/hostile mobs on spawn.
- */
-public final class MobGearSpawner {
-	public static final String TAG_GEAR_ROLLED = "tarkovcraft:gear_rolled";
-	public static final String TAG_GEARED_MOB = "tarkovcraft:geared_mob";
-	public static final String TAG_GEARED_RIG = "tarkovcraft:geared_rig";
-	public static final String TAG_GEARED_BACKPACK = "tarkovcraft:geared_backpack";
-
-	private MobGearSpawner() {
-	}
-
-	public static void register() {
-		ServerEntityEvents.ENTITY_LOAD.register(MobGearSpawner::onEntityLoad);
-	}
-
-	public static boolean isEligibleMob(Entity entity) {
-		if (!(entity instanceof MobEntity mob) || mob.isBaby()) {
-			return false;
-		}
-		return mob instanceof ZombieEntity
-			|| mob instanceof HuskEntity
-			|| mob instanceof SkeletonEntity
-			|| mob instanceof StrayEntity
-			|| mob instanceof PillagerEntity
-			|| mob instanceof VindicatorEntity;
-	}
-
-	private static void onEntityLoad(Entity entity, ServerWorld world) {
-		if (!isEligibleMob(entity)) {
-			return;
-		}
-		MobEntity mob = (MobEntity) entity;
-		if (mob.getCommandTags().contains(TAG_GEAR_ROLLED)) {
-			return;
-		}
-		mob.addCommandTag(TAG_GEAR_ROLLED);
-
-		TarkovConfig cfg = TarkovConfig.get();
-		Random random = world.random;
-		if (random.nextFloat() >= cfg.mobGearSpawnChance) {
-			return;
-		}
-
-		mob.addCommandTag(TAG_GEARED_MOB);
-		if (mob.getEquippedStack(EquipmentSlot.HEAD).isEmpty() && random.nextFloat() < 0.65f) {
-			ItemStack helmet = TarkovLootGenerator.pickRandomLightHelmet(random);
-			if (!helmet.isEmpty()) {
-				mob.equipStack(EquipmentSlot.HEAD, helmet);
-				mob.setEquipmentDropChance(EquipmentSlot.HEAD, 0.0f);
-			}
-		}
-		if (mob.getEquippedStack(EquipmentSlot.CHEST).isEmpty() && random.nextFloat() < 0.75f) {
-			ItemStack armor = TarkovLootGenerator.pickRandomLightArmor(random);
-			if (!armor.isEmpty()) {
-				mob.equipStack(EquipmentSlot.CHEST, armor);
-				mob.setEquipmentDropChance(EquipmentSlot.CHEST, 0.0f);
-			}
-		}
-		if (random.nextFloat() < 0.65f) {
-			mob.addCommandTag(TAG_GEARED_RIG);
-		}
-		if (random.nextFloat() < cfg.mobBackpackChance) {
-			mob.addCommandTag(TAG_GEARED_BACKPACK);
-		}
-	}
-}
-
-// ========== .\src\main\java\com\tarkovcraft\entity\TarkovGrenadeEntity.java ==========
-package com.tarkovcraft.entity;
-
-import com.tarkovcraft.health.BodyPartHealth;
-import com.tarkovcraft.health.HitZone;
-import com.tarkovcraft.health.InjuryType;
-import com.tarkovcraft.item.TarkovGrenadeItem;
+import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.ammo.TaCZCaliberCatalog;
+import com.tarkovcraft.grid.ContainerItemHelper;
+import com.tarkovcraft.grid.GridContainer;
+import com.tarkovcraft.grid.GridEntry;
+import com.tarkovcraft.item.BackpackItem;
+import com.tarkovcraft.item.TacticalRigItem;
 import com.tarkovcraft.loadout.EquipmentSlotType;
 import com.tarkovcraft.loadout.PlayerLoadout;
 import com.tarkovcraft.loadout.PlayerLoadoutHolder;
-import com.tarkovcraft.registry.ModEntities;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.projectile.thrown.ThrownItemEntity;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.particle.DustParticleEffect;
-import net.minecraft.particle.ParticleTypes;
-import net.minecraft.registry.Registries;
 import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
 import net.minecraft.sound.SoundCategory;
 import net.minecraft.sound.SoundEvents;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.EntityHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.RaycastContext;
-import net.minecraft.world.World;
-import org.joml.Vector3f;
-
-import java.util.List;
-import java.util.Locale;
-
-/**
- * Thrown TarkovCraft tactical grenade with bounce physics, impact/timed fuses,
- * block-safe fragmentation with zonal BodyPartHealth damage, flashbang LOS checks,
- * smoke screen (M18), and tear gas cloud (CS Model 8230).
- */
-public class TarkovGrenadeEntity extends ThrownItemEntity {
-	private static final HitZone[] FRAG_ZONES = {
-		HitZone.THORAX,
-		HitZone.STOMACH,
-		HitZone.LEFT_ARM,
-		HitZone.RIGHT_ARM,
-		HitZone.LEFT_LEG,
-		HitZone.RIGHT_LEG,
-		HitZone.HEAD_JAWS
-	};
-
-	private static final DustParticleEffect SMOKE_GREEN_DUST =
-		new DustParticleEffect(new Vector3f(0.28f, 0.72f, 0.34f), 4.0f);
-	private static final DustParticleEffect SMOKE_WHITE_DUST =
-		new DustParticleEffect(new Vector3f(0.78f, 0.82f, 0.78f), 4.0f);
-	private static final DustParticleEffect GAS_CS_DUST =
-		new DustParticleEffect(new Vector3f(0.68f, 0.78f, 0.22f), 2.8f);
-
-	private TarkovGrenadeItem.GrenadeType grenadeType = TarkovGrenadeItem.GrenadeType.FRAG_F1;
-	private int fuseRemaining = 40;
-	private int cloudRemaining = 0;
-	private boolean detonated = false;
-	private boolean emitting = false;
-	private boolean resting = false;
-
-	public TarkovGrenadeEntity(EntityType<? extends ThrownItemEntity> type, World world) {
-		super(type, world);
-	}
-
-	public TarkovGrenadeEntity(
-		World world,
-		LivingEntity owner,
-		ItemStack sourceStack,
-		TarkovGrenadeItem.GrenadeType grenadeType
-	) {
-		super(ModEntities.GRENADE, owner, world);
-		this.grenadeType = grenadeType != null ? grenadeType : TarkovGrenadeItem.GrenadeType.FRAG_F1;
-		this.fuseRemaining = this.grenadeType.getFuseTicks();
-		if (sourceStack != null && !sourceStack.isEmpty()) {
-			this.setItem(sourceStack.copyWithCount(1));
-		}
-	}
-
-	@Override
-	protected Item getDefaultItem() {
-		return Items.SNOWBALL;
-	}
-
-	@Override
-	protected float getGravity() {
-		return 0.045f;
-	}
-
-	@Override
-	protected void onBlockHit(BlockHitResult hit) {
-		if (emitting) {
-			setVelocity(Vec3d.ZERO);
-			return;
-		}
-		if (!getWorld().isClient && !detonated && grenadeType.isImpactFuse() && age >= grenadeType.getArmingTicks()) {
-			detonate();
-			return;
-		}
-
-		Vec3d vel = getVelocity();
-		Direction.Axis axis = hit.getSide().getAxis();
-		double vx = axis == Direction.Axis.X ? -vel.x * 0.55 : vel.x * 0.72;
-		double vy = axis == Direction.Axis.Y ? -vel.y * 0.42 : vel.y * 0.72;
-		double vz = axis == Direction.Axis.Z ? -vel.z * 0.55 : vel.z * 0.72;
-		Vec3d nextVel = new Vec3d(vx, vy, vz);
-
-		if (hit.getSide() == Direction.UP && nextVel.lengthSquared() < 0.015) {
-			resting = true;
-			setNoGravity(true);
-			setVelocity(Vec3d.ZERO);
-		} else {
-			setVelocity(nextVel);
-		}
-		getWorld().playSound(null, getX(), getY(), getZ(),
-			SoundEvents.BLOCK_METAL_HIT, SoundCategory.PLAYERS, 0.45f, 1.25f);
-	}
-
-	@Override
-	protected void onEntityHit(EntityHitResult hit) {
-		if (emitting) {
-			return;
-		}
-		if (!getWorld().isClient && !detonated && grenadeType.isImpactFuse() && age >= grenadeType.getArmingTicks()) {
-			detonate();
-			return;
-		}
-		Entity target = hit.getEntity();
-		if (!getWorld().isClient) {
-			target.damage(getDamageSources().thrown(this, getOwner()), 1.0f);
-		}
-		Vec3d vel = getVelocity();
-		setVelocity(vel.x * -0.35, Math.abs(vel.y) * 0.35, vel.z * -0.35);
-		getWorld().playSound(null, getX(), getY(), getZ(),
-			SoundEvents.BLOCK_METAL_HIT, SoundCategory.PLAYERS, 0.45f, 1.25f);
-	}
-
-	@Override
-	public void tick() {
-		if (resting && getWorld().getBlockState(getBlockPos().down()).isAir()) {
-			resting = false;
-			setNoGravity(false);
-		}
-		if (resting || emitting) {
-			setVelocity(Vec3d.ZERO);
-		}
-		super.tick();
-
-		if (getWorld().isClient) {
-			if (!detonated && age % 2 == 0) {
-				getWorld().addParticle(ParticleTypes.SMOKE, getX(), getY() + 0.15, getZ(), 0.0, 0.02, 0.0);
-			}
-			return;
-		}
-
-		if (!detonated) {
-			fuseRemaining--;
-			if (fuseRemaining <= 0) {
-				detonate();
-			}
-		} else if (emitting) {
-			cloudRemaining--;
-			tickCloud((ServerWorld) getWorld());
-			if (cloudRemaining <= 0) {
-				discard();
-			}
-		}
-	}
-
-	private void detonate() {
-		if (detonated || !(getWorld() instanceof ServerWorld sw)) {
-			return;
-		}
-		detonated = true;
-
-		switch (grenadeType.getCategory()) {
-			case FRAG, IMPACT -> detonateFrag(sw);
-			case FLASH -> detonateFlash(sw);
-			case SMOKE -> startSmokeCloud(sw);
-			case GAS -> startGasCloud(sw);
-		}
-	}
-
-	private void detonateFrag(ServerWorld sw) {
-		sw.playSound(null, getX(), getY(), getZ(),
-			SoundEvents.ENTITY_GENERIC_EXPLODE, SoundCategory.PLAYERS, 3.0f, 0.9f);
-		sw.spawnParticles(ParticleTypes.EXPLOSION_EMITTER, getX(), getY() + 0.25, getZ(), 1, 0.1, 0.1, 0.1, 0.0);
-		sw.spawnParticles(ParticleTypes.EXPLOSION, getX(), getY() + 0.25, getZ(), 12, 0.8, 0.5, 0.8, 0.05);
-		sw.spawnParticles(ParticleTypes.CAMPFIRE_COSY_SMOKE, getX(), getY() + 0.25, getZ(), 18, 1.2, 0.6, 1.2, 0.03);
-		sw.spawnParticles(ParticleTypes.LAVA, getX(), getY() + 0.2, getZ(), 14, 0.8, 0.5, 0.8, 0.12);
-
-		float radius = grenadeType.getBlastRadius();
-		Vec3d origin = getPos().add(0.0, 0.2, 0.0);
-		DamageSource source = getDamageSources().explosion(this, getOwner());
-		String killerName = getOwner() != null ? getOwner().getName().getString() : "Grenade";
-		String weaponName = getStack().isEmpty() ? grenadeType.name() : getStack().getName().getString();
-
-		List<LivingEntity> targets = sw.getEntitiesByClass(LivingEntity.class, getBoundingBox().expand(radius),
-			e -> e.isAlive() && !e.isSpectator());
-		for (LivingEntity target : targets) {
-			double dist = origin.distanceTo(target.getPos().add(0.0, target.getHeight() * 0.5, 0.0));
-			if (dist > radius) {
-				continue;
-			}
-			float exposure = computeExposure(sw, origin, target);
-			if (exposure <= 0.0f) {
-				continue;
-			}
-
-			float falloff = Math.max(0.0f, 1.0f - (float) (dist / radius));
-			float effectiveDmg = grenadeType.getMaxDamage()
-				* (0.25f + 0.75f * falloff * falloff)
-				* exposure
-				* com.tarkovcraft.config.TarkovConfig.get().grenadeDamageMultiplier;
-
-			if (target instanceof ServerPlayerEntity sp && !sp.isCreative() && !sp.isSpectator()
-				&& sp instanceof PlayerLoadoutHolder holder) {
-				BodyPartHealth health = holder.tarkovcraft$getBodyHealth();
-				float perZone = effectiveDmg / 4.0f;
-				for (int i = 0; i < 4; i++) {
-					HitZone zone = (i == 0) ? HitZone.THORAX : FRAG_ZONES[random.nextInt(FRAG_ZONES.length)];
-					health.applyHit(
-						holder.tarkovcraft$getLoadout(),
-						zone,
-						perZone,
-						grenadeType.getPenetrationPower(),
-						1.0f, false, false, 1.0f,
-						random.nextFloat(),
-						random.nextFloat(),
-						killerName,
-						weaponName,
-						"Shrapnel",
-						(float) dist
-					);
-				}
-
-				if (random.nextFloat() < grenadeType.getBleedChance() * falloff * exposure) {
-					HitZone bleedZone = FRAG_ZONES[random.nextInt(FRAG_ZONES.length)];
-					health.addInjury(bleedZone.getBodyPart(),
-						falloff > 0.6f ? InjuryType.HEAVY_BLEED : InjuryType.LIGHT_BLEED);
-				}
-
-				holder.tarkovcraft$syncBodyHealth();
-				holder.tarkovcraft$syncLoadout();
-				if (health.isDead()) {
-					sp.setHealth(0.0f);
-					sp.onDeath(source);
-				} else {
-					sp.setHealth(Math.max(1.0f, health.getTotalRatio() * sp.getMaxHealth()));
-				}
-			} else if (!(target instanceof PlayerEntity)) {
-				target.damage(source, Math.max(1.0f, effectiveDmg / 9.0f));
-			}
-
-			Vec3d push = target.getPos().subtract(origin);
-			if (push.lengthSquared() > 1.0E-4) {
-				Vec3d knock = push.normalize().multiply(0.55 * falloff * exposure);
-				target.addVelocity(knock.x, Math.max(0.15 * falloff, knock.y), knock.z);
-				target.velocityModified = true;
-			}
-		}
-
-		discard();
-	}
-
-	private void detonateFlash(ServerWorld sw) {
-		sw.playSound(null, getX(), getY(), getZ(),
-			SoundEvents.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, SoundCategory.PLAYERS, 3.0f, 1.4f);
-		sw.playSound(null, getX(), getY(), getZ(),
-			SoundEvents.ENTITY_GENERIC_EXPLODE, SoundCategory.PLAYERS, 1.2f, 1.8f);
-		sw.spawnParticles(ParticleTypes.FLASH, getX(), getY() + 0.35, getZ(), 4, 0.2, 0.2, 0.2, 0.0);
-		sw.spawnParticles(ParticleTypes.EXPLOSION, getX(), getY() + 0.35, getZ(), 3, 0.3, 0.2, 0.3, 0.02);
-
-		float radius = grenadeType.getBlastRadius();
-		Vec3d origin = getPos().add(0.0, 0.25, 0.0);
-		List<LivingEntity> targets = sw.getEntitiesByClass(LivingEntity.class, getBoundingBox().expand(radius),
-			e -> e.isAlive() && !e.isSpectator());
-		for (LivingEntity target : targets) {
-			double dist = origin.distanceTo(target.getEyePos());
-			if (dist > radius) {
-				continue;
-			}
-			float exposure = computeExposure(sw, origin, target);
-			if (exposure <= 0.0f) {
-				continue;
-			}
-			float falloff = Math.max(0.0f, 1.0f - (float) (dist / radius));
-			Vec3d toFlash = origin.subtract(target.getEyePos());
-			double facingMult = 0.5;
-			if (toFlash.lengthSquared() > 1.0E-4) {
-				double dot = target.getRotationVec(1.0f).dotProduct(toFlash.normalize());
-				facingMult = dot > 0.25 ? 1.0 : 0.5;
-			}
-
-			int blindTicks = Math.max(40, (int) (220 * falloff * facingMult));
-			target.addStatusEffect(new StatusEffectInstance(StatusEffects.BLINDNESS, blindTicks, 0));
-			target.addStatusEffect(new StatusEffectInstance(StatusEffects.DARKNESS, 80, 0));
-			target.addStatusEffect(new StatusEffectInstance(StatusEffects.NAUSEA, 160, 0));
-			target.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 100, 1));
-		}
-
-		discard();
-	}
-
-	private void startSmokeCloud(ServerWorld sw) {
-		emitting = true;
-		resting = true;
-		setNoGravity(true);
-		setVelocity(Vec3d.ZERO);
-		cloudRemaining = grenadeType.getCloudTicks();
-		sw.playSound(null, getX(), getY(), getZ(),
-			SoundEvents.BLOCK_FIRE_EXTINGUISH, SoundCategory.PLAYERS, 1.2f, 0.8f);
-	}
-
-	private void startGasCloud(ServerWorld sw) {
-		emitting = true;
-		resting = true;
-		setNoGravity(true);
-		setVelocity(Vec3d.ZERO);
-		cloudRemaining = grenadeType.getCloudTicks();
-		sw.playSound(null, getX(), getY(), getZ(),
-			SoundEvents.BLOCK_FIRE_EXTINGUISH, SoundCategory.PLAYERS, 1.2f, 1.0f);
-	}
-
-	private void tickCloud(ServerWorld sw) {
-		float radius = grenadeType.getBlastRadius();
-		double spread = radius * 0.65;
-
-		if (grenadeType.getCategory() == TarkovGrenadeItem.Category.SMOKE) {
-			double smokeSpread = Math.max(2.6, radius * 0.72);
-			sw.spawnParticles(ParticleTypes.CAMPFIRE_SIGNAL_SMOKE, getX(), getY() + 0.45, getZ(), 10, smokeSpread, 0.8, smokeSpread, 0.012);
-			sw.spawnParticles(ParticleTypes.CAMPFIRE_SIGNAL_SMOKE, getX(), getY() + 1.85, getZ(), 8, smokeSpread * 0.85, 0.7, smokeSpread * 0.85, 0.01);
-			sw.spawnParticles(ParticleTypes.CLOUD, getX(), getY() + 1.2, getZ(), 14, smokeSpread * 0.9, 1.15, smokeSpread * 0.9, 0.008);
-			if (cloudRemaining % 2 == 0) {
-				sw.spawnParticles(SMOKE_GREEN_DUST, getX(), getY() + 1.0, getZ(), 20, smokeSpread, 1.2, smokeSpread, 0.01);
-				sw.spawnParticles(SMOKE_WHITE_DUST, getX(), getY() + 1.4, getZ(), 18, smokeSpread, 1.2, smokeSpread, 0.01);
-				sw.spawnParticles(ParticleTypes.LARGE_SMOKE, getX(), getY() + 0.8, getZ(), 12, smokeSpread, 1.0, smokeSpread, 0.015);
-			}
-			if (cloudRemaining % 8 == 0) {
-				Box box = getBoundingBox().expand(radius, 3.8, radius);
-				List<LivingEntity> targets = sw.getEntitiesByClass(LivingEntity.class, box,
-					e -> e.isAlive() && !e.isSpectator());
-				Vec3d origin = getPos();
-				for (LivingEntity target : targets) {
-					double dx = target.getX() - origin.x;
-					double dz = target.getZ() - origin.z;
-					double dy = target.getY() - origin.y;
-					if (dx * dx + dz * dz <= radius * radius && dy >= -1.0 && dy <= 4.0) {
-						target.addStatusEffect(new StatusEffectInstance(StatusEffects.BLINDNESS, 45, 0, false, false, true));
-						target.addStatusEffect(new StatusEffectInstance(StatusEffects.DARKNESS, 55, 0, false, false, true));
-					}
-				}
-			}
-			if (cloudRemaining % 30 == 0) {
-				sw.playSound(null, getX(), getY(), getZ(),
-					SoundEvents.BLOCK_FIRE_EXTINGUISH, SoundCategory.PLAYERS, 0.4f, 0.9f);
-			}
-			return;
-		}
-
-		if (grenadeType.getCategory() == TarkovGrenadeItem.Category.GAS) {
-			if (cloudRemaining % 2 == 0) {
-				sw.spawnParticles(GAS_CS_DUST, getX(), getY() + 0.8, getZ(), 12, spread, 0.9, spread, 0.01);
-				sw.spawnParticles(ParticleTypes.CAMPFIRE_COSY_SMOKE, getX(), getY() + 0.5, getZ(), 5, spread, 0.8, spread, 0.01);
-				sw.spawnParticles(ParticleTypes.SNEEZE, getX(), getY() + 0.8, getZ(), 4, spread * 0.8, 0.7, spread * 0.8, 0.02);
-			}
-			if (cloudRemaining % 10 == 0) {
-				Box box = getBoundingBox().expand(radius);
-				List<LivingEntity> targets = sw.getEntitiesByClass(LivingEntity.class, box,
-					e -> e.isAlive() && !e.isSpectator());
-				Vec3d origin = getPos();
-				for (LivingEntity target : targets) {
-					if (target.getPos().distanceTo(origin) > radius) {
-						continue;
-					}
-					if (!hasGasMaskProtection(target)) {
-						target.addStatusEffect(new StatusEffectInstance(StatusEffects.NAUSEA, 100, 0));
-						target.addStatusEffect(new StatusEffectInstance(StatusEffects.BLINDNESS, 60, 0));
-						target.addStatusEffect(new StatusEffectInstance(StatusEffects.POISON, 60, 0));
-						target.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 60, 0));
-					}
-				}
-			}
-		}
-	}
-
-	private float computeExposure(ServerWorld sw, Vec3d origin, LivingEntity target) {
-		Vec3d lowPoint = target.getPos().add(0.0, 0.5, 0.0);
-		Vec3d eyePoint = target.getEyePos();
-		boolean lowClear = sw.raycast(new RaycastContext(
-			origin, lowPoint, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, this
-		)).getType() == HitResult.Type.MISS;
-		boolean eyeClear = sw.raycast(new RaycastContext(
-			origin, eyePoint, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, this
-		)).getType() == HitResult.Type.MISS;
-
-		if (lowClear && eyeClear) return 1.0f;
-		if (lowClear || eyeClear) return 0.5f;
-		return 0.0f;
-	}
-
-	public static boolean hasGasMaskProtection(LivingEntity entity) {
-		if (!(entity instanceof PlayerLoadoutHolder holder)) {
-			return false;
-		}
-		return hasGasMaskProtection(holder.tarkovcraft$getLoadout());
-	}
-
-	public static boolean hasGasMaskProtection(PlayerLoadout loadout) {
-		if (loadout == null) {
-			return false;
-		}
-		ItemStack mask = loadout.getEquipment(EquipmentSlotType.FACE_MASK);
-		return !mask.isEmpty()
-			&& mask.getItem() instanceof com.tarkovcraft.item.TarkovArmorItem armor
-			&& armor.isGasProtection();
-	}
-
-	@Override
-	public void writeCustomDataToNbt(NbtCompound nbt) {
-		super.writeCustomDataToNbt(nbt);
-		nbt.putString("GrenadeType", grenadeType.name());
-		nbt.putInt("FuseRemaining", fuseRemaining);
-		nbt.putInt("CloudRemaining", cloudRemaining);
-		nbt.putBoolean("Detonated", detonated);
-		nbt.putBoolean("Emitting", emitting);
-		nbt.putBoolean("Resting", resting);
-	}
-
-	@Override
-	public void readCustomDataFromNbt(NbtCompound nbt) {
-		super.readCustomDataFromNbt(nbt);
-		if (nbt.contains("GrenadeType")) {
-			grenadeType = TarkovGrenadeItem.GrenadeType.fromString(nbt.getString("GrenadeType"));
-		}
-		if (nbt.contains("FuseRemaining")) {
-			fuseRemaining = nbt.getInt("FuseRemaining");
-		}
-		cloudRemaining = nbt.getInt("CloudRemaining");
-		detonated = nbt.getBoolean("Detonated");
-		emitting = nbt.getBoolean("Emitting");
-		resting = nbt.getBoolean("Resting");
-		if (resting || emitting) {
-			setNoGravity(true);
-		}
-	}
-}
-
-// ========== .\src\main\java\com\tarkovcraft\grid\ContainerItemHelper.java ==========
-package com.tarkovcraft.grid;
-
-import com.tarkovcraft.item.BackpackItem;
-import com.tarkovcraft.item.TacticalRigItem;
-import com.tarkovcraft.item.TarkovCaseItem;
-import com.tarkovcraft.search.ContainerSearchMemory;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.nbt.NbtElement;
-import net.minecraft.nbt.NbtList;
+import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-
-/**
- * Helper for reading and writing GridContainers, container UUIDs, and per-player
- * ContainerSearchMemory on wearable container ItemStacks (Backpacks & Tactical Rigs).
- */
-public final class ContainerItemHelper {
-	private static final String KEY_ROOT = "TarkovContainer";
-	private static final String KEY_UUID = "ContainerUuid";
-	private static final String KEY_GRID = "Grid";
-	private static final String KEY_GRIDS = "Grids";
-	private static final String KEY_SEARCH = "SearchMemory";
-	private static final String KEY_REQUIRES_SEARCH = "RequiresSearch";
-
-	private ContainerItemHelper() {
-	}
-
-	public static boolean isContainerItem(ItemStack stack) {
-		return !stack.isEmpty()
-			&& (stack.getItem() instanceof BackpackItem
-			|| stack.getItem() instanceof TacticalRigItem
-			|| stack.getItem() instanceof TarkovCaseItem);
-	}
-
-	public static UUID getOrCreateContainerUuid(ItemStack stack) {
-		NbtCompound root = stack.getOrCreateSubNbt(KEY_ROOT);
-		if (!root.containsUuid(KEY_UUID)) {
-			root.putUuid(KEY_UUID, UUID.randomUUID());
-		}
-		return root.getUuid(KEY_UUID);
-	}
-
-	@Nullable
-	public static UUID getContainerUuid(ItemStack stack) {
-		if (stack == null || stack.isEmpty() || !stack.hasNbt()) {
-			return null;
-		}
-		NbtCompound root = stack.getSubNbt(KEY_ROOT);
-		if (root != null && root.containsUuid(KEY_UUID)) {
-			return root.getUuid(KEY_UUID);
-		}
-		return null;
-	}
-
-	public static boolean requiresSearch(ItemStack stack) {
-		if (!isContainerItem(stack) || !stack.hasNbt()) {
-			return false;
-		}
-		NbtCompound root = stack.getSubNbt(KEY_ROOT);
-		return root != null && root.getBoolean(KEY_REQUIRES_SEARCH);
-	}
-
-	public static void setRequiresSearch(ItemStack stack, boolean requiresSearch) {
-		if (!isContainerItem(stack)) {
-			return;
-		}
-		NbtCompound root = stack.getOrCreateSubNbt(KEY_ROOT);
-		root.putBoolean(KEY_REQUIRES_SEARCH, requiresSearch);
-	}
-
-	public static ContainerSearchMemory getSearchMemory(ItemStack stack) {
-		if (!isContainerItem(stack) || !stack.hasNbt()) {
-			return new ContainerSearchMemory();
-		}
-		NbtCompound root = stack.getSubNbt(KEY_ROOT);
-		if (root != null && root.contains(KEY_SEARCH, NbtElement.COMPOUND_TYPE)) {
-			return ContainerSearchMemory.fromNbt(root.getCompound(KEY_SEARCH));
-		}
-		return new ContainerSearchMemory();
-	}
-
-	public static void saveSearchMemory(ItemStack stack, ContainerSearchMemory memory) {
-		if (!isContainerItem(stack)) {
-			return;
-		}
-		NbtCompound root = stack.getOrCreateSubNbt(KEY_ROOT);
-		root.put(KEY_SEARCH, memory.toNbt());
-	}
-
-	public static GridContainer readBackpackGrid(ItemStack stack) {
-		if (!(stack.getItem() instanceof BackpackItem backpack)) {
-			return new GridContainer(1, 1);
-		}
-		UUID uuid = getOrCreateContainerUuid(stack);
-		NbtCompound root = stack.getOrCreateSubNbt(KEY_ROOT);
-		if (root.contains(KEY_GRID, NbtElement.COMPOUND_TYPE)) {
-			return GridContainer.fromNbt(root.getCompound(KEY_GRID), backpack.getGridWidth(), backpack.getGridHeight());
-		}
-		GridContainer grid = new GridContainer(backpack.getGridWidth(), backpack.getGridHeight(), uuid);
-		root.put(KEY_GRID, grid.toNbt());
-		return grid;
-	}
-
-	public static void writeBackpackGrid(ItemStack stack, GridContainer grid) {
-		if (!(stack.getItem() instanceof BackpackItem)) {
-			return;
-		}
-		NbtCompound root = stack.getOrCreateSubNbt(KEY_ROOT);
-		root.putUuid(KEY_UUID, grid.getContainerId());
-		root.put(KEY_GRID, grid.toNbt());
-	}
-
-	public static List<GridContainer> readRigGrids(ItemStack stack) {
-		List<GridContainer> result = new ArrayList<>();
-		if (!(stack.getItem() instanceof TacticalRigItem rig)) {
-			return result;
-		}
-		getOrCreateContainerUuid(stack);
-		NbtCompound root = stack.getOrCreateSubNbt(KEY_ROOT);
-		List<ItemSize> layouts = rig.getCompartmentLayouts();
-		NbtList list = root.getList(KEY_GRIDS, NbtElement.COMPOUND_TYPE);
-		for (int i = 0; i < layouts.size(); i++) {
-			ItemSize sz = layouts.get(i);
-			if (i < list.size()) {
-				result.add(GridContainer.fromNbt(list.getCompound(i), sz.width(), sz.height()));
-			} else {
-				result.add(new GridContainer(sz.width(), sz.height()));
-			}
-		}
-		return result;
-	}
-
-	public static void writeRigGrids(ItemStack stack, List<GridContainer> grids) {
-		if (!(stack.getItem() instanceof TacticalRigItem)) {
-			return;
-		}
-		NbtCompound root = stack.getOrCreateSubNbt(KEY_ROOT);
-		NbtList list = new NbtList();
-		for (GridContainer g : grids) {
-			list.add(g.toNbt());
-		}
-		root.put(KEY_GRIDS, list);
-	}
-
-	public static GridContainer readCaseGrid(ItemStack stack) {
-		if (!(stack.getItem() instanceof TarkovCaseItem caseItem)) {
-			return new GridContainer(1, 1);
-		}
-		UUID uuid = getOrCreateContainerUuid(stack);
-		NbtCompound root = stack.getOrCreateSubNbt(KEY_ROOT);
-		if (root.contains(KEY_GRID, NbtElement.COMPOUND_TYPE)) {
-			return GridContainer.fromNbt(root.getCompound(KEY_GRID), caseItem.getGridWidth(), caseItem.getGridHeight());
-		}
-		GridContainer grid = new GridContainer(caseItem.getGridWidth(), caseItem.getGridHeight(), uuid);
-		root.put(KEY_GRID, grid.toNbt());
-		return grid;
-	}
-
-	public static void writeCaseGrid(ItemStack stack, GridContainer grid) {
-		if (!(stack.getItem() instanceof TarkovCaseItem)) {
-			return;
-		}
-		NbtCompound root = stack.getOrCreateSubNbt(KEY_ROOT);
-		root.putUuid(KEY_UUID, grid.getContainerId());
-		root.put(KEY_GRID, grid.toNbt());
-	}
-
-	public static List<GridContainer> readAllGrids(ItemStack stack) {
-		if (stack.getItem() instanceof BackpackItem) {
-			return List.of(readBackpackGrid(stack));
-		}
-		if (stack.getItem() instanceof TacticalRigItem) {
-			return readRigGrids(stack);
-		}
-		if (stack.getItem() instanceof TarkovCaseItem) {
-			return List.of(readCaseGrid(stack));
-		}
-		return List.of();
-	}
-
-	public static boolean containsContainerId(ItemStack stack, UUID targetId) {
-		if (!isContainerItem(stack) || targetId == null) {
-			return false;
-		}
-		UUID selfId = getContainerUuid(stack);
-		if (targetId.equals(selfId)) {
-			return true;
-		}
-		for (GridContainer grid : readAllGrids(stack)) {
-			if (targetId.equals(grid.getContainerId())) {
-				return true;
-			}
-			for (GridEntry entry : grid.getEntries()) {
-				if (containsContainerId(entry.getStack(), targetId)) {
-					return true;
-				}
-			}
-		}
-		return false;
-	}
-
-	public static int getNestingDepth(ItemStack stack) {
-		if (!isContainerItem(stack)) {
-			return 0;
-		}
-		int maxChildDepth = 0;
-		for (GridContainer grid : readAllGrids(stack)) {
-			for (GridEntry entry : grid.getEntries()) {
-				maxChildDepth = Math.max(maxChildDepth, getNestingDepth(entry.getStack()));
-			}
-		}
-		return 1 + maxChildDepth;
-	}
-}
-
-// ========== .\src\main\java\com\tarkovcraft\grid\GridContainer.java ==========
-package com.tarkovcraft.grid;
-
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.nbt.NbtElement;
-import net.minecraft.nbt.NbtList;
-import org.jetbrains.annotations.Nullable;
-
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
- * Pure 2D Tetris-style container supporting multi-cell items, rotation, stacking,
- * auto-placement, anti-recursion container nesting checks, and full NBT serialization.
+ * Server-side inventory scanning, atomic resource deduction (Pockets -> Rig -> Backpack),
+ * and crafting execution for the Tarkov Workbench.
  */
-public final class GridContainer {
-	public static final int MAX_NESTING_DEPTH = 2;
-
-	private final int width;
-	private final int height;
-	private final UUID containerId;
-	private final Map<UUID, GridEntry> entries = new LinkedHashMap<>();
-	private final GridEntry[][] cells;
-
-	public GridContainer(int width, int height) {
-		this(width, height, UUID.randomUUID());
+public final class WorkbenchInventoryHelper {
+	public record SyncPayload(
+		Map<Item, Integer> itemCounts,
+		Map<String, Integer> fmjAmmoCounts,
+		List<String> extraCalibers
+	) {
 	}
 
-	public GridContainer(int width, int height, UUID containerId) {
-		if (width < 1 || height < 1) {
-			throw new IllegalArgumentException("Grid dimensions must be >= 1, got " + width + "x" + height);
+	private WorkbenchInventoryHelper() {
+	}
+
+	public static SyncPayload collectSyncPayload(ServerPlayerEntity player) {
+		if (player == null || !(player instanceof PlayerLoadoutHolder holder)) {
+			return new SyncPayload(Map.of(), Map.of(), List.of());
 		}
-		this.width = width;
-		this.height = height;
-		this.containerId = containerId;
-		this.cells = new GridEntry[width][height];
-	}
-
-	public int getWidth() {
-		return width;
-	}
-
-	public int getHeight() {
-		return height;
-	}
-
-	public UUID getContainerId() {
-		return containerId;
-	}
-
-	public List<GridEntry> getEntries() {
-		return Collections.unmodifiableList(new ArrayList<>(entries.values()));
-	}
-
-	@Nullable
-	public GridEntry getEntry(UUID entryId) {
-		return entries.get(entryId);
-	}
-
-	@Nullable
-	public GridEntry getAt(int x, int y) {
-		if (x < 0 || y < 0 || x >= width || y >= height) {
-			return null;
+		if (player.isCreative()) {
+			// Scan creative vanilla inventory for any extra custom gunpack calibers
+			Set<String> extras = new LinkedHashSet<>();
+			for (ItemStack st : player.getInventory().main) {
+				collectExtraCaliber(st, extras);
+			}
+			for (ItemStack st : player.getInventory().offHand) {
+				collectExtraCaliber(st, extras);
+			}
+			return new SyncPayload(Map.of(), Map.of(), List.copyOf(extras));
 		}
-		return cells[x][y];
+		return collectSyncPayload(holder.tarkovcraft$getLoadout(), player.getUuid());
 	}
 
-	public boolean isEmpty() {
-		return entries.isEmpty();
+	public static SyncPayload collectSyncPayload(PlayerLoadout loadout, @Nullable UUID playerId) {
+		Map<Item, Integer> items = new LinkedHashMap<>();
+		Map<String, Integer> fmj = new LinkedHashMap<>();
+		Set<String> extras = new LinkedHashSet<>();
+
+		for (int i = 0; i < PlayerLoadout.POCKET_COUNT; i++) {
+			tallyStack(loadout.getPocket(i), items, fmj, extras);
+		}
+
+		ItemStack rig = loadout.getEquipment(EquipmentSlotType.RIG);
+		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem && isContainerAccessible(rig, playerId)) {
+			for (GridContainer g : ContainerItemHelper.readRigGrids(rig)) {
+				for (GridEntry entry : g.getEntries()) {
+					tallyStack(entry.getStack(), items, fmj, extras);
+				}
+			}
+		}
+
+		ItemStack bp = loadout.getEquipment(EquipmentSlotType.BACKPACK);
+		if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem && isContainerAccessible(bp, playerId)) {
+			GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
+			for (GridEntry entry : bpGrid.getEntries()) {
+				tallyStack(entry.getStack(), items, fmj, extras);
+			}
+		}
+
+		return new SyncPayload(items, fmj, List.copyOf(extras));
 	}
 
-	public boolean canPlace(ItemStack stack, int x, int y, boolean rotated) {
-		return canPlace(stack, x, y, rotated, null);
+	private static void tallyStack(
+		ItemStack stack,
+		Map<Item, Integer> items,
+		Map<String, Integer> fmj,
+		Set<String> extras
+	) {
+		if (stack == null || stack.isEmpty()) {
+			return;
+		}
+		if (AmmoTier.isTaczAmmoStack(stack)) {
+			String ammoId = AmmoTier.getAmmoId(stack);
+			if (TaCZCaliberCatalog.isBallisticAmmoId(ammoId)) {
+				collectExtraCaliber(stack, extras);
+				if (AmmoTier.getFromAmmoStack(stack) == AmmoTier.FMJ) {
+					fmj.merge(ammoId, stack.getCount(), Integer::sum);
+				}
+			}
+			return;
+		}
+		items.merge(stack.getItem(), stack.getCount(), Integer::sum);
 	}
 
-	public boolean canPlace(ItemStack stack, int x, int y, boolean rotated, @Nullable UUID ignoredEntryId) {
+	private static void collectExtraCaliber(ItemStack stack, Set<String> extras) {
+		if (stack == null || stack.isEmpty() || !AmmoTier.isTaczAmmoStack(stack)) {
+			return;
+		}
+		String ammoId = AmmoTier.getAmmoId(stack);
+		if (TaCZCaliberCatalog.isBallisticAmmoId(ammoId)) {
+			boolean isDefault = TaCZCaliberCatalog.getDefaultCalibers().stream()
+				.anyMatch(c -> c.ammoId().equals(ammoId));
+			if (!isDefault) {
+				extras.add(ammoId);
+			}
+		}
+	}
+
+	public static boolean hasMaterials(
+		PlayerLoadout loadout,
+		@Nullable UUID playerId,
+		List<TarkovWorkbenchRecipes.Ingredient> materials,
+		@Nullable String requiredFmjAmmoId,
+		int requiredFmjCount
+	) {
+		SyncPayload payload = collectSyncPayload(loadout, playerId);
+		for (TarkovWorkbenchRecipes.Ingredient ing : materials) {
+			if (payload.itemCounts().getOrDefault(ing.item(), 0) < ing.count()) {
+				return false;
+			}
+		}
+		if (requiredFmjCount > 0 && requiredFmjAmmoId != null) {
+			if (payload.fmjAmmoCounts().getOrDefault(requiredFmjAmmoId, 0) < requiredFmjCount) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	public static boolean consumeMaterials(
+		PlayerLoadout loadout,
+		@Nullable UUID playerId,
+		List<TarkovWorkbenchRecipes.Ingredient> materials,
+		@Nullable String requiredFmjAmmoId,
+		int requiredFmjCount
+	) {
+		if (!hasMaterials(loadout, playerId, materials, requiredFmjAmmoId, requiredFmjCount)) {
+			return false;
+		}
+
+		for (TarkovWorkbenchRecipes.Ingredient ing : materials) {
+			consumeFromLoadout(loadout, playerId, ing.item(), null, ing.count());
+		}
+		if (requiredFmjCount > 0 && requiredFmjAmmoId != null) {
+			consumeFromLoadout(loadout, playerId, null, requiredFmjAmmoId, requiredFmjCount);
+		}
+		return true;
+	}
+
+	private static void consumeFromLoadout(
+		PlayerLoadout loadout,
+		@Nullable UUID playerId,
+		@Nullable Item targetItem,
+		@Nullable String targetFmjAmmoId,
+		int amount
+	) {
+		int remaining = amount;
+
+		// 1. Pockets
+		for (int i = 0; i < PlayerLoadout.POCKET_COUNT && remaining > 0; i++) {
+			ItemStack p = loadout.getPocket(i);
+			if (matchesConsumptionTarget(p, targetItem, targetFmjAmmoId)) {
+				int take = Math.min(remaining, p.getCount());
+				p.decrement(take);
+				remaining -= take;
+				if (p.isEmpty()) {
+					loadout.setPocket(i, ItemStack.EMPTY);
+				}
+			}
+		}
+
+		// 2. Equipped Rig
+		if (remaining > 0) {
+			ItemStack rig = loadout.getEquipment(EquipmentSlotType.RIG);
+			if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem && isContainerAccessible(rig, playerId)) {
+				List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
+				boolean modified = false;
+				for (GridContainer g : grids) {
+					List<GridEntry> entries = new ArrayList<>(g.getEntries());
+					for (GridEntry entry : entries) {
+						if (remaining <= 0) break;
+						ItemStack st = entry.getStack();
+						if (matchesConsumptionTarget(st, targetItem, targetFmjAmmoId)) {
+							int take = Math.min(remaining, st.getCount());
+							st.decrement(take);
+							remaining -= take;
+							if (st.isEmpty()) {
+								g.remove(entry.getEntryId());
+							}
+							modified = true;
+						}
+					}
+					if (remaining <= 0) break;
+				}
+				if (modified) {
+					ContainerItemHelper.writeRigGrids(rig, grids);
+				}
+			}
+		}
+
+		// 3. Equipped Backpack
+		if (remaining > 0) {
+			ItemStack bp = loadout.getEquipment(EquipmentSlotType.BACKPACK);
+			if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem && isContainerAccessible(bp, playerId)) {
+				GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
+				boolean modified = false;
+				List<GridEntry> entries = new ArrayList<>(bpGrid.getEntries());
+				for (GridEntry entry : entries) {
+					if (remaining <= 0) break;
+					ItemStack st = entry.getStack();
+					if (matchesConsumptionTarget(st, targetItem, targetFmjAmmoId)) {
+						int take = Math.min(remaining, st.getCount());
+						st.decrement(take);
+						remaining -= take;
+						if (st.isEmpty()) {
+							bpGrid.remove(entry.getEntryId());
+						}
+						modified = true;
+					}
+				}
+				if (modified) {
+					ContainerItemHelper.writeBackpackGrid(bp, bpGrid);
+				}
+			}
+		}
+		if (remaining != amount) {
+			loadout.invalidateExposedCache();
+		}
+	}
+
+	private static boolean matchesConsumptionTarget(
+		ItemStack stack,
+		@Nullable Item targetItem,
+		@Nullable String targetFmjAmmoId
+	) {
 		if (stack == null || stack.isEmpty()) {
 			return false;
 		}
-		if (wouldCauseRecursion(stack)) {
+		if (targetFmjAmmoId != null) {
+			return AmmoTier.isTaczAmmoStack(stack)
+				&& targetFmjAmmoId.equals(AmmoTier.getAmmoId(stack))
+				&& AmmoTier.getFromAmmoStack(stack) == AmmoTier.FMJ;
+		}
+		return targetItem != null && !AmmoTier.isTaczAmmoStack(stack) && stack.getItem() == targetItem;
+	}
+
+	private static boolean isContainerAccessible(ItemStack container, @Nullable UUID playerId) {
+		return !ContainerItemHelper.requiresSearch(container)
+			|| (playerId != null && ContainerItemHelper.getSearchMemory(container).isGridRevealed(playerId));
+	}
+
+	public static boolean craftAmmo(ServerPlayerEntity player, String ammoId, AmmoTier tier, boolean upgradeFromFmj) {
+		if (!TaCZCaliberCatalog.isBallisticAmmoId(ammoId) || tier == null || !TaCZCaliberCatalog.isTierAllowed(ammoId, tier)) {
 			return false;
 		}
-		ItemSize size = ItemSizeRegistry.getSize(stack).oriented(rotated);
-		if (x < 0 || y < 0 || x + size.width() > width || y + size.height() > height) {
+		TarkovWorkbenchRecipes.AmmoRecipe recipe = TarkovWorkbenchRecipes.getAmmoRecipe(ammoId, tier, upgradeFromFmj);
+		ItemStack result = AmmoTier.createTaczAmmoStack(recipe.ammoId(), recipe.tier(), recipe.batchSize());
+
+		if (!executeCraftTransaction(player, recipe.materials(), recipe.upgradeFromFmj() ? recipe.ammoId() : null, recipe.requiredFmjCount(), result)) {
 			return false;
 		}
-		for (int dx = 0; dx < size.width(); dx++) {
-			for (int dy = 0; dy < size.height(); dy++) {
-				GridEntry existing = cells[x + dx][y + dy];
-				if (existing != null && !existing.getEntryId().equals(ignoredEntryId)) {
+
+		player.getWorld().playSound(null, player.getX(), player.getY(), player.getZ(),
+			SoundEvents.BLOCK_SMITHING_TABLE_USE, SoundCategory.PLAYERS, 0.7f, 1.15f);
+		return true;
+	}
+
+	public static boolean craftGear(ServerPlayerEntity player, Item gearItem) {
+		if (!TarkovWorkbenchRecipes.isCraftableGear(gearItem)) {
+			return false;
+		}
+		List<TarkovWorkbenchRecipes.Ingredient> mats = TarkovWorkbenchRecipes.computeGearIngredients(gearItem);
+		ItemStack result = new ItemStack(gearItem);
+
+		if (!executeCraftTransaction(player, mats, null, 0, result)) {
+			return false;
+		}
+
+		player.getWorld().playSound(null, player.getX(), player.getY(), player.getZ(),
+			SoundEvents.BLOCK_ANVIL_USE, SoundCategory.PLAYERS, 0.6f, 1.2f);
+		return true;
+	}
+
+	public static boolean giveOrDrop(ServerPlayerEntity player, PlayerLoadout loadout, ItemStack crafted) {
+		ItemStack toInsert = crafted.copy();
+		loadout.tryInsertItem(toInsert, player.getUuid());
+		boolean droppedAny = !toInsert.isEmpty();
+		if (droppedAny) {
+			player.dropItem(toInsert, false);
+		}
+		return droppedAny;
+	}
+
+	private static boolean executeCraftTransaction(
+		ServerPlayerEntity player,
+		List<TarkovWorkbenchRecipes.Ingredient> materials,
+		@Nullable String requiredFmjAmmoId,
+		int requiredFmjCount,
+		ItemStack result
+	) {
+		if (player.isCreative()) {
+			ItemStack creativeCopy = result.copy();
+			boolean inserted = player.getInventory().insertStack(creativeCopy) && creativeCopy.isEmpty();
+			if (!inserted && !creativeCopy.isEmpty()) {
+				player.dropItem(creativeCopy, false);
+			}
+			if (inserted) {
+				player.sendMessage(Text.translatable("message.tarkovcraft.workbench_crafted", result.getName()), true);
+			} else {
+				Text warn = Text.translatable("message.tarkovcraft.wb_crafted_dropped", result.getName())
+					.formatted(Formatting.YELLOW);
+				player.sendMessage(warn, false);
+				player.sendMessage(warn, true);
+			}
+			return true;
+		}
+
+		if (!(player instanceof PlayerLoadoutHolder holder)) {
+			return false;
+		}
+		PlayerLoadout loadout = holder.tarkovcraft$getLoadout();
+		if (!consumeMaterials(loadout, player.getUuid(), materials, requiredFmjAmmoId, requiredFmjCount)) {
+			player.sendMessage(Text.translatable("message.tarkovcraft.workbench_no_materials"), true);
+			return false;
+		}
+
+		boolean droppedAny = giveOrDrop(player, loadout, result);
+		holder.tarkovcraft$syncLoadout();
+
+		if (!droppedAny) {
+			player.sendMessage(Text.translatable("message.tarkovcraft.workbench_crafted", result.getName()), true);
+		} else {
+			Text warn = Text.translatable("message.tarkovcraft.wb_crafted_dropped", result.getName())
+				.formatted(Formatting.YELLOW);
+			player.sendMessage(warn, false);
+			player.sendMessage(warn, true);
+		}
+		return true;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\worldgen\ModWorldGen.java ==========
+package com.tarkovcraft.worldgen;
+
+import com.tarkovcraft.TarkovCraftMod;
+import net.fabricmc.fabric.api.biome.v1.BiomeModifications;
+import net.fabricmc.fabric.api.biome.v1.BiomeSelectors;
+import net.minecraft.registry.Registries;
+import net.minecraft.registry.Registry;
+import net.minecraft.registry.RegistryKey;
+import net.minecraft.registry.RegistryKeys;
+import net.minecraft.registry.tag.BiomeTags;
+import net.minecraft.util.Identifier;
+import net.minecraft.world.gen.GenerationStep;
+import net.minecraft.world.gen.feature.DefaultFeatureConfig;
+import net.minecraft.world.gen.feature.Feature;
+
+/**
+ * Registers Overworld surface loot structures (roadblock, med_tent, military_camp, forest_stash).
+ */
+public final class ModWorldGen {
+	public static final Feature<DefaultFeatureConfig> ROADBLOCK = registerFeature("roadblock",
+		new TarkovStructureFeature(DefaultFeatureConfig.CODEC, TarkovStructureFeature.StructureKind.ROADBLOCK));
+	public static final Feature<DefaultFeatureConfig> MED_TENT = registerFeature("med_tent",
+		new TarkovStructureFeature(DefaultFeatureConfig.CODEC, TarkovStructureFeature.StructureKind.MED_TENT));
+	public static final Feature<DefaultFeatureConfig> MILITARY_CAMP = registerFeature("military_camp",
+		new TarkovStructureFeature(DefaultFeatureConfig.CODEC, TarkovStructureFeature.StructureKind.MILITARY_CAMP));
+	public static final Feature<DefaultFeatureConfig> FOREST_STASH = registerFeature("forest_stash",
+		new TarkovStructureFeature(DefaultFeatureConfig.CODEC, TarkovStructureFeature.StructureKind.FOREST_STASH));
+
+	private static boolean initialized = false;
+
+	private ModWorldGen() {
+	}
+
+	private static Feature<DefaultFeatureConfig> registerFeature(String name, Feature<DefaultFeatureConfig> feature) {
+		return Registry.register(Registries.FEATURE, new Identifier(TarkovCraftMod.MOD_ID, name), feature);
+	}
+
+	public static synchronized void init() {
+		if (initialized) {
+			return;
+		}
+		initialized = true;
+		var nonWaterOverworld = BiomeSelectors.foundInOverworld()
+			.and(BiomeSelectors.tag(BiomeTags.IS_OCEAN).negate())
+			.and(BiomeSelectors.tag(BiomeTags.IS_DEEP_OCEAN).negate())
+			.and(BiomeSelectors.tag(BiomeTags.IS_RIVER).negate())
+			.and(BiomeSelectors.tag(BiomeTags.IS_BEACH).negate());
+
+		addStructure("roadblock", nonWaterOverworld);
+		addStructure("med_tent", nonWaterOverworld);
+		addStructure("military_camp", nonWaterOverworld);
+		addStructure("forest_stash", BiomeSelectors.tag(BiomeTags.IS_FOREST).or(BiomeSelectors.tag(BiomeTags.IS_TAIGA)));
+	}
+
+	private static void addStructure(String name, java.util.function.Predicate<net.fabricmc.fabric.api.biome.v1.BiomeSelectionContext> selector) {
+		BiomeModifications.addFeature(
+			selector,
+			GenerationStep.Feature.SURFACE_STRUCTURES,
+			RegistryKey.of(RegistryKeys.PLACED_FEATURE, new Identifier(TarkovCraftMod.MOD_ID, name))
+		);
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\worldgen\TarkovStructureFeature.java ==========
+package com.tarkovcraft.worldgen;
+
+import com.mojang.serialization.Codec;
+import com.tarkovcraft.block.SearchableLootBlock;
+import com.tarkovcraft.block.SearchableLootBlockEntity;
+import com.tarkovcraft.config.TarkovConfig;
+import com.tarkovcraft.loot.TarkovLootPool;
+import com.tarkovcraft.registry.ModBlocks;
+import net.minecraft.block.Block;
+import net.minecraft.block.BlockState;
+import net.minecraft.block.Blocks;
+import net.minecraft.registry.tag.BlockTags;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.random.Random;
+import net.minecraft.world.Heightmap;
+import net.minecraft.world.StructureWorldAccess;
+import net.minecraft.world.gen.feature.DefaultFeatureConfig;
+import net.minecraft.world.gen.feature.Feature;
+import net.minecraft.world.gen.feature.util.FeatureContext;
+
+/**
+ * Overworld surface structures for TarkovCraft:
+ * ROADBLOCK, MED_TENT, MILITARY_CAMP, FOREST_STASH.
+ */
+public class TarkovStructureFeature extends Feature<DefaultFeatureConfig> {
+	public enum StructureKind {
+		ROADBLOCK(2, 2),
+		MED_TENT(2, 2),
+		MILITARY_CAMP(3, 2),
+		FOREST_STASH(1, 1);
+
+		private final int halfW;
+		private final int halfD;
+
+		StructureKind(int halfW, int halfD) {
+			this.halfW = halfW;
+			this.halfD = halfD;
+		}
+	}
+
+	private final StructureKind kind;
+
+	public TarkovStructureFeature(Codec<DefaultFeatureConfig> codec, StructureKind kind) {
+		super(codec);
+		this.kind = kind;
+	}
+
+	@Override
+	public boolean generate(FeatureContext<DefaultFeatureConfig> context) {
+		if (!TarkovConfig.get().worldgenStructuresEnabled) {
+			return false;
+		}
+		StructureWorldAccess world = context.getWorld();
+		Random random = context.getRandom();
+		BlockPos origin = context.getOrigin();
+
+		if (!isFootprintSafe(world, origin, kind.halfW, kind.halfD)) {
+			return false;
+		}
+
+		switch (kind) {
+			case ROADBLOCK -> buildRoadblock(world, origin, random);
+			case MED_TENT -> buildMedTent(world, origin, random);
+			case MILITARY_CAMP -> buildMilitaryCamp(world, origin, random);
+			case FOREST_STASH -> buildForestStash(world, origin, random);
+		}
+		ServerWorld serverWorld = world.toServerWorld();
+		BlockPos recordedOrigin = origin.toImmutable();
+		serverWorld.getServer().execute(() -> TarkovStructureRegistry.get(serverWorld).record(kind, recordedOrigin));
+		return true;
+	}
+
+	private static boolean isFootprintSafe(StructureWorldAccess world, BlockPos origin, int halfW, int halfD) {
+		int ox = origin.getX();
+		int oy = origin.getY();
+		int oz = origin.getZ();
+
+		for (int dx = -halfW; dx <= halfW; dx++) {
+			for (int dz = -halfD; dz <= halfD; dz++) {
+				int x = ox + dx;
+				int z = oz + dz;
+				int topY = world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z);
+				if (Math.abs(topY - oy) > 2) {
 					return false;
+				}
+				BlockPos groundPos = new BlockPos(x, topY - 1, z);
+				BlockState ground = world.getBlockState(groundPos);
+				if (!ground.isOpaqueFullCube(world, groundPos)
+					|| !ground.getFluidState().isEmpty()
+					|| ground.isIn(BlockTags.LOGS)
+					|| ground.isIn(BlockTags.LEAVES)
+					|| ground.isOf(Blocks.ICE)
+					|| ground.isOf(Blocks.PACKED_ICE)
+					|| ground.isOf(Blocks.BLUE_ICE)) {
+					return false;
+				}
+				for (int dy = 0; dy <= 3; dy++) {
+					BlockPos above = new BlockPos(x, topY + dy, z);
+					if (!world.getBlockState(above).isReplaceable()) {
+						return false;
+					}
 				}
 			}
 		}
 		return true;
 	}
 
-	/**
-	 * Prevents placing a container inside itself or exceeding MAX_NESTING_DEPTH.
-	 */
-	public boolean wouldCauseRecursion(ItemStack candidate) {
-		UUID candidateContainerId = ContainerItemHelper.getContainerUuid(candidate);
-		if (candidateContainerId != null && candidateContainerId.equals(this.containerId)) {
-			return true;
-		}
-		if (ContainerItemHelper.containsContainerId(candidate, this.containerId)) {
-			return true;
-		}
-		return ContainerItemHelper.getNestingDepth(candidate) >= MAX_NESTING_DEPTH;
-	}
+	private static void buildRoadblock(StructureWorldAccess world, BlockPos origin, Random random) {
+		int y = origin.getY();
+		int ox = origin.getX();
+		int oz = origin.getZ();
 
-	/**
-	 * Attempts to place stack at (x, y, rotated). If the target cell has a matching stackable item,
-	 * merges into it first. Returns the created/updated GridEntry or null if placement failed.
-	 */
-	@Nullable
-	public GridEntry place(ItemStack stack, int x, int y, boolean rotated) {
-		if (stack == null || stack.isEmpty()) {
-			return null;
-		}
-		// Try stacking onto an existing entry at (x, y)
-		GridEntry existing = getAt(x, y);
-		if (existing != null && canMerge(existing.getStack(), stack)) {
-			int max = existing.getStack().getMaxCount();
-			int space = max - existing.getStack().getCount();
-			if (space >= stack.getCount()) {
-				existing.getStack().increment(stack.getCount());
-				return existing;
+		for (int dx = -2; dx <= 2; dx++) {
+			for (int dz = -2; dz <= 2; dz++) {
+				setFoundation(world, ox + dx, y - 1, oz + dz, Blocks.COBBLESTONE.getDefaultState());
 			}
 		}
 
-		if (!canPlace(stack, x, y, rotated, null)) {
-			return null;
+		// Sandbag / cobblestone barricade on north and south edges
+		for (int dx = -2; dx <= 2; dx++) {
+			if (dx != 0) {
+				BlockState wall = (dx % 2 == 0 ? Blocks.COBBLESTONE_WALL : Blocks.MOSSY_COBBLESTONE_WALL).getDefaultState();
+				setBlock(world, ox + dx, y, oz - 2, wall);
+				setBlock(world, ox + dx, y, oz + 2, Blocks.SANDSTONE.getDefaultState());
+			}
 		}
-		GridEntry entry = GridEntry.create(stack.copy(), x, y, rotated);
-		insertInternal(entry);
-		return entry;
+		setBlock(world, ox - 2, y, oz - 1, Blocks.HAY_BLOCK.getDefaultState());
+		setBlock(world, ox - 2, y, oz, Blocks.IRON_BARS.getDefaultState());
+		setBlock(world, ox + 2, y, oz, Blocks.IRON_BARS.getDefaultState());
+		setBlock(world, ox + 2, y, oz - 1, Blocks.OAK_FENCE.getDefaultState());
+		setBlock(world, ox + 2, y + 1, oz - 1, Blocks.LANTERN.getDefaultState());
+
+		placeCrate(world, new BlockPos(ox - 1, y, oz), ModBlocks.WEAPON_CRATE, TarkovLootPool.MILITARY, random);
+		if (random.nextBoolean()) {
+			placeCrate(world, new BlockPos(ox + 1, y, oz + 1), ModBlocks.WEAPON_CRATE, TarkovLootPool.MILITARY, random);
+		}
 	}
 
-	/**
-	 * Places an entry preserving a specific UUID (e.g., when moving within the same container).
-	 */
-	@Nullable
-	public GridEntry placeWithId(UUID entryId, ItemStack stack, int x, int y, boolean rotated) {
-		if (!canPlace(stack, x, y, rotated, null)) {
-			return null;
-		}
-		GridEntry entry = new GridEntry(entryId, stack.copy(), x, y, rotated);
-		insertInternal(entry);
-		return entry;
-	}
+	private static void buildMedTent(StructureWorldAccess world, BlockPos origin, Random random) {
+		int y = origin.getY();
+		int ox = origin.getX();
+		int oz = origin.getZ();
 
-	/**
-	 * Auto-places stack into the first available space (trying stacking first, then normal, then rotated).
-	 * Mutates the passed stack's count if partially/fully stacked, returning true if completely inserted.
-	 */
-	public boolean tryAutoPlace(ItemStack stack) {
-		return tryAutoPlace(stack, null);
-	}
-
-	/**
-	 * Auto-places stack into the first available space (trying stacking first, then normal, then rotated).
-	 * Mutates the passed stack's count if partially/fully stacked, returning true if completely inserted.
-	 * When {@code canMergeIntoEntry} is provided, only merges into entries whose UUID passes the predicate.
-	 */
-	public boolean tryAutoPlace(ItemStack stack, @Nullable java.util.function.Predicate<UUID> canMergeIntoEntry) {
-		if (stack == null || stack.isEmpty() || wouldCauseRecursion(stack)) {
-			return false;
-		}
-		// 1. Try merging into existing stacks
-		if (stack.isStackable()) {
-			for (GridEntry entry : entries.values()) {
-				if (canMergeIntoEntry != null && !canMergeIntoEntry.test(entry.getEntryId())) {
-					continue;
-				}
-				if (canMerge(entry.getStack(), stack)) {
-					int space = entry.getStack().getMaxCount() - entry.getStack().getCount();
-					if (space > 0) {
-						int transfer = Math.min(space, stack.getCount());
-						entry.getStack().increment(transfer);
-						stack.decrement(transfer);
-						if (stack.isEmpty()) {
-							return true;
-						}
-					}
-				}
+		for (int dx = -2; dx <= 2; dx++) {
+			for (int dz = -2; dz <= 2; dz++) {
+				setFoundation(world, ox + dx, y - 1, oz + dz, Blocks.COARSE_DIRT.getDefaultState());
 			}
 		}
 
-		// 2. Try free cells (normal orientation, then rotated if non-square)
-		ItemSize baseSize = ItemSizeRegistry.getSize(stack);
-		boolean[] orientations = baseSize.width() == baseSize.height()
-			? new boolean[]{false}
-			: new boolean[]{false, true};
-
-		for (boolean rot : orientations) {
-			for (int y = 0; y < height; y++) {
-				for (int x = 0; x < width; x++) {
-					if (canPlace(stack, x, y, rot)) {
-						GridEntry entry = GridEntry.create(stack.copy(), x, y, rot);
-						insertInternal(entry);
-						stack.setCount(0);
-						return true;
-					}
-				}
+		// Corner fence posts (height 3)
+		int[][] corners = {{-2, -2}, {2, -2}, {-2, 2}, {2, 2}};
+		for (int[] c : corners) {
+			for (int dy = 0; dy < 3; dy++) {
+				setBlock(world, ox + c[0], y + dy, oz + c[1], Blocks.OAK_FENCE.getDefaultState());
 			}
 		}
-		return false;
-	}
 
-	/**
-	 * Places stack into the first completely free cell (normal orientation first, then rotated),
-	 * NEVER merging into existing stacks. Returns the created GridEntry or null if full.
-	 */
-	@Nullable
-	public GridEntry tryPlaceInFreeCell(ItemStack stack) {
-		if (stack == null || stack.isEmpty() || wouldCauseRecursion(stack)) {
-			return null;
-		}
-		ItemSize baseSize = ItemSizeRegistry.getSize(stack);
-		boolean[] orientations = baseSize.width() == baseSize.height()
-			? new boolean[]{false}
-			: new boolean[]{false, true};
-
-		for (boolean rot : orientations) {
-			for (int y = 0; y < height; y++) {
-				for (int x = 0; x < width; x++) {
-					if (canPlace(stack, x, y, rot)) {
-						GridEntry entry = GridEntry.create(stack.copy(), x, y, rot);
-						insertInternal(entry);
-						return entry;
-					}
-				}
+		// White wool roof with red cross in center
+		for (int dx = -2; dx <= 2; dx++) {
+			for (int dz = -2; dz <= 2; dz++) {
+				boolean isCross = (dx == 0 && Math.abs(dz) <= 1) || (dz == 0 && Math.abs(dx) <= 1);
+				Block roofBlock = isCross ? Blocks.RED_WOOL : Blocks.WHITE_WOOL;
+				setBlock(world, ox + dx, y + 3, oz + dz, roofBlock.getDefaultState());
 			}
 		}
-		return null;
-	}
 
-	@Nullable
-	public GridEntry remove(UUID entryId) {
-		GridEntry entry = entries.remove(entryId);
-		if (entry == null) {
-			return null;
+		setBlock(world, ox, y + 2, oz, Blocks.LANTERN.getDefaultState());
+		placeCrate(world, new BlockPos(ox - 1, y, oz), ModBlocks.MEDBAG, TarkovLootPool.MEDICAL, random);
+		if (random.nextFloat() < 0.65f) {
+			placeCrate(world, new BlockPos(ox + 1, y, oz + 1), ModBlocks.MEDBAG, TarkovLootPool.MEDICAL, random);
 		}
-		clearCells(entry);
-		return entry;
 	}
 
-	public void clear() {
-		entries.clear();
-		for (int x = 0; x < width; x++) {
-			for (int y = 0; y < height; y++) {
-				cells[x][y] = null;
+	private static void buildMilitaryCamp(StructureWorldAccess world, BlockPos origin, Random random) {
+		int y = origin.getY();
+		int ox = origin.getX();
+		int oz = origin.getZ();
+
+		for (int dx = -3; dx <= 3; dx++) {
+			for (int dz = -2; dz <= 2; dz++) {
+				setFoundation(world, ox + dx, y - 1, oz + dz, Blocks.COARSE_DIRT.getDefaultState());
+			}
+		}
+
+		// Campfire in center
+		setBlock(world, ox, y, oz, Blocks.CAMPFIRE.getDefaultState());
+		setBlock(world, ox - 1, y, oz + 1, Blocks.SPRUCE_STAIRS.getDefaultState());
+
+		// Small green wool tent on left side
+		for (int dy = 0; dy < 2; dy++) {
+			setBlock(world, ox - 3, y + dy, oz - 2, Blocks.SPRUCE_FENCE.getDefaultState());
+			setBlock(world, ox - 3, y + dy, oz + 2, Blocks.SPRUCE_FENCE.getDefaultState());
+			setBlock(world, ox - 1, y + dy, oz - 2, Blocks.SPRUCE_FENCE.getDefaultState());
+		}
+		for (int dx = -3; dx <= -1; dx++) {
+			for (int dz = -2; dz <= 2; dz++) {
+				setBlock(world, ox + dx, y + 2, oz + dz, Blocks.GREEN_WOOL.getDefaultState());
+			}
+		}
+
+		setBlock(world, ox + 2, y, oz - 1, Blocks.BARREL.getDefaultState());
+		setBlock(world, ox + 3, y, oz + 1, Blocks.BARREL.getDefaultState());
+
+		placeCrate(world, new BlockPos(ox - 2, y, oz), ModBlocks.WEAPON_CRATE, TarkovLootPool.MILITARY, random);
+		placeCrate(world, new BlockPos(ox + 2, y, oz + 1), ModBlocks.TECHNICAL_CRATE, TarkovLootPool.CIVILIAN, random);
+	}
+
+	private static void buildForestStash(StructureWorldAccess world, BlockPos origin, Random random) {
+		int y = origin.getY();
+		int ox = origin.getX();
+		int oz = origin.getZ();
+
+		for (int dx = -1; dx <= 1; dx++) {
+			for (int dz = -1; dz <= 1; dz++) {
+				setFoundation(world, ox + dx, y - 1, oz + dz, Blocks.MOSSY_COBBLESTONE.getDefaultState());
+			}
+		}
+
+		setBlock(world, ox - 1, y, oz - 1, Blocks.OAK_LOG.getDefaultState());
+		setBlock(world, ox + 1, y, oz - 1, Blocks.MOSSY_COBBLESTONE.getDefaultState());
+		setBlock(world, ox - 1, y, oz + 1, Blocks.FERN.getDefaultState());
+
+		boolean isMilitary = random.nextFloat() < 0.30f;
+		SearchableLootBlock crate = isMilitary ? ModBlocks.WEAPON_CRATE : ModBlocks.TECHNICAL_CRATE;
+		TarkovLootPool pool = isMilitary ? TarkovLootPool.MILITARY : TarkovLootPool.CIVILIAN;
+		placeCrate(world, new BlockPos(ox, y, oz), crate, pool, random);
+	}
+
+	private static void setFoundation(StructureWorldAccess world, int x, int startY, int z, BlockState state) {
+		for (int dy = 0; dy < 3; dy++) {
+			BlockPos pos = new BlockPos(x, startY - dy, z);
+			if (dy == 0 || world.getBlockState(pos).isReplaceable()) {
+				world.setBlockState(pos, state, Block.NOTIFY_LISTENERS);
+			} else {
+				break;
 			}
 		}
 	}
 
-	private void insertInternal(GridEntry entry) {
-		entries.put(entry.getEntryId(), entry);
-		ItemSize size = entry.getOccupiedSize();
-		for (int dx = 0; dx < size.width(); dx++) {
-			for (int dy = 0; dy < size.height(); dy++) {
-				cells[entry.getX() + dx][entry.getY() + dy] = entry;
-			}
-		}
+	private static void setBlock(StructureWorldAccess world, int x, int y, int z, BlockState state) {
+		world.setBlockState(new BlockPos(x, y, z), state, Block.NOTIFY_LISTENERS);
 	}
 
-	private void clearCells(GridEntry entry) {
-		for (int x = 0; x < width; x++) {
-			for (int y = 0; y < height; y++) {
-				if (cells[x][y] == entry) {
-					cells[x][y] = null;
-				}
-			}
+	private static void placeCrate(
+		StructureWorldAccess world,
+		BlockPos cratePos,
+		SearchableLootBlock crateBlock,
+		TarkovLootPool pool,
+		Random random
+	) {
+		world.setBlockState(cratePos, crateBlock.getDefaultState(), Block.NOTIFY_LISTENERS);
+		if (world.getBlockEntity(cratePos) instanceof SearchableLootBlockEntity be) {
+			be.populateFromPool(pool, random);
 		}
-	}
-
-	private static boolean canMerge(ItemStack target, ItemStack incoming) {
-		return target.isStackable()
-			&& ItemStack.canCombine(target, incoming)
-			&& target.getCount() < target.getMaxCount();
-	}
-
-	public NbtCompound toNbt() {
-		NbtCompound nbt = new NbtCompound();
-		nbt.putInt("Width", width);
-		nbt.putInt("Height", height);
-		nbt.putUuid("ContainerId", containerId);
-		NbtList list = new NbtList();
-		for (GridEntry entry : entries.values()) {
-			if (!entry.getStack().isEmpty()) {
-				list.add(entry.toNbt());
-			}
-		}
-		nbt.put("Entries", list);
-		return nbt;
-	}
-
-	public static GridContainer fromNbt(NbtCompound nbt, int defaultWidth, int defaultHeight) {
-		int w = nbt.contains("Width") ? Math.max(1, nbt.getInt("Width")) : defaultWidth;
-		int h = nbt.contains("Height") ? Math.max(1, nbt.getInt("Height")) : defaultHeight;
-		UUID id = nbt.containsUuid("ContainerId") ? nbt.getUuid("ContainerId") : UUID.randomUUID();
-		GridContainer container = new GridContainer(w, h, id);
-		NbtList list = nbt.getList("Entries", NbtElement.COMPOUND_TYPE);
-		for (int i = 0; i < list.size(); i++) {
-			GridEntry entry = GridEntry.fromNbt(list.getCompound(i));
-			if (!entry.getStack().isEmpty() && container.canPlace(entry.getStack(), entry.getX(), entry.getY(), entry.isRotated())) {
-				container.insertInternal(entry);
-			}
-		}
-		return container;
 	}
 }
 
-// ========== .\src\main\java\com\tarkovcraft\grid\GridEntry.java ==========
-package com.tarkovcraft.grid;
+// ========== .\src\main\java\com\tarkovcraft\worldgen\TarkovStructureRegistry.java ==========
+package com.tarkovcraft.worldgen;
 
-import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtElement;
+import net.minecraft.nbt.NbtList;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.PersistentState;
+import org.jetbrains.annotations.Nullable;
 
-import java.util.UUID;
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
 
-public final class GridEntry {
-	private final UUID entryId;
-	private ItemStack stack;
-	private int x;
-	private int y;
-	private boolean rotated;
+/**
+ * Persistent world registry of generated TarkovCraft structures so /tarkov locate can find them.
+ */
+public final class TarkovStructureRegistry extends PersistentState {
+	private static final String STATE_KEY = "tarkovcraft_structures";
+	private static final int MAX_PER_KIND = 512;
 
-	public GridEntry(UUID entryId, ItemStack stack, int x, int y, boolean rotated) {
-		this.entryId = entryId;
-		this.stack = stack;
-		this.x = x;
-		this.y = y;
-		this.rotated = rotated;
+	public record FoundStructure(TarkovStructureFeature.StructureKind kind, BlockPos pos) {
 	}
 
-	public static GridEntry create(ItemStack stack, int x, int y, boolean rotated) {
-		return new GridEntry(UUID.randomUUID(), stack, x, y, rotated);
-	}
+	private final Map<TarkovStructureFeature.StructureKind, List<BlockPos>> positions =
+		new EnumMap<>(TarkovStructureFeature.StructureKind.class);
 
-	public UUID getEntryId() {
-		return entryId;
-	}
-
-	public ItemStack getStack() {
-		return stack;
-	}
-
-	public void setStack(ItemStack stack) {
-		this.stack = stack;
-	}
-
-	public int getX() {
-		return x;
-	}
-
-	public void setX(int x) {
-		this.x = x;
-	}
-
-	public int getY() {
-		return y;
-	}
-
-	public void setY(int y) {
-		this.y = y;
-	}
-
-	public boolean isRotated() {
-		return rotated;
-	}
-
-	public void setRotated(boolean rotated) {
-		this.rotated = rotated;
-	}
-
-	public ItemSize getOccupiedSize() {
-		return ItemSizeRegistry.getSize(stack).oriented(rotated);
-	}
-
-	public NbtCompound toNbt() {
-		NbtCompound nbt = new NbtCompound();
-		nbt.putUuid("EntryId", entryId);
-		nbt.put("Stack", stack.writeNbt(new NbtCompound()));
-		nbt.putInt("X", x);
-		nbt.putInt("Y", y);
-		nbt.putBoolean("Rotated", rotated);
-		return nbt;
-	}
-
-	public static GridEntry fromNbt(NbtCompound nbt) {
-		UUID id = nbt.containsUuid("EntryId") ? nbt.getUuid("EntryId") : UUID.randomUUID();
-		ItemStack stack = ItemStack.fromNbt(nbt.getCompound("Stack"));
-		int x = nbt.getInt("X");
-		int y = nbt.getInt("Y");
-		boolean rotated = nbt.getBoolean("Rotated");
-		return new GridEntry(id, stack, x, y, rotated);
-	}
-}
-
-// ========== .\src\main\java\com\tarkovcraft\grid\ItemSize.java ==========
-package com.tarkovcraft.grid;
-
-public record ItemSize(int width, int height) {
-	public static final ItemSize ONE_BY_ONE = new ItemSize(1, 1);
-
-	public ItemSize {
-		if (width < 1 || height < 1) {
-			throw new IllegalArgumentException("ItemSize dimensions must be >= 1, got " + width + "x" + height);
+	public TarkovStructureRegistry() {
+		for (TarkovStructureFeature.StructureKind kind : TarkovStructureFeature.StructureKind.values()) {
+			positions.put(kind, new ArrayList<>());
 		}
 	}
 
-	public ItemSize rotated() {
-		return new ItemSize(height, width);
+	public static TarkovStructureRegistry get(ServerWorld world) {
+		return world.getPersistentStateManager().getOrCreate(
+			TarkovStructureRegistry::fromNbt,
+			TarkovStructureRegistry::new,
+			STATE_KEY
+		);
 	}
 
-	public ItemSize oriented(boolean rotated) {
-		return rotated ? rotated() : this;
+	public synchronized void record(TarkovStructureFeature.StructureKind kind, BlockPos pos) {
+		if (kind == null || pos == null) {
+			return;
+		}
+		List<BlockPos> list = positions.get(kind);
+		BlockPos imm = pos.toImmutable();
+		if (list.contains(imm)) {
+			return;
+		}
+		if (list.size() >= MAX_PER_KIND) {
+			list.remove(0);
+		}
+		list.add(imm);
+		markDirty();
 	}
+
+	@Nullable
+	public synchronized FoundStructure findNearest(
+		@Nullable TarkovStructureFeature.StructureKind filterKind,
+		BlockPos origin
+	) {
+		FoundStructure best = null;
+		double bestDistSq = Double.MAX_VALUE;
+		for (TarkovStructureFeature.StructureKind kind : TarkovStructureFeature.StructureKind.values()) {
+			if (filterKind != null && kind != filterKind) {
+				continue;
+			}
+			for (BlockPos pos : positions.get(kind)) {
+				double distSq = pos.getSquaredDistance(origin);
+				if (distSq < bestDistSq) {
+					bestDistSq = distSq;
+					best = new FoundStructure(kind, pos);
+				}
+			}
+		}
+		return best;
+	}
+
+	@Override
+	public synchronized NbtCompound writeNbt(NbtCompound nbt) {
+		for (TarkovStructureFeature.StructureKind kind : TarkovStructureFeature.StructureKind.values()) {
+			NbtList list = new NbtList();
+			for (BlockPos pos : positions.get(kind)) {
+				NbtCompound entry = new NbtCompound();
+				entry.putInt("x", pos.getX());
+				entry.putInt("y", pos.getY());
+				entry.putInt("z", pos.getZ());
+				list.add(entry);
+			}
+			nbt.put(kind.name(), list);
+		}
+		return nbt;
+	}
+
+	public static TarkovStructureRegistry fromNbt(NbtCompound nbt) {
+		TarkovStructureRegistry reg = new TarkovStructureRegistry();
+		for (TarkovStructureFeature.StructureKind kind : TarkovStructureFeature.StructureKind.values()) {
+			if (!nbt.contains(kind.name(), NbtElement.LIST_TYPE)) {
+				continue;
+			}
+			NbtList list = nbt.getList(kind.name(), NbtElement.COMPOUND_TYPE);
+			List<BlockPos> target = reg.positions.get(kind);
+			for (int i = 0; i < list.size() && target.size() < MAX_PER_KIND; i++) {
+				NbtCompound c = list.getCompound(i);
+				target.add(new BlockPos(c.getInt("x"), c.getInt("y"), c.getInt("z")));
+			}
+		}
+		return reg;
+	}
+}
+
+// ========== .\src\main\resources\tarkovcraft.mixins.json ==========
+{
+  "required": true,
+  "package": "com.tarkovcraft.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [
+    "PlayerEntityMixin",
+    "PlayerInventoryMixin",
+    "LivingEntityDeathMixin",
+    "ItemEntityPickupMixin",
+    "ServerPlayNetworkHandlerMixin",
+    "ArmorItemMixin",
+    "BlockStateMixin",
+    "PlayerManagerSoundMixin"
+  ],
+  "client": [
+    "MinecraftClientMixin",
+    "InGameHudMixin",
+    "ItemEntityRendererMixin",
+    "KeyBindingMixin",
+    "SoundSystemMixin",
+    "VoicePhysicsHudMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
+
+// ========== .\src\main\resources\fabric.mod.json ==========
+{
+  "schemaVersion": 1,
+  "id": "tarkovcraft",
+  "version": "${version}",
+  "name": "TarkovCraft",
+  "description": "Tarkov-inspired tactical inventory, grid storage, equipment, corpse looting, and two-stage search mechanics for Minecraft 1.20.1 Fabric.",
+  "authors": [
+    "TarkovCraft Team"
+  ],
+  "license": "MIT",
+  "environment": "*",
+  "languageAdapters": {
+    "tarkovcraft_voicechat": "com.tarkovcraft.compat.voicechat.VoicechatAdapter"
+  },
+  "entrypoints": {
+    "voicechat": [
+      {
+        "adapter": "tarkovcraft_voicechat",
+        "value": "tarkovcraft"
+      }
+    ],
+    "main": [
+      "com.tarkovcraft.TarkovCraftMod"
+    ],
+    "client": [
+      "com.tarkovcraft.client.TarkovCraftClient"
+    ],
+    "modmenu": [
+      "com.tarkovcraft.client.compat.TarkovModMenuIntegration"
+    ],
+    "emi": [
+      "com.tarkovcraft.client.compat.TarkovEmiPlugin"
+    ]
+  },
+  "mixins": [
+    "tarkovcraft.mixins.json"
+  ],
+  "suggests": {
+    "voicechat": "*",
+    "vc-audio-distance": "*"
+  },
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "minecraft": "~1.20.1",
+    "java": ">=17",
+    "fabric-api": "*"
+  }
 }

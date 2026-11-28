@@ -1,1128 +1,213 @@
 
-// ========== .\src\main\java\com\tarkovcraft\client\WorldInteractState.java ==========
-package com.tarkovcraft.client;
+// ========== .\src\main\java\com\tarkovcraft\screen\TarkovScreenHandler.java ==========
+package com.tarkovcraft.screen;
 
-import com.tarkovcraft.item.BackpackItem;
-import com.tarkovcraft.item.TacticalRigItem;
-import com.tarkovcraft.item.TarkovCaseItem;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.ItemEntity;
-import org.jetbrains.annotations.Nullable;
-
-/**
- * Tracks the currently targeted world interactable and the scroll-wheel selected action
- * for multi-action items on the ground (Backpacks & Tactical Rigs):
- *   0 = Search (default, top)
- *   1 = Equip / Take (scroll down, bottom)
- */
-public final class WorldInteractState {
-	public static final int ACTION_SEARCH = 0;
-	public static final int ACTION_EQUIP_OR_TAKE = 1;
-
-	private static int lastTargetEntityId = -1;
-	private static boolean multiActionActive = false;
-	private static int selectedAction = ACTION_SEARCH;
-
-	private WorldInteractState() {
-	}
-
-	public static void updateTarget(@Nullable Entity entity) {
-		if (entity instanceof ItemEntity ie
-			&& !ie.getStack().isEmpty()
-			&& (ie.getStack().getItem() instanceof BackpackItem
-			|| ie.getStack().getItem() instanceof TacticalRigItem
-			|| ie.getStack().getItem() instanceof TarkovCaseItem)) {
-			if (ie.getId() != lastTargetEntityId) {
-				lastTargetEntityId = ie.getId();
-				selectedAction = ACTION_SEARCH; // Default top option: Search
-			}
-			multiActionActive = true;
-		} else {
-			lastTargetEntityId = -1;
-			multiActionActive = false;
-			selectedAction = ACTION_SEARCH;
-		}
-	}
-
-	public static boolean hasMultiActionMenu() {
-		return multiActionActive;
-	}
-
-	public static int getSelectedAction() {
-		return multiActionActive ? selectedAction : ACTION_SEARCH;
-	}
-
-	public static void scrollAction(int delta) {
-		if (!multiActionActive) return;
-		selectedAction = Math.max(ACTION_SEARCH, Math.min(ACTION_EQUIP_OR_TAKE, selectedAction + delta));
-	}
-}
-
-// ========== .\src\main\java\com\tarkovcraft\command\TarkovCommand.java ==========
-package com.tarkovcraft.command;
-
-import com.mojang.brigadier.CommandDispatcher;
-import com.mojang.brigadier.arguments.FloatArgumentType;
-import com.mojang.brigadier.arguments.IntegerArgumentType;
-import com.mojang.brigadier.arguments.StringArgumentType;
-import com.tarkovcraft.airdrop.AirdropManager;
 import com.tarkovcraft.block.SearchableLootBlockEntity;
-import com.tarkovcraft.config.TarkovConfig;
+import com.tarkovcraft.container.VanillaContainerBridge;
+import com.tarkovcraft.container.VanillaContainerState;
 import com.tarkovcraft.entity.CorpseEntity;
 import com.tarkovcraft.grid.ContainerItemHelper;
 import com.tarkovcraft.grid.GridContainer;
+import com.tarkovcraft.grid.GridEntry;
 import com.tarkovcraft.health.BodyPart;
 import com.tarkovcraft.health.BodyPartHealth;
-import com.tarkovcraft.health.HitZone;
-import com.tarkovcraft.health.InjuryType;
-import com.tarkovcraft.loadout.EquipmentSlotType;
-import com.tarkovcraft.loadout.PlayerLoadout;
-import com.tarkovcraft.loadout.PlayerLoadoutHolder;
-import com.tarkovcraft.loot.TarkovLootPool;
-import com.tarkovcraft.registry.ModBlocks;
-import com.tarkovcraft.registry.ModEntities;
-import com.tarkovcraft.registry.ModItems;
-import com.tarkovcraft.worldgen.TarkovStructureFeature;
-import com.tarkovcraft.worldgen.TarkovStructureRegistry;
-import net.minecraft.block.entity.BlockEntity;
-import net.minecraft.command.CommandSource;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.server.command.CommandManager;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.ClickEvent;
-import net.minecraft.text.HoverEvent;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.math.BlockPos;
-
-import java.util.Arrays;
-import java.util.List;
-
-/**
- * Operator-only (/tarkov, permission level 2) testing utilities.
- */
-public final class TarkovCommand {
-	private TarkovCommand() {
-	}
-
-	public static void register(CommandDispatcher<ServerCommandSource> dispatcher) {
-		List<String> zoneNames = Arrays.stream(HitZone.values()).map(HitZone::getId).toList();
-		List<String> partNames = Arrays.stream(BodyPart.values()).map(BodyPart::getId).toList();
-		List<String> limbNames = List.of("left_arm", "right_arm", "left_leg", "right_leg");
-		List<String> bleedTypes = List.of("light", "heavy");
-		List<String> structureNames = List.of("any", "roadblock", "med_tent", "military_camp", "forest_stash");
-
-		dispatcher.register(CommandManager.literal("tarkov")
-			.requires(source -> source.hasPermissionLevel(2))
-			.then(CommandManager.literal("kit")
-				.executes(ctx -> giveStarterKit(ctx.getSource())))
-			.then(CommandManager.literal("meds")
-				.executes(ctx -> giveMedicalKit(ctx.getSource())))
-			.then(CommandManager.literal("loot")
-				.executes(ctx -> spawnTestLootCrate(ctx.getSource())))
-			.then(CommandManager.literal("corpse")
-				.executes(ctx -> spawnTestCorpse(ctx.getSource())))
-			.then(CommandManager.literal("clear_corpses")
-				.executes(ctx -> clearCorpses(ctx.getSource())))
-			.then(CommandManager.literal("reload")
-				.executes(ctx -> reloadConfig(ctx.getSource())))
-			.then(CommandManager.literal("locate")
-				.executes(ctx -> locateStructure(ctx.getSource(), "any"))
-				.then(CommandManager.argument("structure", StringArgumentType.word())
-					.suggests((ctx, builder) -> CommandSource.suggestMatching(structureNames, builder))
-					.executes(ctx -> locateStructure(
-						ctx.getSource(),
-						StringArgumentType.getString(ctx, "structure")
-					))
-				)
-			)
-			.then(CommandManager.literal("airdrop")
-				.executes(ctx -> spawnAirdropNear(ctx.getSource()))
-				.then(CommandManager.literal("here")
-					.executes(ctx -> spawnAirdropHere(ctx.getSource())))
-				.then(CommandManager.literal("interval")
-					.then(CommandManager.argument("minutes", IntegerArgumentType.integer(1, 1440))
-						.executes(ctx -> setAirdropInterval(
-							ctx.getSource(),
-							IntegerArgumentType.getInteger(ctx, "minutes")
-						))
-					)
-				)
-			)
-			.then(CommandManager.literal("heal")
-				.executes(ctx -> healFull(ctx.getSource())))
-			.then(CommandManager.literal("bleed")
-				.then(CommandManager.argument("part", StringArgumentType.word())
-					.suggests((ctx, builder) -> CommandSource.suggestMatching(partNames, builder))
-					.then(CommandManager.argument("type", StringArgumentType.word())
-						.suggests((ctx, builder) -> CommandSource.suggestMatching(bleedTypes, builder))
-						.executes(ctx -> applyBleed(
-							ctx.getSource(),
-							StringArgumentType.getString(ctx, "part"),
-							StringArgumentType.getString(ctx, "type")
-						))
-					)
-				)
-			)
-			.then(CommandManager.literal("fracture")
-				.then(CommandManager.argument("part", StringArgumentType.word())
-					.suggests((ctx, builder) -> CommandSource.suggestMatching(limbNames, builder))
-					.executes(ctx -> applyFracture(
-						ctx.getSource(),
-						StringArgumentType.getString(ctx, "part")
-					))
-				)
-			)
-			.then(CommandManager.literal("hit")
-				.then(CommandManager.argument("zone", StringArgumentType.word())
-					.suggests((ctx, builder) -> CommandSource.suggestMatching(zoneNames, builder))
-					.then(CommandManager.argument("damage", FloatArgumentType.floatArg(1.0f, 500.0f))
-						.executes(ctx -> simulateHit(
-							ctx.getSource(),
-							StringArgumentType.getString(ctx, "zone"),
-							FloatArgumentType.getFloat(ctx, "damage"),
-							25
-						))
-						.then(CommandManager.argument("penetration", IntegerArgumentType.integer(0, 100))
-							.executes(ctx -> simulateHit(
-								ctx.getSource(),
-								StringArgumentType.getString(ctx, "zone"),
-								FloatArgumentType.getFloat(ctx, "damage"),
-								IntegerArgumentType.getInteger(ctx, "penetration")
-							))
-						)
-					)
-				)
-			)
-		);
-	}
-
-	private static int healFull(ServerCommandSource source) {
-		ServerPlayerEntity player = source.getPlayer();
-		if (player == null || !(player instanceof PlayerLoadoutHolder holder)) return 0;
-		holder.tarkovcraft$getBodyHealth().resetFull();
-		player.setHealth(player.getMaxHealth());
-		holder.tarkovcraft$syncBodyHealth();
-		source.sendFeedback(() -> Text.literal("[TarkovCraft] All body parts restored to 435/435 HP."), false);
-		return 1;
-	}
-
-	private static int simulateHit(ServerCommandSource source, String zoneStr, float damage, int penetration) {
-		ServerPlayerEntity player = source.getPlayer();
-		if (player == null || !(player instanceof PlayerLoadoutHolder holder)) return 0;
-
-		HitZone zone = HitZone.byId(zoneStr);
-		BodyPartHealth health = holder.tarkovcraft$getBodyHealth();
-		PlayerLoadout loadout = holder.tarkovcraft$getLoadout();
-
-		boolean killed = health.applyHit(
-			loadout, zone, damage, penetration, 1.0f, false, true,
-			player.getRandom().nextFloat(), player.getRandom().nextFloat(), player.getRandom().nextFloat(),
-			"Scav Sniper", "AK-74M", "5.45x39 PS", 32.5f
-		);
-		holder.tarkovcraft$syncBodyHealth();
-		holder.tarkovcraft$syncLoadout();
-
-		if (killed) {
-			player.setHealth(0.0f);
-			player.onDeath(player.getDamageSources().generic());
-		} else {
-			player.setHealth(Math.max(1.0f, health.getTotalRatio() * player.getMaxHealth()));
-			source.sendFeedback(() -> Text.literal(
-				"[TarkovCraft] Hit " + zone.getId() + " (" + damage + " raw, pen=" + penetration + ") -> "
-					+ zone.getBodyPart().getId() + "=" + Math.round(health.getHp(zone.getBodyPart()))
-					+ ", thorax=" + Math.round(health.getHp(com.tarkovcraft.health.BodyPart.THORAX))
-			), false);
-		}
-		return 1;
-	}
-
-	private static int giveStarterKit(ServerCommandSource source) {
-		ServerPlayerEntity player = source.getPlayer();
-		if (player == null || !(player instanceof PlayerLoadoutHolder holder)) {
-			return 0;
-		}
-		PlayerLoadout loadout = holder.tarkovcraft$getLoadout();
-		loadout.setEquipment(EquipmentSlotType.HELMET, new ItemStack(ModItems.SSH68_HELMET));
-		loadout.setEquipment(EquipmentSlotType.FACE_MASK, new ItemStack(ModItems.BALACLAVA_MASK));
-		loadout.setEquipment(EquipmentSlotType.BODY_ARMOR, new ItemStack(ModItems.PACA_ARMOR));
-		loadout.setEquipment(EquipmentSlotType.MELEE, new ItemStack(Items.IRON_SWORD));
-
-		ItemStack rig = new ItemStack(ModItems.TRITON_RIG);
-		loadout.setEquipment(EquipmentSlotType.RIG, rig);
-
-		ItemStack bp = new ItemStack(ModItems.BERKUT_BACKPACK);
-		GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
-		bpGrid.tryAutoPlace(new ItemStack(Items.COOKED_BEEF, 4));
-		bpGrid.tryAutoPlace(new ItemStack(Items.GOLDEN_APPLE, 1));
-		ContainerItemHelper.writeBackpackGrid(bp, bpGrid);
-		loadout.setEquipment(EquipmentSlotType.BACKPACK, bp);
-
-		loadout.setPocket(0, new ItemStack(Items.APPLE, 2));
-		loadout.setPocket(1, new ItemStack(Items.TORCH, 8));
-
-		holder.tarkovcraft$syncLoadout();
-		source.sendFeedback(() -> Text.literal("[TarkovCraft] Starter kit equipped."), false);
-		return 1;
-	}
-
-	private static int giveMedicalKit(ServerCommandSource source) {
-		ServerPlayerEntity player = source.getPlayer();
-		if (player == null || !(player instanceof PlayerLoadoutHolder holder)) {
-			return 0;
-		}
-		PlayerLoadout loadout = holder.tarkovcraft$getLoadout();
-		List<ItemStack> meds = List.of(
-			new ItemStack(ModItems.BANDAGE),
-			new ItemStack(ModItems.CAT_TOURNIQUET),
-			new ItemStack(ModItems.SPLINT),
-			new ItemStack(ModItems.ALU_SPLINT),
-			new ItemStack(ModItems.ANALGIN),
-			new ItemStack(ModItems.AI2_MEDKIT),
-			new ItemStack(ModItems.SALEWA_MEDKIT),
-			new ItemStack(ModItems.CMS_KIT),
-			new ItemStack(ModItems.SURV12_KIT)
-		);
-		for (ItemStack med : meds) {
-			ItemStack copy = med.copy();
-			if (!loadout.tryInsertItem(copy, player.getUuid()) || !copy.isEmpty()) {
-				if (!copy.isEmpty()) {
-					player.dropItem(copy, false);
-				}
-			}
-		}
-		holder.tarkovcraft$syncLoadout();
-		source.sendFeedback(() -> Text.literal("[TarkovCraft] Issued all 9 medical items."), false);
-		return 1;
-	}
-
-	private static int applyBleed(ServerCommandSource source, String partStr, String typeStr) {
-		ServerPlayerEntity player = source.getPlayer();
-		if (player == null || !(player instanceof PlayerLoadoutHolder holder)) {
-			return 0;
-		}
-		BodyPart part = BodyPart.byId(partStr);
-		InjuryType injury = "heavy".equalsIgnoreCase(typeStr) ? InjuryType.HEAVY_BLEED : InjuryType.LIGHT_BLEED;
-		holder.tarkovcraft$getBodyHealth().addInjury(part, injury);
-		holder.tarkovcraft$syncBodyHealth();
-		source.sendFeedback(() -> Text.literal("[TarkovCraft] Applied " + injury.getId() + " to " + part.getId() + "."), false);
-		return 1;
-	}
-
-	private static int applyFracture(ServerCommandSource source, String partStr) {
-		ServerPlayerEntity player = source.getPlayer();
-		if (player == null || !(player instanceof PlayerLoadoutHolder holder)) {
-			return 0;
-		}
-		BodyPart part = BodyPart.byId(partStr);
-		if (!BodyPartHealth.isLimb(part)) {
-			source.sendError(Text.literal("[TarkovCraft] Only limbs (left_arm, right_arm, left_leg, right_leg) can fracture."));
-			return 0;
-		}
-		holder.tarkovcraft$getBodyHealth().addInjury(part, InjuryType.FRACTURE);
-		holder.tarkovcraft$syncBodyHealth();
-		source.sendFeedback(() -> Text.literal("[TarkovCraft] Applied fracture to " + part.getId() + "."), false);
-		return 1;
-	}
-
-	private static int spawnTestLootCrate(ServerCommandSource source) {
-		ServerPlayerEntity player = source.getPlayer();
-		if (player == null) {
-			return 0;
-		}
-		BlockPos pos = player.getBlockPos().offset(player.getHorizontalFacing(), 2);
-		player.getWorld().setBlockState(pos, ModBlocks.WEAPON_CRATE.getDefaultState());
-		BlockEntity be = player.getWorld().getBlockEntity(pos);
-		if (be instanceof SearchableLootBlockEntity lootBe) {
-			lootBe.populateFromPool(TarkovLootPool.MILITARY, player.getWorld().getRandom());
-		}
-		source.sendFeedback(() -> Text.literal("[TarkovCraft] Spawned Weapon Crate at " + pos.toShortString()), false);
-		return 1;
-	}
-
-	private static int reloadConfig(ServerCommandSource source) {
-		TarkovConfig.loadOrCreate();
-		AirdropManager.onConfigReloaded();
-		source.sendFeedback(() -> Text.translatable("message.tarkovcraft.config_reloaded"), true);
-		return 1;
-	}
-
-	private static int locateStructure(ServerCommandSource source, String typeRaw) {
-		TarkovStructureFeature.StructureKind filter = null;
-		if (typeRaw != null && !"any".equalsIgnoreCase(typeRaw)) {
-			try {
-				filter = TarkovStructureFeature.StructureKind.valueOf(typeRaw.toUpperCase(java.util.Locale.ROOT));
-			} catch (IllegalArgumentException e) {
-				source.sendError(Text.literal("[TarkovCraft] Unknown structure: " + typeRaw
-					+ " (use: any, roadblock, med_tent, military_camp, forest_stash)"));
-				return 0;
-			}
-		}
-
-		BlockPos origin = BlockPos.ofFloored(source.getPosition());
-		TarkovStructureRegistry registry = TarkovStructureRegistry.get(source.getWorld());
-		TarkovStructureRegistry.FoundStructure found = registry.findNearest(filter, origin);
-		if (found == null) {
-			source.sendError(Text.literal("[TarkovCraft] No generated structures recorded yet for '" + typeRaw
-				+ "'. Explore new chunks in Overworld to generate them."));
-			return 0;
-		}
-
-		BlockPos pos = found.pos();
-		int dist = (int) Math.round(Math.sqrt(pos.getSquaredDistance(origin)));
-		String tpCmd = "/tp @s " + pos.getX() + " " + (pos.getY() + 1) + " " + pos.getZ();
-		Text coords = Text.literal("[" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + "]")
-			.styled(style -> style
-				.withColor(Formatting.GREEN)
-				.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, tpCmd))
-				.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal("Click to teleport: " + tpCmd)))
-			);
-		source.sendFeedback(() -> Text.literal("[TarkovCraft] Nearest "
-			+ found.kind().name().toLowerCase(java.util.Locale.ROOT) + " is at ")
-			.append(coords)
-			.append(Text.literal(" (" + dist + " blocks away)")), false);
-		return 1;
-	}
-
-	private static int spawnAirdropNear(ServerCommandSource source) {
-		ServerPlayerEntity player = source.getPlayer();
-		if (player == null) {
-			return 0;
-		}
-		AirdropManager.spawnAirdropNear(player);
-		return 1;
-	}
-
-	private static int spawnAirdropHere(ServerCommandSource source) {
-		ServerPlayerEntity player = source.getPlayer();
-		if (player == null) {
-			return 0;
-		}
-		AirdropManager.spawnAirdropAt(player.getServerWorld(), player.getBlockX(), player.getBlockZ(), true);
-		return 1;
-	}
-
-	private static int setAirdropInterval(ServerCommandSource source, int minutes) {
-		TarkovConfig cfg = TarkovConfig.get();
-		cfg.airdropIntervalMinutes = minutes;
-		cfg.validateAndClamp();
-		TarkovConfig.save();
-		AirdropManager.onConfigReloaded();
-		source.sendFeedback(() -> Text.literal("[TarkovCraft] Airdrop interval set to " + cfg.airdropIntervalMinutes + " min."), true);
-		return 1;
-	}
-
-	private static int spawnTestCorpse(ServerCommandSource source) {
-		ServerPlayerEntity player = source.getPlayer();
-		if (player == null) {
-			return 0;
-		}
-		CorpseEntity corpse = new CorpseEntity(ModEntities.CORPSE, player.getWorld());
-		BlockPos pos = player.getBlockPos().offset(player.getHorizontalFacing(), 2);
-		corpse.setPosition(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5);
-		corpse.setYaw(player.getYaw());
-		corpse.setOwnerName("Scav Raider");
-		corpse.populateScavLoot(player.getWorld().getRandom());
-		player.getWorld().spawnEntity(corpse);
-		source.sendFeedback(() -> Text.literal("[TarkovCraft] Spawned Scav Raider corpse (pockets + rig + backpack)."), false);
-		return 1;
-	}
-
-	private static int clearCorpses(ServerCommandSource source) {
-		List<? extends CorpseEntity> corpses = source.getWorld().getEntitiesByType(ModEntities.CORPSE, e -> true);
-		int count = corpses.size();
-		for (CorpseEntity c : corpses) {
-			c.discard();
-		}
-		source.sendFeedback(() -> Text.literal("[TarkovCraft] Removed " + count + " corpse(s)."), false);
-		return count;
-	}
-}
-
-// ========== .\src\main\java\com\tarkovcraft\config\TarkovConfig.java ==========
-package com.tarkovcraft.config;
-
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import net.fabricmc.loader.api.FabricLoader;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.Reader;
-import java.io.Writer;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-
-/**
- * Thread-safe, JUnit-safe Gson configuration stored in config/tarkovcraft.json.
- */
-public final class TarkovConfig {
-	private static final Logger LOGGER = LoggerFactory.getLogger("TarkovCraft/Config");
-	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
-	private static volatile TarkovConfig instance = new TarkovConfig();
-
-	public boolean airdropEnabled = true;
-	public int airdropIntervalMinutes = 30;
-	public int airdropMinRadius = 48;
-	public int airdropMaxRadius = 120;
-	public int airdropSmokeSeconds = 180;
-	public boolean airdropAnnounceCoords = true;
-	public boolean worldgenStructuresEnabled = true;
-	public float lootDensityMultiplier = 1.0f;
-	public float mobGearSpawnChance = 0.08f;
-	public float mobBackpackChance = 0.35f;
-	public float corpseBaseLootChance = 0.25f;
-	public int corpseLifetimeSeconds = 600;
-	public float containerRevealSeconds = 1.0f;
-	public float searchTimeMultiplier = 1.0f;
-	public float grenadeDamageMultiplier = 1.0f;
-
-	public TarkovConfig() {
-	}
-
-	public static TarkovConfig get() {
-		return instance;
-	}
-
-	public static void setInstanceForTest(TarkovConfig config) {
-		if (config != null) {
-			config.validateAndClamp();
-			instance = config;
-		}
-	}
-
-	public static synchronized TarkovConfig loadOrCreate() {
-		try {
-			Path path = FabricLoader.getInstance().getConfigDir().resolve("tarkovcraft.json");
-			return loadFromPath(path);
-		} catch (Throwable t) {
-			LOGGER.warn("Could not resolve Fabric config dir ({}); using in-memory defaults.", t.getMessage());
-			TarkovConfig fallback = new TarkovConfig();
-			fallback.validateAndClamp();
-			instance = fallback;
-			return fallback;
-		}
-	}
-
-	public static synchronized void save() {
-		try {
-			Path path = FabricLoader.getInstance().getConfigDir().resolve("tarkovcraft.json");
-			saveToPath(path, instance);
-		} catch (Throwable t) {
-			LOGGER.warn("Failed to save config/tarkovcraft.json: {}", t.getMessage());
-		}
-	}
-
-	public static synchronized TarkovConfig loadFromPath(Path path) {
-		TarkovConfig loaded = null;
-		if (Files.exists(path)) {
-			try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-				loaded = GSON.fromJson(reader, TarkovConfig.class);
-			} catch (Exception e) {
-				LOGGER.warn("Failed to parse config {}: {}; restoring defaults.", path, e.getMessage());
-			}
-		}
-		if (loaded == null) {
-			loaded = new TarkovConfig();
-		}
-		loaded.validateAndClamp();
-		saveToPath(path, loaded);
-		instance = loaded;
-		return loaded;
-	}
-
-	public static synchronized void saveToPath(Path path, TarkovConfig cfg) {
-		try {
-			Path parent = path.getParent();
-			if (parent != null) {
-				Files.createDirectories(parent);
-			}
-			try (Writer writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
-				GSON.toJson(cfg, writer);
-			}
-		} catch (Exception e) {
-			LOGGER.warn("Failed to write config {}: {}", path, e.getMessage());
-		}
-	}
-
-	public void validateAndClamp() {
-		airdropIntervalMinutes = clampInt(airdropIntervalMinutes, 1, 1440);
-		airdropMinRadius = clampInt(airdropMinRadius, 8, 256);
-		airdropMaxRadius = clampInt(airdropMaxRadius, airdropMinRadius, 512);
-		airdropSmokeSeconds = clampInt(airdropSmokeSeconds, 0, 1800);
-		lootDensityMultiplier = clampFloat(lootDensityMultiplier, 0.1f, 5.0f, 1.0f);
-		mobGearSpawnChance = clampFloat(mobGearSpawnChance, 0.0f, 1.0f, 0.08f);
-		mobBackpackChance = clampFloat(mobBackpackChance, 0.0f, 1.0f, 0.35f);
-		corpseBaseLootChance = clampFloat(corpseBaseLootChance, 0.0f, 1.0f, 0.25f);
-		corpseLifetimeSeconds = clampInt(corpseLifetimeSeconds, 30, 7200);
-		containerRevealSeconds = clampFloat(containerRevealSeconds, 0.1f, 10.0f, 1.0f);
-		searchTimeMultiplier = clampFloat(searchTimeMultiplier, 0.1f, 5.0f, 1.0f);
-		grenadeDamageMultiplier = clampFloat(grenadeDamageMultiplier, 0.1f, 5.0f, 1.0f);
-	}
-
-	public int getAirdropIntervalTicks() {
-		return airdropIntervalMinutes * 60 * 20;
-	}
-
-	public int getContainerRevealTicks() {
-		return Math.max(2, Math.round(containerRevealSeconds * 20.0f));
-	}
-
-	public int getCorpseLifetimeTicks() {
-		return corpseLifetimeSeconds * 20;
-	}
-
-	private static int clampInt(int value, int min, int max) {
-		return Math.max(min, Math.min(max, value));
-	}
-
-	private static float clampFloat(float value, float min, float max, float fallback) {
-		if (Float.isNaN(value) || Float.isInfinite(value)) {
-			return fallback;
-		}
-		return Math.max(min, Math.min(max, value));
-	}
-}
-
-// ========== .\src\main\java\com\tarkovcraft\entity\AirdropEntity.java ==========
-package com.tarkovcraft.entity;
-
-import com.tarkovcraft.block.SearchableLootBlockEntity;
-import com.tarkovcraft.config.TarkovConfig;
-import com.tarkovcraft.loot.TarkovLootPool;
-import com.tarkovcraft.registry.ModBlocks;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.MovementType;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.particle.DustParticleEffect;
-import net.minecraft.particle.ParticleTypes;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.sound.SoundEvents;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.Heightmap;
-import net.minecraft.world.World;
-import org.joml.Vector3f;
-
-public class AirdropEntity extends Entity {
-	private static final double DESCENT_SPEED = -0.14;
-	private static final int MAX_AIR_TICKS = 1200;
-	private static final DustParticleEffect RED_FLARE_DUST =
-		new DustParticleEffect(new Vector3f(0.92f, 0.14f, 0.14f), 2.2f);
-
-	private int ticksInAir = 0;
-
-	public AirdropEntity(EntityType<? extends AirdropEntity> type, World world) {
-		super(type, world);
-		this.intersectionChecked = true;
-		this.setNoGravity(true);
-	}
-
-	@Override
-	protected void initDataTracker() {
-	}
-
-	@Override
-	protected void readCustomDataFromNbt(NbtCompound nbt) {
-		this.ticksInAir = nbt.getInt("TicksInAir");
-	}
-
-	@Override
-	protected void writeCustomDataToNbt(NbtCompound nbt) {
-		nbt.putInt("TicksInAir", this.ticksInAir);
-	}
-
-	@Override
-	public boolean shouldRender(double distance) {
-		return distance < 192.0 * 192.0;
-	}
-
-	@Override
-	public void tick() {
-		super.tick();
-		this.ticksInAir++;
-
-		this.setVelocity(new Vec3d(0.0, DESCENT_SPEED, 0.0));
-		this.move(MovementType.SELF, this.getVelocity());
-
-		if (!(getWorld() instanceof ServerWorld sw)) {
-			return;
-		}
-
-		if (this.ticksInAir % 3 == 0) {
-			double cx = getX();
-			double cy = getY() + 1.0;
-			double cz = getZ();
-			sw.spawnParticles(RED_FLARE_DUST, cx, cy + 0.6, cz, 4, 0.22, 0.45, 0.22, 0.01);
-			sw.spawnParticles(ParticleTypes.CAMPFIRE_SIGNAL_SMOKE, cx, cy + 1.1, cz, 1, 0.12, 0.2, 0.12, 0.04);
-		}
-
-		BlockPos below = BlockPos.ofFloored(getX(), getY() - 0.08, getZ());
-		BlockState belowState = sw.getBlockState(below);
-		boolean hitGround = this.isOnGround()
-			|| (!belowState.isAir() && !belowState.isReplaceable())
-			|| !sw.getFluidState(getBlockPos()).isEmpty()
-			|| this.ticksInAir > MAX_AIR_TICKS;
-
-		if (hitGround) {
-			land(sw);
-		}
-	}
-
-	private void land(ServerWorld sw) {
-		BlockPos placePos = getBlockPos();
-		if (this.ticksInAir > MAX_AIR_TICKS && sw.getBlockState(placePos.down()).isReplaceable()) {
-			placePos = sw.getTopPosition(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, placePos);
-		}
-		for (int i = 0; i < 4; i++) {
-			BlockState current = sw.getBlockState(placePos);
-			if (current.isAir() || current.isReplaceable()) {
-				break;
-			}
-			placePos = placePos.up();
-		}
-
-		sw.setBlockState(placePos, ModBlocks.AIRDROP_CRATE.getDefaultState(), Block.NOTIFY_ALL);
-		if (sw.getBlockEntity(placePos) instanceof SearchableLootBlockEntity be) {
-			be.populateFromPool(TarkovLootPool.AIRDROP, sw.random);
-			be.setSmokeTicksRemaining(TarkovConfig.get().airdropSmokeSeconds * 20);
-		}
-		sw.playSound(null, placePos, SoundEvents.BLOCK_ANVIL_LAND, SoundCategory.BLOCKS, 1.0f, 0.85f);
-		sw.spawnParticles(ParticleTypes.CLOUD, placePos.getX() + 0.5, placePos.getY() + 0.4, placePos.getZ() + 0.5,
-			16, 0.6, 0.15, 0.6, 0.04);
-		this.discard();
-	}
-}
-
-// ========== .\src\main\java\com\tarkovcraft\entity\CorpseEntity.java ==========
-package com.tarkovcraft.entity;
-
-import com.tarkovcraft.config.TarkovConfig;
-import com.tarkovcraft.grid.ContainerItemHelper;
-import com.tarkovcraft.grid.GridContainer;
+import com.tarkovcraft.health.MedicalHelper;
 import com.tarkovcraft.item.BackpackItem;
 import com.tarkovcraft.item.TacticalRigItem;
-import com.tarkovcraft.item.TarkovArmorItem;
+import com.tarkovcraft.item.TarkovArmorRepairItem;
+import com.tarkovcraft.item.TarkovCaseItem;
+import com.tarkovcraft.item.TarkovMedicalItem;
+import com.tarkovcraft.item.TarkovStimulatorItem;
 import com.tarkovcraft.loadout.EquipmentSlotType;
 import com.tarkovcraft.loadout.PlayerLoadout;
-import com.tarkovcraft.loot.TarkovLootGenerator;
-import com.tarkovcraft.loot.TarkovLootPool;
-import com.tarkovcraft.registry.ModEntities;
-import com.tarkovcraft.registry.ModItems;
-import com.tarkovcraft.screen.TarkovScreenHandler;
+import com.tarkovcraft.loadout.SecureContainerValidator;
+import com.tarkovcraft.loadout.PlayerLoadoutHolder;
+import com.tarkovcraft.network.TarkovNetworking;
+import com.tarkovcraft.registry.ModScreenHandlers;
 import com.tarkovcraft.search.ContainerSearchMemory;
+import com.tarkovcraft.search.SearchSession;
 import com.tarkovcraft.search.SearchTarget;
 import net.fabricmc.fabric.api.screenhandler.v1.ExtendedScreenHandlerFactory;
+import net.minecraft.block.entity.BlockEntity;
+import net.minecraft.block.entity.EnderChestBlockEntity;
 import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.data.DataTracker;
-import net.minecraft.entity.data.TrackedData;
-import net.minecraft.entity.data.TrackedDataHandlerRegistry;
+import net.minecraft.entity.ItemEntity;
+import net.minecraft.entity.effect.StatusEffectInstance;
+import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.inventory.Inventory;
+import net.minecraft.item.FoodComponent;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.nbt.NbtElement;
 import net.minecraft.network.PacketByteBuf;
+import net.minecraft.potion.PotionUtil;
 import net.minecraft.screen.ScreenHandler;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.sound.SoundEvent;
+import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.random.Random;
-import net.minecraft.world.World;
+import net.minecraft.util.UseAction;
+import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
-/**
- * Lootable corpse spawned on death of a player or humanoid mob.
- * NO fake generic container: holds the deceased's REAL equipment, REAL 6x(1x1) pockets,
- * REAL Tactical Rig (with its sub-grids), and REAL Backpack (with its grid).
- * Everything on the corpse searches automatically in order: Pockets -> Rig -> Backpack.
- * Both the Rig and Backpack can be stripped whole at any time (even unsearched).
- */
-public class CorpseEntity extends Entity {
-	private static final int MAX_LIFETIME_TICKS = 20 * 60 * 15; // 15 minutes
-	private static final int EMPTY_DESPAWN_TICKS = 20 * 10;     // 10 seconds once completely looted
-	private static final TrackedData<String> OWNER_NAME = DataTracker.registerData(CorpseEntity.class, TrackedDataHandlerRegistry.STRING);
-	private static final TrackedData<Boolean> HAS_BACKPACK = DataTracker.registerData(CorpseEntity.class, TrackedDataHandlerRegistry.BOOLEAN);
-	private static final TrackedData<Boolean> HAS_HELMET = DataTracker.registerData(CorpseEntity.class, TrackedDataHandlerRegistry.BOOLEAN);
+public class TarkovScreenHandler extends ScreenHandler {
+	public static final byte MODE_OWN_INVENTORY = 0;
+	public static final byte MODE_LOOT_BLOCK = 1;
+	public static final byte MODE_CORPSE = 2;
+	public static final byte MODE_GROUND_ITEM = 3;
+	public static final byte MODE_VANILLA_CONTAINER = 4;
+	public static final int MAX_OPEN_WINDOWS = 4;
 
-	private PlayerLoadout loadout = new PlayerLoadout();
-	// Corpse pockets represented as a 6x1 searchable grid (6x 1x1 pockets, real Tarkov pockets!)
-	private GridContainer pocketsGrid = new GridContainer(6, 1);
-	private ContainerSearchMemory pocketsSearchMemory = new ContainerSearchMemory();
-	private int ageTicks = 0;
-	private int emptyTicks = 0;
+	private final PlayerEntity player;
+	private final byte mode;
+	@Nullable
+	private final SearchableLootBlockEntity lootBlock;
+	@Nullable
+	private final CorpseEntity corpse;
+	@Nullable
+	private final ItemEntity groundItem;
+	@Nullable
+	private final BlockPos vanillaBlockPos;
+	@Nullable
+	private final String vanillaTitle;
+	@Nullable
+	private final Inventory vanillaInventory;
+	@Nullable
+	private final VanillaContainerState.StoredVanillaContainer vanillaStored;
+	@Nullable
+	private final VanillaContainerState vanillaState;
+	private final boolean vanillaIsShulker;
+	@Nullable
+	private final EnderChestBlockEntity vanillaEnderChestBe;
+	private boolean vanillaOpened = false;
+	private final SearchSession searchSession;
+	private int syncCooldown = 0;
+	private final List<UUID> openContainerUuids = new ArrayList<>();
 
-	public CorpseEntity(EntityType<?> type, World world) {
-		super(type, world);
-		this.intersectionChecked = true;
-	}
-
-	public static CorpseEntity fromPlayer(World world, PlayerEntity player, PlayerLoadout sourceLoadout) {
-		return fromPlayer(world, player, sourceLoadout, List.of(), new ArrayList<>());
-	}
-
-	public static CorpseEntity fromPlayer(
-		World world,
-		PlayerEntity player,
-		PlayerLoadout sourceLoadout,
-		List<ItemStack> extras,
-		List<ItemStack> overflow
+	private TarkovScreenHandler(
+		int syncId,
+		PlayerInventory playerInventory,
+		byte mode,
+		@Nullable SearchableLootBlockEntity lootBlock,
+		@Nullable CorpseEntity corpse,
+		@Nullable ItemEntity groundItem
 	) {
-		CorpseEntity corpse = new CorpseEntity(ModEntities.CORPSE, world);
-		corpse.setPosition(player.getX(), player.getY(), player.getZ());
-		corpse.setYaw(player.getYaw());
-		corpse.setOwnerName(player.getName().getString());
-
-		corpse.loadout = transferPlayerInventoryToCorpse(sourceLoadout, corpse.pocketsGrid, extras, overflow);
-		corpse.syncVisualFlags();
-		return corpse;
+		this(syncId, playerInventory, mode, lootBlock, corpse, groundItem, null, null, null, null, null, false, null);
 	}
 
-	public static PlayerLoadout transferPlayerInventoryToCorpse(
-		PlayerLoadout sourceLoadout,
-		GridContainer targetPocketsGrid,
-		List<ItemStack> extras,
-		List<ItemStack> overflow
+	private TarkovScreenHandler(
+		int syncId,
+		PlayerInventory playerInventory,
+		byte mode,
+		@Nullable SearchableLootBlockEntity lootBlock,
+		@Nullable CorpseEntity corpse,
+		@Nullable ItemEntity groundItem,
+		@Nullable BlockPos vanillaBlockPos,
+		@Nullable String vanillaTitle,
+		@Nullable Inventory vanillaInventory,
+		@Nullable VanillaContainerState.StoredVanillaContainer vanillaStored,
+		@Nullable VanillaContainerState vanillaState,
+		boolean vanillaIsShulker,
+		@Nullable EnderChestBlockEntity vanillaEnderChestBe
 	) {
-		PlayerLoadout copy = sourceLoadout.copy();
-		for (int i = 0; i < PlayerLoadout.POCKET_COUNT; i++) {
-			ItemStack p = copy.getPocket(i);
-			if (!p.isEmpty()) {
-				if (targetPocketsGrid.place(p.copy(), i, 0, false) == null) {
-					overflow.add(p.copy());
-				}
-				copy.setPocket(i, ItemStack.EMPTY);
-			}
+		super(ModScreenHandlers.TARKOV_SCREEN_HANDLER, syncId);
+		this.player = playerInventory.player;
+		this.mode = mode;
+		this.lootBlock = lootBlock;
+		this.corpse = corpse;
+		this.groundItem = groundItem;
+		this.vanillaBlockPos = vanillaBlockPos;
+		this.vanillaTitle = vanillaTitle;
+		this.vanillaInventory = vanillaInventory;
+		this.vanillaStored = vanillaStored;
+		this.vanillaState = vanillaState;
+		this.vanillaIsShulker = vanillaIsShulker;
+		this.vanillaEnderChestBe = vanillaEnderChestBe;
+		this.searchSession = new SearchSession(player.getUuid());
+	}
+
+	public static TarkovScreenHandler forOwnInventory(int syncId, PlayerInventory inv) {
+		return new TarkovScreenHandler(syncId, inv, MODE_OWN_INVENTORY, null, null, null);
+	}
+
+	public static TarkovScreenHandler forLootBlock(int syncId, PlayerInventory inv, SearchableLootBlockEntity block) {
+		return new TarkovScreenHandler(syncId, inv, MODE_LOOT_BLOCK, block, null, null);
+	}
+
+	public static TarkovScreenHandler forCorpse(int syncId, PlayerInventory inv, CorpseEntity corpse) {
+		return new TarkovScreenHandler(syncId, inv, MODE_CORPSE, null, corpse, null);
+	}
+
+	public static TarkovScreenHandler forGroundItem(int syncId, PlayerInventory inv, ItemEntity groundItem) {
+		return new TarkovScreenHandler(syncId, inv, MODE_GROUND_ITEM, null, null, groundItem);
+	}
+
+	public static TarkovScreenHandler forVanillaContainer(
+		int syncId,
+		PlayerInventory inv,
+		BlockPos pos,
+		String title,
+		Inventory vanillaInventory,
+		VanillaContainerState.StoredVanillaContainer stored,
+		VanillaContainerState state,
+		boolean isShulker,
+		@Nullable EnderChestBlockEntity enderChestBe
+	) {
+		return new TarkovScreenHandler(
+			syncId, inv, MODE_VANILLA_CONTAINER, null, null, null,
+			pos, title, vanillaInventory, stored, state, isShulker, enderChestBe
+		);
+	}
+
+	public static TarkovScreenHandler fromClientBuf(int syncId, PlayerInventory inv, PacketByteBuf buf) {
+		byte mode = buf.readByte();
+		if (mode == MODE_LOOT_BLOCK) {
+			BlockPos pos = buf.readBlockPos();
+			BlockEntity be = inv.player.getWorld().getBlockEntity(pos);
+			return new TarkovScreenHandler(syncId, inv, mode, be instanceof SearchableLootBlockEntity lbe ? lbe : null, null, null);
 		}
-
-		// Store any offHand or vanilla main-inventory extras into corpse pockets -> empty equipment -> rig -> backpack -> overflow
-		if (extras != null) {
-			for (ItemStack extra : extras) {
-				if (extra == null || extra.isEmpty()) {
-					continue;
-				}
-				ItemStack rem = extra.copy();
-				if (!targetPocketsGrid.tryAutoPlace(rem) && !rem.isEmpty()) {
-					tryPlaceExtraIntoCorpseLoadout(copy, rem);
-				}
-				if (!rem.isEmpty()) {
-					overflow.add(rem);
-				}
-			}
+		if (mode == MODE_CORPSE) {
+			int entityId = buf.readInt();
+			Entity e = inv.player.getWorld().getEntityById(entityId);
+			return new TarkovScreenHandler(syncId, inv, mode, null, e instanceof CorpseEntity ce ? ce : null, null);
 		}
-
-		markContainerUnsearched(copy.getEquipment(EquipmentSlotType.BACKPACK));
-		markContainerUnsearched(copy.getEquipment(EquipmentSlotType.RIG));
-		return copy;
-	}
-
-	private static void tryPlaceExtraIntoCorpseLoadout(PlayerLoadout corpseLoadout, ItemStack rem) {
-		if (rem.isEmpty()) {
-			return;
+		if (mode == MODE_GROUND_ITEM) {
+			int entityId = buf.readInt();
+			Entity e = inv.player.getWorld().getEntityById(entityId);
+			return new TarkovScreenHandler(syncId, inv, mode, null, null, e instanceof ItemEntity ie ? ie : null);
 		}
-		// 1. Empty matching equipment slot (armor, backpack, rig, melee, weapons)
-		for (EquipmentSlotType slot : EquipmentSlotType.values()) {
-			if (corpseLoadout.getEquipment(slot).isEmpty() && slot.accepts(rem)) {
-				corpseLoadout.setEquipment(slot, rem.copy());
-				rem.setCount(0);
-				return;
-			}
+		if (mode == MODE_VANILLA_CONTAINER) {
+			BlockPos pos = buf.readBlockPos();
+			return new TarkovScreenHandler(syncId, inv, mode, null, null, null, pos, null, null, null, null, false, null);
 		}
-		// 2. Equipped Rig compartments
-		ItemStack rig = corpseLoadout.getEquipment(EquipmentSlotType.RIG);
-		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
-			List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
-			boolean changed = false;
-			for (GridContainer g : grids) {
-				int before = rem.getCount();
-				boolean full = g.tryAutoPlace(rem);
-				if (full || rem.getCount() < before) {
-					changed = true;
-					if (rem.isEmpty()) break;
-				}
-			}
-			if (changed) {
-				ContainerItemHelper.writeRigGrids(rig, grids);
-				if (rem.isEmpty()) return;
-			}
-		}
-		// 3. Equipped Backpack grid
-		ItemStack bp = corpseLoadout.getEquipment(EquipmentSlotType.BACKPACK);
-		if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem) {
-			GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
-			int before = rem.getCount();
-			boolean full = bpGrid.tryAutoPlace(rem);
-			if (full || rem.getCount() < before) {
-				ContainerItemHelper.writeBackpackGrid(bp, bpGrid);
-			}
-		}
+		return new TarkovScreenHandler(syncId, inv, MODE_OWN_INVENTORY, null, null, null);
 	}
 
-	public static CorpseEntity fromMob(World world, LivingEntity mob) {
-		return fromGearedMob(world, mob);
-	}
-
-	public static CorpseEntity fromGearedMob(World world, LivingEntity mob) {
-		CorpseEntity corpse = new CorpseEntity(ModEntities.CORPSE, world);
-		corpse.setPosition(mob.getX(), mob.getY(), mob.getZ());
-		corpse.setYaw(mob.getYaw());
-		corpse.setOwnerName(mob.getDisplayName().getString());
-		Random random = world.getRandom();
-
-		ItemStack headStack = mob.getEquippedStack(EquipmentSlot.HEAD);
-		if (!headStack.isEmpty() && headStack.getItem() instanceof TarkovArmorItem armor
-			&& armor.getTargetSlot() == EquipmentSlotType.HELMET) {
-			corpse.loadout.setEquipment(EquipmentSlotType.HELMET, headStack.copy());
-		} else if (random.nextFloat() < 0.45f) {
-			ItemStack rolledHelmet = TarkovLootGenerator.pickRandomLightHelmet(random);
-			if (!rolledHelmet.isEmpty()) {
-				corpse.loadout.setEquipment(EquipmentSlotType.HELMET, rolledHelmet);
-			}
-		}
-
-		ItemStack chestStack = mob.getEquippedStack(EquipmentSlot.CHEST);
-		if (!chestStack.isEmpty() && chestStack.getItem() instanceof TarkovArmorItem armor
-			&& armor.getTargetSlot() == EquipmentSlotType.BODY_ARMOR) {
-			corpse.loadout.setEquipment(EquipmentSlotType.BODY_ARMOR, chestStack.copy());
-		} else if (random.nextFloat() < 0.5f) {
-			ItemStack rolledArmor = TarkovLootGenerator.pickRandomLightArmor(random);
-			if (!rolledArmor.isEmpty()) {
-				corpse.loadout.setEquipment(EquipmentSlotType.BODY_ARMOR, rolledArmor);
-			}
-		}
-
-		if (mob.getCommandTags().contains(MobGearSpawner.TAG_GEARED_RIG) || random.nextFloat() < 0.65f) {
-			ItemStack rig = TarkovLootGenerator.pickRandomScavRig(random);
-			if (!rig.isEmpty()) {
-				List<GridContainer> rigGrids = ContainerItemHelper.readRigGrids(rig);
-				for (GridContainer g : rigGrids) {
-					TarkovLootGenerator.populateLootGrid(g, TarkovLootPool.SCAV_POCKET, random);
-				}
-				ContainerItemHelper.writeRigGrids(rig, rigGrids);
-				markContainerUnsearched(rig);
-				corpse.loadout.setEquipment(EquipmentSlotType.RIG, rig);
-			}
-		}
-
-		if (mob.getCommandTags().contains(MobGearSpawner.TAG_GEARED_BACKPACK)) {
-			ItemStack bp = TarkovLootGenerator.pickRandomScavBackpack(random);
-			if (!bp.isEmpty()) {
-				GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
-				TarkovLootGenerator.populateLootGrid(bpGrid, TarkovLootPool.CIVILIAN, random);
-				ContainerItemHelper.writeBackpackGrid(bp, bpGrid);
-				markContainerUnsearched(bp);
-				corpse.loadout.setEquipment(EquipmentSlotType.BACKPACK, bp);
-			}
-		}
-
-		TarkovLootGenerator.populateLootGrid(corpse.pocketsGrid, TarkovLootPool.SCAV_POCKET, random);
-		corpse.syncVisualFlags();
-		return corpse;
-	}
-
-	public static CorpseEntity fromRegularMob(World world, LivingEntity mob) {
-		CorpseEntity corpse = new CorpseEntity(ModEntities.CORPSE, world);
-		corpse.setPosition(mob.getX(), mob.getY(), mob.getZ());
-		corpse.setYaw(mob.getYaw());
-		corpse.setOwnerName(mob.getDisplayName().getString());
-		TarkovLootGenerator.populateLootGrid(corpse.pocketsGrid, TarkovLootPool.SCAV_POCKET, world.getRandom());
-		corpse.syncVisualFlags();
-		return corpse;
-	}
-
-	public void populateScavLoot(Random random) {
-		ItemStack helmet = TarkovLootGenerator.pickRandomLightHelmet(random);
-		if (!helmet.isEmpty() && random.nextFloat() < 0.65f) {
-			loadout.setEquipment(EquipmentSlotType.HELMET, helmet);
-		}
-		ItemStack armor = TarkovLootGenerator.pickRandomLightArmor(random);
-		if (!armor.isEmpty() && random.nextFloat() < 0.6f) {
-			loadout.setEquipment(EquipmentSlotType.BODY_ARMOR, armor);
-		}
-
-		ItemStack rig = TarkovLootGenerator.pickRandomScavRig(random);
-		if (!rig.isEmpty()) {
-			List<GridContainer> rigGrids = ContainerItemHelper.readRigGrids(rig);
-			for (GridContainer g : rigGrids) {
-				TarkovLootGenerator.populateLootGrid(g, TarkovLootPool.SCAV_POCKET, random);
-			}
-			ContainerItemHelper.writeRigGrids(rig, rigGrids);
-			markContainerUnsearched(rig);
-			loadout.setEquipment(EquipmentSlotType.RIG, rig);
-		}
-
-		ItemStack bp = TarkovLootGenerator.pickRandomScavBackpack(random);
-		if (!bp.isEmpty()) {
-			GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
-			TarkovLootGenerator.populateLootGrid(bpGrid, TarkovLootPool.CIVILIAN, random);
-			ContainerItemHelper.writeBackpackGrid(bp, bpGrid);
-			markContainerUnsearched(bp);
-			loadout.setEquipment(EquipmentSlotType.BACKPACK, bp);
-		}
-
-		TarkovLootGenerator.populateLootGrid(pocketsGrid, TarkovLootPool.SCAV_POCKET, random);
-		syncVisualFlags();
-	}
-
-	private static void markContainerUnsearched(ItemStack stack) {
-		if (!stack.isEmpty() && ContainerItemHelper.isContainerItem(stack)) {
-			ContainerItemHelper.setRequiresSearch(stack, true);
-			ContainerItemHelper.saveSearchMemory(stack, new ContainerSearchMemory());
-		}
-	}
-
-	public void syncVisualFlags() {
-		this.dataTracker.set(HAS_BACKPACK, !loadout.getEquipment(EquipmentSlotType.BACKPACK).isEmpty());
-		this.dataTracker.set(HAS_HELMET, !loadout.getEquipment(EquipmentSlotType.HELMET).isEmpty());
-	}
-
-	@Override
-	protected void initDataTracker() {
-		this.dataTracker.startTracking(OWNER_NAME, "Scav");
-		this.dataTracker.startTracking(HAS_BACKPACK, false);
-		this.dataTracker.startTracking(HAS_HELMET, false);
-	}
-
-	public String getOwnerName() {
-		return this.dataTracker.get(OWNER_NAME);
-	}
-
-	public void setOwnerName(String name) {
-		this.dataTracker.set(OWNER_NAME, name == null ? "Scav" : name);
-	}
-
-	public boolean hasBackpackVisual() {
-		return this.dataTracker.get(HAS_BACKPACK);
-	}
-
-	public boolean hasHelmetVisual() {
-		return this.dataTracker.get(HAS_HELMET);
-	}
-
-	public PlayerLoadout getLoadout() {
-		return loadout;
-	}
-
-	public GridContainer getPocketsGrid() {
-		return pocketsGrid;
-	}
-
-	public ContainerSearchMemory getPocketsSearchMemory() {
-		return pocketsSearchMemory;
-	}
-
-	/**
-	 * Ordered list of all searchable containers currently on this corpse:
-	 * 1. Pockets (6x1)
-	 * 2. Tactical Rig (all compartments, searched as one unit)
-	 * 3. Backpack (its full WxH grid)
-	 */
-	public List<SearchTarget> buildCorpseSearchTargets() {
-		List<SearchTarget> targets = new ArrayList<>();
-		targets.add(new SearchTarget(pocketsGrid.getContainerId(), List.of(pocketsGrid), pocketsSearchMemory, () -> {}));
-
-		ItemStack rig = loadout.getEquipment(EquipmentSlotType.RIG);
-		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem && ContainerItemHelper.requiresSearch(rig)) {
-			UUID rigId = ContainerItemHelper.getOrCreateContainerUuid(rig);
-			List<GridContainer> rigGrids = ContainerItemHelper.readRigGrids(rig);
-			ContainerSearchMemory rigMem = ContainerItemHelper.getSearchMemory(rig);
-			targets.add(new SearchTarget(rigId, rigGrids, rigMem, () -> {
-				ContainerItemHelper.saveSearchMemory(rig, rigMem);
-			}));
-		}
-
-		ItemStack bp = loadout.getEquipment(EquipmentSlotType.BACKPACK);
-		if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem && ContainerItemHelper.requiresSearch(bp)) {
-			UUID bpId = ContainerItemHelper.getOrCreateContainerUuid(bp);
-			GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
-			ContainerSearchMemory bpMem = ContainerItemHelper.getSearchMemory(bp);
-			targets.add(new SearchTarget(bpId, List.of(bpGrid), bpMem, () -> {
-				ContainerItemHelper.saveSearchMemory(bp, bpMem);
-			}));
-		}
-
-		return targets;
-	}
-
-	public boolean isCompletelyEmpty() {
-		return loadout.isEmpty() && pocketsGrid.isEmpty();
-	}
-
-	@Override
-	public boolean canHit() {
-		return !this.isRemoved();
-	}
-
-	@Override
-	public boolean damage(DamageSource source, float amount) {
-		// Allow Creative-mode players to immediately punch/remove corpses!
-		if (!this.getWorld().isClient && source.getAttacker() instanceof PlayerEntity p && p.isCreative()) {
-			this.discard();
-			return true;
-		}
-		return false;
-	}
-
-	@Override
-	public void tick() {
-		super.tick();
-		if (!this.getWorld().isClient) {
-			ageTicks++;
-			if (isCompletelyEmpty()) {
-				emptyTicks++;
-				if (emptyTicks >= EMPTY_DESPAWN_TICKS) {
-					this.discard();
-					return;
-				}
-			} else {
-				emptyTicks = 0;
-			}
-			if (ageTicks >= TarkovConfig.get().getCorpseLifetimeTicks()) {
-				this.discard();
-			}
-		}
-	}
-
-	@Override
-	public ActionResult interact(PlayerEntity player, Hand hand) {
-		// Looting corpses is strictly via [F] interact, NOT right-click
-		return ActionResult.PASS;
-	}
-
-	public void openForPlayer(ServerPlayerEntity player) {
+	public static void openOwnInventory(ServerPlayerEntity player) {
 		player.openHandledScreen(new ExtendedScreenHandlerFactory() {
 			@Override
-			public void writeScreenOpeningData(ServerPlayerEntity player, PacketByteBuf buf) {
-				buf.writeByte(TarkovScreenHandler.MODE_CORPSE);
-				buf.writeInt(CorpseEntity.this.getId());
+			public void writeScreenOpeningData(ServerPlayerEntity p, PacketByteBuf buf) {
+				buf.writeByte(MODE_OWN_INVENTORY);
 			}
 
 			@Override
 			public Text getDisplayName() {
-				return Text.translatable("entity.tarkovcraft.corpse_title", getOwnerName());
+				return Text.translatable("screen.tarkovcraft.inventory");
 			}
 
 			@Nullable
 			@Override
 			public ScreenHandler createMenu(int syncId, PlayerInventory inv, PlayerEntity p) {
-				return TarkovScreenHandler.forCorpse(syncId, inv, CorpseEntity.this);
+				return forOwnInventory(syncId, inv);
 			}
 		});
 		if (player.currentScreenHandler instanceof TarkovScreenHandler tsh) {
@@ -1130,30 +215,3536 @@ public class CorpseEntity extends Entity {
 		}
 	}
 
-	@Override
-	protected void readCustomDataFromNbt(NbtCompound nbt) {
-		if (nbt.contains("OwnerName", NbtElement.STRING_TYPE)) {
-			setOwnerName(nbt.getString("OwnerName"));
+	public static void openCaseScreen(ServerPlayerEntity player, UUID caseUuid) {
+		player.openHandledScreen(new ExtendedScreenHandlerFactory() {
+			@Override
+			public void writeScreenOpeningData(ServerPlayerEntity p, PacketByteBuf buf) {
+				buf.writeByte(MODE_OWN_INVENTORY);
+			}
+
+			@Override
+			public Text getDisplayName() {
+				return Text.translatable("screen.tarkovcraft.inventory");
+			}
+
+			@Nullable
+			@Override
+			public ScreenHandler createMenu(int syncId, PlayerInventory inv, PlayerEntity p) {
+				return forOwnInventory(syncId, inv);
+			}
+		});
+		if (player.currentScreenHandler instanceof TarkovScreenHandler tsh) {
+			tsh.openContainerUuids.clear();
+			if (caseUuid != null) {
+				tsh.openContainerUuids.add(caseUuid);
+			}
+			tsh.syncToClient(player);
 		}
-		if (nbt.contains("Loadout", NbtElement.COMPOUND_TYPE)) {
-			loadout.readNbt(nbt.getCompound("Loadout"));
+	}
+
+	public static void openGroundContainer(ServerPlayerEntity player, ItemEntity groundItem) {
+		player.openHandledScreen(new ExtendedScreenHandlerFactory() {
+			@Override
+			public void writeScreenOpeningData(ServerPlayerEntity p, PacketByteBuf buf) {
+				buf.writeByte(MODE_GROUND_ITEM);
+				buf.writeInt(groundItem.getId());
+			}
+
+			@Override
+			public Text getDisplayName() {
+				return groundItem.getStack().getName();
+			}
+
+			@Nullable
+			@Override
+			public ScreenHandler createMenu(int syncId, PlayerInventory inv, PlayerEntity p) {
+				return forGroundItem(syncId, inv, groundItem);
+			}
+		});
+		if (player.currentScreenHandler instanceof TarkovScreenHandler tsh) {
+			tsh.syncToClient(player);
 		}
-		if (nbt.contains("PocketsGrid", NbtElement.COMPOUND_TYPE)) {
-			pocketsGrid = GridContainer.fromNbt(nbt.getCompound("PocketsGrid"), 6, 1);
+	}
+
+	public static void openVanillaContainer(
+		ServerPlayerEntity player,
+		BlockPos pos,
+		Text title,
+		Inventory vanillaInventory,
+		VanillaContainerState.StoredVanillaContainer stored,
+		VanillaContainerState vcState,
+		boolean isShulker,
+		@Nullable EnderChestBlockEntity enderChestBe
+	) {
+		String titleStr = title.getString();
+		player.openHandledScreen(new ExtendedScreenHandlerFactory() {
+			@Override
+			public void writeScreenOpeningData(ServerPlayerEntity p, PacketByteBuf buf) {
+				buf.writeByte(MODE_VANILLA_CONTAINER);
+				buf.writeBlockPos(pos);
+			}
+
+			@Override
+			public Text getDisplayName() {
+				return title;
+			}
+
+			@Nullable
+			@Override
+			public ScreenHandler createMenu(int syncId, PlayerInventory inv, PlayerEntity p) {
+				return forVanillaContainer(syncId, inv, pos, titleStr, vanillaInventory, stored, vcState, isShulker, enderChestBe);
+			}
+		});
+		if (player.currentScreenHandler instanceof TarkovScreenHandler tsh && tsh.mode == MODE_VANILLA_CONTAINER) {
+			tsh.notifyVanillaContainerOpened(player);
+			tsh.syncToClient(player);
 		}
-		if (nbt.contains("PocketsSearchMemory", NbtElement.COMPOUND_TYPE)) {
-			pocketsSearchMemory = ContainerSearchMemory.fromNbt(nbt.getCompound("PocketsSearchMemory"));
+	}
+
+	private void notifyVanillaContainerOpened(ServerPlayerEntity serverPlayer) {
+		if (mode == MODE_VANILLA_CONTAINER && !vanillaOpened && vanillaInventory != null) {
+			if (vanillaEnderChestBe != null) {
+				serverPlayer.getEnderChestInventory().setActiveBlockEntity(vanillaEnderChestBe);
+			}
+			vanillaInventory.onOpen(serverPlayer);
+			vanillaOpened = true;
 		}
-		ageTicks = nbt.getInt("AgeTicks");
-		syncVisualFlags();
+	}
+
+	public byte getMode() {
+		return mode;
 	}
 
 	@Override
-	protected void writeCustomDataToNbt(NbtCompound nbt) {
-		nbt.putString("OwnerName", getOwnerName());
-		nbt.put("Loadout", loadout.writeNbt());
-		nbt.put("PocketsGrid", pocketsGrid.toNbt());
-		nbt.put("PocketsSearchMemory", pocketsSearchMemory.toNbt());
-		nbt.putInt("AgeTicks", ageTicks);
+	public ItemStack quickMove(PlayerEntity player, int slot) {
+		return ItemStack.EMPTY;
+	}
+
+	@Override
+	public boolean canUse(PlayerEntity player) {
+		if (mode == MODE_LOOT_BLOCK) {
+			return lootBlock != null && !lootBlock.isRemoved()
+				&& player.squaredDistanceTo(lootBlock.getPos().toCenterPos()) <= 36.0;
+		}
+		if (mode == MODE_CORPSE) {
+			return corpse != null && !corpse.isRemoved() && player.squaredDistanceTo(corpse) <= 36.0;
+		}
+		if (mode == MODE_GROUND_ITEM) {
+			return groundItem != null && !groundItem.isRemoved() && !groundItem.getStack().isEmpty()
+				&& player.squaredDistanceTo(groundItem) <= 25.0;
+		}
+		if (mode == MODE_VANILLA_CONTAINER) {
+			if (vanillaBlockPos == null || vanillaInventory == null || vanillaStored == null) {
+				return false;
+			}
+			if (player.squaredDistanceTo(vanillaBlockPos.toCenterPos()) > 36.0) {
+				return false;
+			}
+			if (!VanillaContainerBridge.isSupportedBlock(player.getWorld().getBlockState(vanillaBlockPos).getBlock())) {
+				return false;
+			}
+			return vanillaInventory.canPlayerUse(player);
+		}
+		return true;
+	}
+
+	@Override
+	public void onClosed(PlayerEntity player) {
+		super.onClosed(player);
+		if (mode == MODE_VANILLA_CONTAINER && vanillaOpened && vanillaInventory != null) {
+			vanillaOpened = false;
+			vanillaInventory.onClose(player);
+		}
+		searchSession.reset();
+		openContainerUuids.clear();
+	}
+
+	public void tickServer(ServerPlayerEntity serverPlayer) {
+		if (!canUse(serverPlayer)) {
+			serverPlayer.closeHandledScreen();
+			return;
+		}
+
+		boolean stateChanged = false;
+		// Validate all open floating containers (drop stale ones if moved away/deleted)
+		java.util.Iterator<UUID> it = openContainerUuids.iterator();
+		while (it.hasNext()) {
+			UUID uuid = it.next();
+			if (resolveContainerHandle(uuid) == null) {
+				it.remove();
+				stateChanged = true;
+			}
+		}
+
+		List<SearchTarget> externalTargets = getExternalSearchTargets();
+		List<SearchTarget> ownTargets = getOwnSearchTargets(serverPlayer);
+
+		boolean ownInventoryOpen = (mode == MODE_OWN_INVENTORY);
+		if (searchSession.tickQueue(ownInventoryOpen, externalTargets, ownTargets)) {
+			stateChanged = true;
+		}
+
+		PlayerLoadout loadout = getPlayerLoadout(serverPlayer);
+		for (SearchTarget ownT : ownTargets) {
+			if (ownT.isFullySearched(serverPlayer.getUuid())) {
+				clearRequiresSearchIfMatches(loadout.getEquipment(EquipmentSlotType.RIG), ownT.getTargetId());
+				clearRequiresSearchIfMatches(loadout.getEquipment(EquipmentSlotType.BACKPACK), ownT.getTargetId());
+				stateChanged = true;
+			}
+		}
+		for (SearchTarget extT : externalTargets) {
+			if (openContainerUuids.contains(extT.getTargetId()) && extT.isFullySearched(serverPlayer.getUuid())) {
+				ContainerHandle handle = resolveContainerHandle(extT.getTargetId());
+				if (handle != null && ContainerItemHelper.requiresSearch(handle.getStack())) {
+					ContainerItemHelper.setRequiresSearch(handle.getStack(), false);
+					handle.persistStackMutation();
+					stateChanged = true;
+				}
+			}
+		}
+
+		syncCooldown++;
+		if (stateChanged || (searchSession.getStage() != SearchSession.Stage.IDLE && syncCooldown >= 2) || syncCooldown >= 10) {
+			syncCooldown = 0;
+			syncToClient(serverPlayer);
+		}
+	}
+
+	private void clearRequiresSearchIfMatches(ItemStack stack, UUID targetId) {
+		if (!stack.isEmpty() && targetId.equals(ContainerItemHelper.getContainerUuid(stack)) && ContainerItemHelper.requiresSearch(stack)) {
+			ContainerItemHelper.setRequiresSearch(stack, false);
+		}
+	}
+
+	private List<SearchTarget> getExternalSearchTargets() {
+		List<SearchTarget> out = new ArrayList<>();
+		java.util.Set<UUID> seen = new java.util.HashSet<>();
+		if (mode == MODE_LOOT_BLOCK && lootBlock != null) {
+			SearchTarget t = lootBlock.asSearchTarget();
+			out.add(t);
+			seen.add(t.getTargetId());
+		} else if (mode == MODE_VANILLA_CONTAINER && vanillaStored != null) {
+			GridContainer vg = vanillaStored.getGrid();
+			ContainerSearchMemory vMem = vanillaStored.getSearchMemory();
+			SearchTarget t = new SearchTarget(vg.getContainerId(), List.of(vg), vMem, () -> {
+				if (vanillaState != null) vanillaState.markDirty();
+			});
+			out.add(t);
+			seen.add(t.getTargetId());
+		} else if (mode == MODE_CORPSE && corpse != null) {
+			for (SearchTarget t : corpse.buildCorpseSearchTargets()) {
+				out.add(t);
+				seen.add(t.getTargetId());
+			}
+		} else if (mode == MODE_GROUND_ITEM && groundItem != null && !groundItem.getStack().isEmpty()) {
+			ItemStack st = groundItem.getStack();
+			if (ContainerItemHelper.requiresSearch(st)) {
+				UUID id = ContainerItemHelper.getOrCreateContainerUuid(st);
+				List<GridContainer> grids = ContainerItemHelper.readAllGrids(st);
+				ContainerSearchMemory mem = ContainerItemHelper.getSearchMemory(st);
+				out.add(new SearchTarget(id, grids, mem, () -> ContainerItemHelper.saveSearchMemory(st, mem)));
+				seen.add(id);
+			}
+		}
+		for (UUID openId : openContainerUuids) {
+			if (seen.contains(openId)) continue;
+			ContainerHandle handle = resolveContainerHandle(openId);
+			if (handle != null && ContainerItemHelper.requiresSearch(handle.getStack())) {
+				ContainerSearchMemory mem = ContainerItemHelper.getSearchMemory(handle.getStack());
+				out.add(new SearchTarget(openId, handle.readGrids(), mem, () -> handle.saveSearchMemory(mem)));
+				seen.add(openId);
+			}
+		}
+		return out;
+	}
+
+	private List<SearchTarget> getOwnSearchTargets(ServerPlayerEntity serverPlayer) {
+		List<SearchTarget> targets = new ArrayList<>();
+		PlayerLoadout loadout = getPlayerLoadout(serverPlayer);
+
+		ItemStack rig = loadout.getEquipment(EquipmentSlotType.RIG);
+		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem && ContainerItemHelper.requiresSearch(rig)) {
+			UUID rigId = ContainerItemHelper.getOrCreateContainerUuid(rig);
+			List<GridContainer> rigGrids = ContainerItemHelper.readRigGrids(rig);
+			ContainerSearchMemory mem = ContainerItemHelper.getSearchMemory(rig);
+			targets.add(new SearchTarget(rigId, rigGrids, mem, () -> ContainerItemHelper.saveSearchMemory(rig, mem)));
+		}
+
+		ItemStack bp = loadout.getEquipment(EquipmentSlotType.BACKPACK);
+		if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem && ContainerItemHelper.requiresSearch(bp)) {
+			UUID bpId = ContainerItemHelper.getOrCreateContainerUuid(bp);
+			GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
+			ContainerSearchMemory mem = ContainerItemHelper.getSearchMemory(bp);
+			targets.add(new SearchTarget(bpId, List.of(bpGrid), mem, () -> ContainerItemHelper.saveSearchMemory(bp, mem)));
+		}
+
+		return targets;
+	}
+
+	public void syncToClient(ServerPlayerEntity serverPlayer) {
+		UUID playerId = serverPlayer.getUuid();
+		PlayerLoadout loadout = getPlayerLoadout(serverPlayer);
+		TarkovNetworking.sendLoadoutSync(serverPlayer, loadout);
+
+		List<TarkovNetworking.GridView> ownRigViews = buildRigViews(loadout.getEquipment(EquipmentSlotType.RIG), playerId);
+		TarkovNetworking.GridView ownBpView = buildBackpackView(loadout.getEquipment(EquipmentSlotType.BACKPACK), playerId);
+
+		TarkovNetworking.GridView extView = null;
+		String extTitle = "";
+		PlayerLoadout corpseLoadout = null;
+		List<TarkovNetworking.GridView> corpseRigViews = List.of();
+		TarkovNetworking.GridView corpseBpView = null;
+
+		if (mode == MODE_LOOT_BLOCK && lootBlock != null) {
+			extTitle = lootBlock.getDisplayTitle().getString();
+			extView = TarkovNetworking.GridView.fromContainer(
+				lootBlock.getGrid(), lootBlock.getGrid().getContainerId(),
+				lootBlock.getSearchMemory(), playerId, true
+			);
+		} else if (mode == MODE_VANILLA_CONTAINER && vanillaStored != null) {
+			extTitle = vanillaTitle != null ? vanillaTitle : "";
+			GridContainer vg = vanillaStored.getGrid();
+			extView = TarkovNetworking.GridView.fromContainer(
+				vg, vg.getContainerId(), vanillaStored.getSearchMemory(), playerId, true
+			);
+		} else if (mode == MODE_CORPSE && corpse != null) {
+			extTitle = corpse.getOwnerName();
+			extView = TarkovNetworking.GridView.fromContainer(
+				corpse.getPocketsGrid(), corpse.getPocketsGrid().getContainerId(),
+				corpse.getPocketsSearchMemory(), playerId, true
+			);
+			corpseLoadout = corpse.getLoadout();
+			corpseRigViews = buildRigViews(corpseLoadout.getEquipment(EquipmentSlotType.RIG), playerId);
+			corpseBpView = buildBackpackView(corpseLoadout.getEquipment(EquipmentSlotType.BACKPACK), playerId);
+		} else if (mode == MODE_GROUND_ITEM && groundItem != null && !groundItem.getStack().isEmpty()) {
+			ItemStack gStack = groundItem.getStack();
+			extTitle = gStack.getName().getString();
+			if (gStack.getItem() instanceof BackpackItem) {
+				extView = buildBackpackView(gStack, playerId);
+			} else if (gStack.getItem() instanceof TarkovCaseItem) {
+				extView = buildCaseView(gStack, playerId);
+			} else if (gStack.getItem() instanceof TacticalRigItem) {
+				corpseRigViews = buildRigViews(gStack, playerId);
+			}
+		}
+
+		List<TarkovNetworking.OpenContainerView> openViews = new ArrayList<>();
+		var openIds = openContainerUuids.iterator();
+		while (openIds.hasNext()) {
+			UUID openId = openIds.next();
+			ContainerHandle handle = resolveContainerHandle(openId);
+			if (handle == null) {
+				openIds.remove();
+				continue;
+			}
+			ItemStack st = handle.getStack();
+			boolean reqSearch = ContainerItemHelper.requiresSearch(st);
+			ContainerSearchMemory mem = reqSearch ? ContainerItemHelper.getSearchMemory(st) : null;
+			List<TarkovNetworking.GridView> gViews = new ArrayList<>();
+			for (GridContainer gc : handle.readGrids()) {
+				gViews.add(TarkovNetworking.GridView.fromContainer(gc, openId, mem, playerId, reqSearch));
+			}
+			openViews.add(new TarkovNetworking.OpenContainerView(openId, st.getName().getString(), gViews));
+		}
+
+		TarkovNetworking.ScreenStateSnapshot snapshot = new TarkovNetworking.ScreenStateSnapshot(
+			mode,
+			extTitle,
+			ownRigViews,
+			ownBpView,
+			extView,
+			corpseLoadout,
+			corpseRigViews,
+			corpseBpView,
+			TarkovNetworking.stageToByte(searchSession.getStage()),
+			searchSession.getActiveTargetId(),
+			searchSession.getActiveEntryId(),
+			searchSession.getProgressRatio(),
+			openViews
+		);
+		TarkovNetworking.sendScreenState(serverPlayer, snapshot);
+	}
+
+	private static List<TarkovNetworking.GridView> buildRigViews(ItemStack rig, UUID playerId) {
+		List<TarkovNetworking.GridView> out = new ArrayList<>();
+		if (rig.isEmpty() || !(rig.getItem() instanceof TacticalRigItem)) {
+			return out;
+		}
+		UUID rigTargetId = ContainerItemHelper.getOrCreateContainerUuid(rig);
+		boolean reqSearch = ContainerItemHelper.requiresSearch(rig);
+		ContainerSearchMemory mem = reqSearch ? ContainerItemHelper.getSearchMemory(rig) : null;
+		for (GridContainer g : ContainerItemHelper.readRigGrids(rig)) {
+			out.add(TarkovNetworking.GridView.fromContainer(g, rigTargetId, mem, playerId, reqSearch));
+		}
+		return out;
+	}
+
+	@Nullable
+	private static TarkovNetworking.GridView buildBackpackView(ItemStack bp, UUID playerId) {
+		if (bp.isEmpty() || !(bp.getItem() instanceof BackpackItem)) {
+			return null;
+		}
+		UUID bpTargetId = ContainerItemHelper.getOrCreateContainerUuid(bp);
+		GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
+		boolean reqSearch = ContainerItemHelper.requiresSearch(bp);
+		ContainerSearchMemory mem = reqSearch ? ContainerItemHelper.getSearchMemory(bp) : null;
+		return TarkovNetworking.GridView.fromContainer(bpGrid, bpTargetId, mem, playerId, reqSearch);
+	}
+
+	@Nullable
+	private static TarkovNetworking.GridView buildCaseView(ItemStack caseStack, UUID playerId) {
+		if (caseStack.isEmpty() || !(caseStack.getItem() instanceof TarkovCaseItem)) {
+			return null;
+		}
+		UUID caseTargetId = ContainerItemHelper.getOrCreateContainerUuid(caseStack);
+		GridContainer caseGrid = ContainerItemHelper.readCaseGrid(caseStack);
+		boolean reqSearch = ContainerItemHelper.requiresSearch(caseStack);
+		ContainerSearchMemory mem = reqSearch ? ContainerItemHelper.getSearchMemory(caseStack) : null;
+		return TarkovNetworking.GridView.fromContainer(caseGrid, caseTargetId, mem, playerId, reqSearch);
+	}
+
+	public static boolean isConsumableItem(ItemStack stack) {
+		if (stack == null || stack.isEmpty()) {
+			return false;
+		}
+		if (stack.getItem() instanceof TarkovMedicalItem
+			|| stack.getItem() instanceof TarkovStimulatorItem
+			|| stack.getItem() instanceof TarkovArmorRepairItem) {
+			return true;
+		}
+		UseAction action = stack.getUseAction();
+		return stack.isFood() || action == UseAction.DRINK || action == UseAction.EAT;
+	}
+
+	public static boolean canEquipItem(ItemStack stack) {
+		return findFirstMatchingSlot(stack) != null;
+	}
+
+	/**
+	 * Fast transfer (pressed [F] or Shift+LMB over any item in the inventory UI):
+	 * - External / Corpse / Ground -> inserts into own storage (or equips gear if slot empty).
+	 * - Own Equipment -> unequips into storage (Pockets -> Rig -> Backpack) if space exists.
+	 * - Own Storage -> moves into open Loot Crate / Ground Container, or between Backpack <-> Rig/Pockets (with equip fallback).
+	 */
+	public void handleQuickTransfer(ServerPlayerEntity serverPlayer, byte srcLoc, int srcIdx, @Nullable UUID srcEntryId) {
+		if (!canUse(serverPlayer)) return;
+		UUID playerId = serverPlayer.getUuid();
+		PlayerLoadout loadout = getPlayerLoadout(serverPlayer);
+
+		ItemStack peek = peekSource(loadout, playerId, srcLoc, srcIdx, srcEntryId);
+		if (peek.isEmpty()) return;
+
+		boolean isExternal = srcLoc == TarkovNetworking.LOC_EXTERNAL_GRID
+			|| srcLoc == TarkovNetworking.LOC_CORPSE_EQUIPMENT
+			|| srcLoc == TarkovNetworking.LOC_CORPSE_RIG_GRID
+			|| srcLoc == TarkovNetworking.LOC_CORPSE_BACKPACK_GRID
+			|| srcLoc == TarkovNetworking.LOC_FLOATING_CONTAINER;
+
+		if (isExternal) {
+			ItemStack candidate = peek.copy();
+			int before = candidate.getCount();
+			boolean isWearableContainer = candidate.getItem() instanceof BackpackItem || candidate.getItem() instanceof TacticalRigItem;
+			boolean ok = isWearableContainer
+				? loadout.trySmartPickup(candidate, playerId)
+				: (loadout.tryInsertItem(candidate, playerId) || loadout.trySmartPickup(candidate, playerId));
+			int moved = before - candidate.getCount();
+			if (ok || moved > 0) {
+				extractSource(loadout, srcLoc, srcIdx, srcEntryId, moved);
+				markExternalDirty();
+				syncToClient(serverPlayer);
+			} else {
+				serverPlayer.sendMessage(Text.translatable("message.tarkovcraft.no_space"), true);
+			}
+			return;
+		}
+
+		// From own Equipment -> unequip into Pockets -> Rig -> Backpack (never into itself!)
+		if (srcLoc == TarkovNetworking.LOC_EQUIPMENT) {
+			unequipToStorage(serverPlayer, loadout, playerId, srcIdx);
+			return;
+		}
+
+		// From own Storage (Pocket / Rig / Backpack):
+		// 1. If looting a crate or ground container, try moving into it
+		if (mode == MODE_LOOT_BLOCK && lootBlock != null && lootBlock.getSearchMemory().isGridRevealed(playerId)) {
+			ItemStack copy = peek.copy();
+			ContainerSearchMemory mem = lootBlock.getSearchMemory();
+			int moved = autoPlaceInRevealedGrids(List.of(lootBlock.getGrid()), copy, mem, playerId);
+			if (moved > 0) {
+				extractSource(loadout, srcLoc, srcIdx, srcEntryId, moved);
+				lootBlock.markDirty();
+				syncToClient(serverPlayer);
+			}
+			return;
+		}
+		if (mode == MODE_VANILLA_CONTAINER && vanillaStored != null && vanillaStored.getSearchMemory().isGridRevealed(playerId)) {
+			if (isVanillaNestingBlocked(peek)) {
+				return;
+			}
+			GridContainer vg = vanillaStored.getGrid();
+			ContainerSearchMemory mem = vanillaStored.getSearchMemory();
+			ItemStack copy = peek.copy();
+			int before = copy.getCount();
+			if (copy.isStackable()) {
+				for (GridEntry entry : vg.getEntries()) {
+					if (!mem.isEntryDiscovered(playerId, entry.getEntryId())) continue;
+					if (ItemStack.canCombine(entry.getStack(), copy)) {
+						int space = entry.getStack().getMaxCount() - entry.getStack().getCount();
+						if (space > 0) {
+							int transfer = Math.min(space, copy.getCount());
+							entry.getStack().increment(transfer);
+							copy.decrement(transfer);
+							if (copy.isEmpty()) break;
+						}
+					}
+				}
+			}
+			if (!copy.isEmpty() && canAddNewEntryToVanillaGrid(vg)) {
+				GridEntry placed = vg.tryPlaceInFreeCell(copy);
+				if (placed != null) {
+					mem.markEntryDiscovered(playerId, placed.getEntryId());
+					copy.setCount(0);
+				}
+			}
+			int moved = before - copy.getCount();
+			if (moved > 0) {
+				extractSource(loadout, srcLoc, srcIdx, srcEntryId, moved);
+				markExternalDirty();
+				syncToClient(serverPlayer);
+			} else if (!canAddNewEntryToVanillaGrid(vg)) {
+				serverPlayer.sendMessage(Text.translatable("message.tarkovcraft.container_slot_limit"), true);
+			}
+			return;
+		}
+		if (mode == MODE_GROUND_ITEM && groundItem != null && ContainerItemHelper.isContainerItem(groundItem.getStack())) {
+			ItemStack groundStack = groundItem.getStack();
+			ContainerSearchMemory memory = searchMemoryFor(groundStack);
+			if (memory == null || memory.isGridRevealed(playerId)) {
+				ContainerHandle handle = directStackHandle(groundStack, false, () -> {});
+				int moved = quickPlaceIntoContainer(handle, ContainerItemHelper.getContainerUuid(groundStack), peek, memory, playerId);
+				if (moved > 0) {
+					extractSource(loadout, srcLoc, srcIdx, srcEntryId, moved);
+					syncToClient(serverPlayer);
+				}
+				return;
+			}
+		}
+
+		if (mode == MODE_OWN_INVENTORY && !openContainerUuids.isEmpty()
+			&& (srcLoc == TarkovNetworking.LOC_POCKET || srcLoc == TarkovNetworking.LOC_RIG_GRID || srcLoc == TarkovNetworking.LOC_BACKPACK_GRID)) {
+			UUID topUuid = openContainerUuids.get(openContainerUuids.size() - 1);
+			UUID sourceContainer = srcLoc == TarkovNetworking.LOC_POCKET ? null : ContainerItemHelper.getContainerUuid(
+				loadout.getEquipment(srcLoc == TarkovNetworking.LOC_RIG_GRID ? EquipmentSlotType.RIG : EquipmentSlotType.BACKPACK));
+			ContainerHandle handle = topUuid.equals(sourceContainer) ? null : resolveContainerHandle(topUuid);
+			if (handle != null) {
+				int moved = quickPlaceIntoContainer(handle, topUuid, peek, searchMemoryFor(handle.getStack()), playerId);
+				if (moved > 0) {
+					extractSource(loadout, srcLoc, srcIdx, srcEntryId, moved);
+					syncToClient(serverPlayer);
+					return;
+				}
+			}
+		}
+
+		// 2. Own inventory transfer: Backpack <-> Rig/Pockets
+		ItemStack transferCopy = peek.copy();
+		int before = transferCopy.getCount();
+		boolean movedBetweenContainers = false;
+		if (srcLoc == TarkovNetworking.LOC_SECURE_CONTAINER) {
+			loadout.tryInsertItem(transferCopy, playerId);
+			movedBetweenContainers = transferCopy.getCount() < before;
+		} else if (srcLoc == TarkovNetworking.LOC_BACKPACK_GRID) {
+			movedBetweenContainers = insertIntoPocketsOrRig(loadout, playerId, transferCopy) > 0;
+		} else if (srcLoc == TarkovNetworking.LOC_POCKET || srcLoc == TarkovNetworking.LOC_RIG_GRID) {
+			movedBetweenContainers = insertIntoOwnBackpack(loadout, playerId, transferCopy) > 0;
+		}
+		if (movedBetweenContainers) {
+			extractSource(loadout, srcLoc, srcIdx, srcEntryId, before - transferCopy.getCount());
+			syncToClient(serverPlayer);
+			return;
+		}
+
+		// 3. Fallback: equip into matching empty gear/weapon slot
+		EquipmentSlotType autoEquipSlot = findEmptyEquipSlotFor(loadout, peek);
+		if (autoEquipSlot != null) {
+			ItemStack removed = extractSource(loadout, srcLoc, srcIdx, srcEntryId, peek.getCount());
+			if (!removed.isEmpty()) {
+				loadout.setEquipment(autoEquipSlot, removed);
+				syncToClient(serverPlayer);
+			}
+		}
+	}
+
+	private int quickPlaceIntoContainer(ContainerHandle handle, @Nullable UUID containerId, ItemStack source,
+			@Nullable ContainerSearchMemory memory, UUID playerId) {
+		if (!canPlaceIntoFloatingContainer(handle, containerId, source)) return 0;
+		List<GridContainer> grids = handle.readGrids();
+		int moved = autoPlaceInRevealedGrids(grids, source.copy(), memory, playerId);
+		if (moved > 0) {
+			handle.saveGrids(grids);
+			if (memory != null) handle.saveSearchMemory(memory);
+		}
+		return moved;
+	}
+
+	static int autoPlaceInRevealedGrids(List<GridContainer> grids, ItemStack incoming,
+			@Nullable ContainerSearchMemory memory, UUID playerId) {
+		if (memory != null && !memory.isGridRevealed(playerId)) return 0;
+		int count = incoming.getCount();
+		for (GridContainer grid : grids) {
+			Set<UUID> existingIds = new HashSet<>();
+			if (memory != null) {
+				for (GridEntry entry : grid.getEntries()) existingIds.add(entry.getEntryId());
+			}
+			grid.tryAutoPlace(incoming, memory == null ? null : id -> memory.isEntryDiscovered(playerId, id));
+			if (incoming.getCount() < count) {
+				if (memory != null) {
+					for (GridEntry entry : grid.getEntries()) {
+						if (!existingIds.contains(entry.getEntryId())) memory.markEntryDiscovered(playerId, entry.getEntryId());
+					}
+				}
+				return count - incoming.getCount();
+			}
+		}
+		return 0;
+	}
+
+	/**
+	 * Quick equip/unequip (Ctrl+F or RMB Equip/Unequip).
+	 */
+	public void handleQuickEquip(ServerPlayerEntity serverPlayer, byte srcLoc, int srcIdx, @Nullable UUID srcEntryId) {
+		if (!canUse(serverPlayer)) return;
+		UUID playerId = serverPlayer.getUuid();
+		PlayerLoadout loadout = getPlayerLoadout(serverPlayer);
+
+		if (srcLoc == TarkovNetworking.LOC_EQUIPMENT) {
+			unequipToStorage(serverPlayer, loadout, playerId, srcIdx);
+			return;
+		}
+
+		ItemStack peek = peekSource(loadout, playerId, srcLoc, srcIdx, srcEntryId);
+		if (peek.isEmpty()) return;
+
+		if (EquipmentSlotType.HEADSET.accepts(peek) && loadout.blocksHeadset()) {
+			serverPlayer.sendMessage(Text.translatable("message.tarkovcraft.headset_blocked"), true);
+			return;
+		}
+		EquipmentSlotType targetSlot = findEquipOrHotswapSlotFor(loadout, peek);
+		if (targetSlot == null) return;
+
+		ItemStack removed = extractSource(loadout, srcLoc, srcIdx, srcEntryId, peek.getCount());
+		if (!removed.isEmpty()) {
+			ItemStack droppedOld = equipWithHotswap(loadout, playerId, targetSlot, removed);
+			if (!droppedOld.isEmpty()) {
+				serverPlayer.dropItem(droppedOld, false);
+				serverPlayer.sendMessage(
+					Text.translatable("message.tarkovcraft.hotswap_dropped", droppedOld.getName())
+						.formatted(net.minecraft.util.Formatting.YELLOW),
+					true
+				);
+			}
+			markExternalDirty();
+			syncToClient(serverPlayer);
+		}
+	}
+
+	/**
+	 * Server-authoritative consumption of food/drinks/healing items (RMB "Use").
+	 */
+	public void handleUseItem(ServerPlayerEntity serverPlayer, byte srcLoc, int srcIdx, @Nullable UUID srcEntryId) {
+		if (!canUse(serverPlayer) || serverPlayer.isSpectator() || !serverPlayer.isAlive()) return;
+		if (!(serverPlayer instanceof PlayerLoadoutHolder holder)) return;
+
+		UUID playerId = serverPlayer.getUuid();
+		PlayerLoadout loadout = getPlayerLoadout(serverPlayer);
+		ItemStack peek = peekSource(loadout, playerId, srcLoc, srcIdx, srcEntryId);
+		if (peek.getItem() instanceof TarkovMedicalItem || peek.getItem() instanceof TarkovStimulatorItem) {
+			com.tarkovcraft.health.MedicalUseManager.startFromInventory(serverPlayer, srcLoc, srcIdx, srcEntryId, null);
+			return;
+		}
+		if (peek.getItem() instanceof TarkovArmorRepairItem) {
+			TarkovArmorRepairItem.start(serverPlayer,
+				() -> isOwnStorage(srcLoc) || serverPlayer.currentScreenHandler == this && canUse(serverPlayer)
+					? peekSource(loadout, playerId, srcLoc, srcIdx, srcEntryId) : ItemStack.EMPTY,
+				result -> replaceRepairKit(loadout, srcLoc, srcIdx, srcEntryId, result));
+			return;
+		}
+		if (!isConsumableItem(peek)) return;
+
+		BodyPartHealth health = holder.tarkovcraft$getBodyHealth();
+		FoodComponent fc = peek.getItem().getFoodComponent();
+		boolean canConsume = fc == null || fc.isAlwaysEdible()
+			|| serverPlayer.canConsume(false)
+			|| health.getTotalHp() < BodyPart.TOTAL_MAX_HP;
+		if (!canConsume) return;
+
+		List<StatusEffectInstance> potionEffects = List.copyOf(PotionUtil.getPotionEffects(peek));
+		ItemStack single = extractSource(loadout, srcLoc, srcIdx, srcEntryId, 1);
+		if (single.isEmpty()) return;
+
+		Item originalItem = single.getItem();
+		UseAction useAction = single.getUseAction();
+		ItemStack remainder = single.finishUsing(serverPlayer.getWorld(), serverPlayer);
+
+		if (!remainder.isEmpty() && !serverPlayer.isCreative() && remainder.getItem() != originalItem) {
+			if (!loadout.tryInsertItem(remainder, playerId) && !remainder.isEmpty()) {
+				serverPlayer.dropItem(remainder, false);
+			}
+		}
+
+		if (originalItem == Items.ENCHANTED_GOLDEN_APPLE) {
+			health.healEvenly(80.0f);
+		} else if (originalItem == Items.GOLDEN_APPLE) {
+			health.healEvenly(25.0f);
+		} else {
+			boolean healedByPotion = false;
+			for (StatusEffectInstance inst : potionEffects) {
+				if (inst.getEffectType() == StatusEffects.INSTANT_HEALTH) {
+					health.healEvenly(35.0f * (inst.getAmplifier() + 1));
+					healedByPotion = true;
+				}
+			}
+			if (!healedByPotion && fc != null && health.getTotalHp() < BodyPart.TOTAL_MAX_HP) {
+				health.healEvenly(Math.max(2.0f, fc.getHunger() * 1.5f));
+			}
+		}
+
+		serverPlayer.setHealth(Math.max(1.0f, health.getTotalRatio() * serverPlayer.getMaxHealth()));
+		holder.tarkovcraft$syncBodyHealth();
+
+		SoundEvent sound = useAction == UseAction.DRINK
+			? SoundEvents.ENTITY_GENERIC_DRINK
+			: SoundEvents.ENTITY_PLAYER_BURP;
+		serverPlayer.getWorld().playSound(null, serverPlayer.getX(), serverPlayer.getY(), serverPlayer.getZ(),
+			sound, SoundCategory.PLAYERS, 0.7f, 1.0f);
+
+		markExternalDirty();
+		syncToClient(serverPlayer);
+	}
+
+	/**
+	 * Splits splitAmount items from a stack into a guaranteed free cell without merging back.
+	 */
+	public void handleSplitStack(ServerPlayerEntity serverPlayer, byte srcLoc, int srcIdx, @Nullable UUID srcEntryId, int splitAmount) {
+		if (!canUse(serverPlayer)) return;
+		UUID playerId = serverPlayer.getUuid();
+		PlayerLoadout loadout = getPlayerLoadout(serverPlayer);
+
+		ItemStack peek = peekSource(loadout, playerId, srcLoc, srcIdx, srcEntryId);
+		if (peek.isEmpty() || peek.getCount() <= 1 || splitAmount < 1 || splitAmount >= peek.getCount()) {
+			return;
+		}
+
+		ItemStack splitCopy = peek.copy();
+		splitCopy.setCount(splitAmount);
+
+		boolean placed = placeSplitIntoSameOrOwnFreeCell(loadout, playerId, srcLoc, srcIdx, splitCopy);
+		if (!placed) {
+			serverPlayer.sendMessage(Text.translatable("message.tarkovcraft.no_space"), true);
+			return;
+		}
+
+		extractSource(loadout, srcLoc, srcIdx, srcEntryId, splitAmount);
+		markExternalDirty();
+		syncToClient(serverPlayer);
+	}
+
+	public void handleRequestSearch(ServerPlayerEntity serverPlayer, @Nullable UUID targetId) {
+		if (!canUse(serverPlayer) || targetId == null) return;
+		searchSession.prioritizeTarget(targetId);
+		syncToClient(serverPlayer);
+	}
+
+	public void handleOpenCase(ServerPlayerEntity serverPlayer, byte srcLoc, int srcIdx, @Nullable UUID srcEntryId) {
+		if (!canUse(serverPlayer)) return;
+		UUID playerId = serverPlayer.getUuid();
+		PlayerLoadout loadout = getPlayerLoadout(serverPlayer);
+		// peekSource enforces isGridRevealed + isEntryDiscovered on all external/unsearched containers
+		ItemStack peek = peekSource(loadout, playerId, srcLoc, srcIdx, srcEntryId);
+		if (!ContainerItemHelper.isContainerItem(peek)) {
+			return;
+		}
+		UUID foundUuid = ensureAndFetchContainerUuid(loadout, srcLoc, srcIdx, srcEntryId);
+		if (foundUuid == null) return;
+
+		openContainerUuids.remove(foundUuid);
+		openContainerUuids.add(foundUuid);
+		while (openContainerUuids.size() > MAX_OPEN_WINDOWS) {
+			openContainerUuids.remove(0);
+		}
+		syncToClient(serverPlayer);
+	}
+
+	@Nullable
+	private UUID ensureAndFetchContainerUuid(PlayerLoadout loadout, byte srcLoc, int srcIdx, @Nullable UUID srcEntryId) {
+		return switch (srcLoc) {
+			case TarkovNetworking.LOC_POCKET -> {
+				ItemStack st = loadout.getPocket(srcIdx);
+				yield ContainerItemHelper.isContainerItem(st) ? ContainerItemHelper.getOrCreateContainerUuid(st) : null;
+			}
+			case TarkovNetworking.LOC_EQUIPMENT -> {
+				EquipmentSlotType slot = slotByOrdinal(srcIdx);
+				if (slot == null) yield null;
+				ItemStack st = loadout.getEquipment(slot);
+				yield ContainerItemHelper.isContainerItem(st) ? ContainerItemHelper.getOrCreateContainerUuid(st) : null;
+			}
+			case TarkovNetworking.LOC_CORPSE_EQUIPMENT -> {
+				if (mode != MODE_CORPSE || corpse == null) yield null;
+				EquipmentSlotType slot = slotByOrdinal(srcIdx);
+				if (slot == null) yield null;
+				ItemStack st = corpse.getLoadout().getEquipment(slot);
+				yield ContainerItemHelper.isContainerItem(st) ? ContainerItemHelper.getOrCreateContainerUuid(st) : null;
+			}
+			case TarkovNetworking.LOC_SECURE_CONTAINER -> {
+				GridEntry entry = srcIdx == 0 && srcEntryId != null ? loadout.getSecureContainer().getEntry(srcEntryId) : null;
+				yield entry != null && ContainerItemHelper.isContainerItem(entry.getStack())
+					? ContainerItemHelper.getOrCreateContainerUuid(entry.getStack()) : null;
+			}
+			case TarkovNetworking.LOC_RIG_GRID -> ensureUuidInRig(loadout.getEquipment(EquipmentSlotType.RIG), srcIdx, srcEntryId);
+			case TarkovNetworking.LOC_BACKPACK_GRID -> ensureUuidInSingleContainer(loadout.getEquipment(EquipmentSlotType.BACKPACK), srcEntryId);
+			case TarkovNetworking.LOC_CORPSE_RIG_GRID -> {
+				ItemStack rig = (mode == MODE_CORPSE && corpse != null)
+					? corpse.getLoadout().getEquipment(EquipmentSlotType.RIG)
+					: (mode == MODE_GROUND_ITEM && groundItem != null ? groundItem.getStack() : ItemStack.EMPTY);
+				yield ensureUuidInRig(rig, srcIdx, srcEntryId);
+			}
+			case TarkovNetworking.LOC_CORPSE_BACKPACK_GRID -> (mode == MODE_CORPSE && corpse != null)
+				? ensureUuidInSingleContainer(corpse.getLoadout().getEquipment(EquipmentSlotType.BACKPACK), srcEntryId)
+				: null;
+			case TarkovNetworking.LOC_EXTERNAL_GRID -> {
+				if (srcEntryId == null) yield null;
+				if (mode == MODE_GROUND_ITEM && groundItem != null) {
+					yield ensureUuidInSingleContainer(groundItem.getStack(), srcEntryId);
+				}
+				GridContainer grid = getPrimaryExternalGrid();
+				if (grid == null) yield null;
+				GridEntry entry = grid.getEntry(srcEntryId);
+				if (entry == null || !ContainerItemHelper.isContainerItem(entry.getStack())) yield null;
+				UUID id = ContainerItemHelper.getOrCreateContainerUuid(entry.getStack());
+				markExternalDirty();
+				yield id;
+			}
+			case TarkovNetworking.LOC_FLOATING_CONTAINER -> {
+				if (srcEntryId == null) yield null;
+				int winIdx = srcIdx >> 8;
+				int subIdx = srcIdx & 0xFF;
+				ContainerHandle handle = resolveOpenWindowHandle(winIdx);
+				if (handle == null) yield null;
+				List<GridContainer> grids = handle.readGrids();
+				if (subIdx < 0 || subIdx >= grids.size()) yield null;
+				GridEntry entry = grids.get(subIdx).getEntry(srcEntryId);
+				if (entry == null || !ContainerItemHelper.isContainerItem(entry.getStack())) yield null;
+				boolean had = ContainerItemHelper.getContainerUuid(entry.getStack()) != null;
+				UUID id = ContainerItemHelper.getOrCreateContainerUuid(entry.getStack());
+				if (!had) {
+					handle.saveGrids(grids);
+				}
+				yield id;
+			}
+			default -> null;
+		};
+	}
+
+	@Nullable
+	private static UUID ensureUuidInRig(ItemStack rig, int idx, @Nullable UUID entryId) {
+		if (rig.isEmpty() || !(rig.getItem() instanceof TacticalRigItem) || entryId == null) return null;
+		List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
+		if (idx < 0 || idx >= grids.size()) return null;
+		GridEntry entry = grids.get(idx).getEntry(entryId);
+		if (entry == null || !ContainerItemHelper.isContainerItem(entry.getStack())) return null;
+		boolean had = ContainerItemHelper.getContainerUuid(entry.getStack()) != null;
+		UUID id = ContainerItemHelper.getOrCreateContainerUuid(entry.getStack());
+		if (!had) {
+			ContainerItemHelper.writeRigGrids(rig, grids);
+		}
+		return id;
+	}
+
+	@Nullable
+	private static UUID ensureUuidInSingleContainer(ItemStack container, @Nullable UUID entryId) {
+		if (!isSingleGridContainer(container) || entryId == null) return null;
+		GridContainer grid = readSingleContainerGrid(container);
+		GridEntry entry = grid.getEntry(entryId);
+		if (entry == null || !ContainerItemHelper.isContainerItem(entry.getStack())) return null;
+		boolean had = ContainerItemHelper.getContainerUuid(entry.getStack()) != null;
+		UUID id = ContainerItemHelper.getOrCreateContainerUuid(entry.getStack());
+		if (!had) {
+			writeSingleContainerGrid(container, grid);
+		}
+		return id;
+	}
+
+	public void handleCloseCase(ServerPlayerEntity serverPlayer, @Nullable UUID containerUuid) {
+		if (containerUuid != null) {
+			openContainerUuids.remove(containerUuid);
+		} else if (!openContainerUuids.isEmpty()) {
+			openContainerUuids.remove(openContainerUuids.size() - 1);
+		}
+		syncToClient(serverPlayer);
+	}
+
+	/**
+	 * Targeted or auto medical application from the HEALTH tab (C2S_HEAL_PART).
+	 */
+	public void handleHealPart(
+		ServerPlayerEntity serverPlayer,
+		byte srcLoc, int srcIdx, @Nullable UUID srcEntryId,
+		@Nullable BodyPart targetPart
+	) {
+		if (!canUse(serverPlayer) || serverPlayer.isSpectator() || !serverPlayer.isAlive()) return;
+		if (!isOwnStorage(srcLoc)) return;
+		com.tarkovcraft.health.MedicalUseManager.startFromInventory(serverPlayer, srcLoc, srcIdx, srcEntryId, targetPart);
+	}
+
+	private static boolean isOwnStorage(byte loc) {
+		return loc == TarkovNetworking.LOC_POCKET || loc == TarkovNetworking.LOC_RIG_GRID
+			|| loc == TarkovNetworking.LOC_BACKPACK_GRID || loc == TarkovNetworking.LOC_SECURE_CONTAINER;
+	}
+
+	private void replaceRepairKit(PlayerLoadout loadout, byte loc, int idx,
+			@Nullable UUID entryId, ItemStack result) {
+		if (loc == TarkovNetworking.LOC_POCKET) {
+			loadout.setPocket(idx, result);
+		} else if (loc == TarkovNetworking.LOC_EQUIPMENT || loc == TarkovNetworking.LOC_CORPSE_EQUIPMENT) {
+			PlayerLoadout owner = loc == TarkovNetworking.LOC_EQUIPMENT ? loadout : corpse.getLoadout();
+			owner.setEquipment(slotByOrdinal(idx), result);
+		} else if (loc == TarkovNetworking.LOC_SECURE_CONTAINER) {
+			replaceGridStack(loadout.getSecureContainer(), entryId, result);
+		} else if (loc == TarkovNetworking.LOC_EXTERNAL_GRID && mode != MODE_GROUND_ITEM) {
+			replaceGridStack(getPrimaryExternalGrid(), entryId, result);
+		} else {
+			ContainerHandle handle = switch (loc) {
+				case TarkovNetworking.LOC_CORPSE_RIG_GRID -> mode == MODE_CORPSE
+					? wearableHandle(corpse.getLoadout().getEquipment(EquipmentSlotType.RIG))
+					: resolveContainerDestination(loadout, loc, idx);
+				case TarkovNetworking.LOC_CORPSE_BACKPACK_GRID -> wearableHandle(corpse.getLoadout().getEquipment(EquipmentSlotType.BACKPACK));
+				default -> resolveContainerDestination(loadout, loc, idx);
+			};
+			if (handle == null) return;
+			List<GridContainer> grids = handle.readGrids();
+			replaceGridStack(grids.get(getDestinationGridIndex(loc, idx)), entryId, result);
+			handle.saveGrids(grids);
+		}
+		loadout.invalidateExposedCache();
+		if (!isOwnStorage(loc)) markExternalDirty();
+	}
+
+	private static void replaceGridStack(GridContainer grid, UUID id, ItemStack result) {
+		if (result.isEmpty()) {
+			grid.remove(id);
+		} else {
+			grid.getEntry(id).setStack(result);
+		}
+	}
+
+	public ItemStack peekSourceForMed(ServerPlayerEntity serverPlayer, byte srcLoc, int srcIdx, @Nullable UUID srcEntryId) {
+		if (!canUse(serverPlayer)) return ItemStack.EMPTY;
+		return peekSource(getPlayerLoadout(serverPlayer), serverPlayer.getUuid(), srcLoc, srcIdx, srcEntryId);
+	}
+
+	public void completeTimedMedUse(
+		ServerPlayerEntity serverPlayer,
+		byte srcLoc, int srcIdx, @Nullable UUID srcEntryId,
+		@Nullable BodyPart targetPart,
+		boolean isStimulator
+	) {
+		if (!canUse(serverPlayer) || serverPlayer.isSpectator() || !serverPlayer.isAlive()) return;
+		if (!(serverPlayer instanceof PlayerLoadoutHolder holder)) return;
+
+		UUID playerId = serverPlayer.getUuid();
+		PlayerLoadout loadout = getPlayerLoadout(serverPlayer);
+		BodyPartHealth health = holder.tarkovcraft$getBodyHealth();
+
+		if (isStimulator) {
+			ItemStack peek = peekSource(loadout, playerId, srcLoc, srcIdx, srcEntryId);
+			if (peek.getItem() instanceof TarkovStimulatorItem) {
+				ItemStack toUse = peek.copyWithCount(1);
+				if (TarkovStimulatorItem.applyStimulator(serverPlayer, toUse)) {
+					if (!serverPlayer.isCreative()) {
+						extractSource(loadout, srcLoc, srcIdx, srcEntryId, 1);
+					}
+					markExternalDirty();
+					syncToClient(serverPlayer);
+				}
+			}
+			return;
+		}
+
+		ItemStack peek = peekSource(loadout, playerId, srcLoc, srcIdx, srcEntryId);
+		if (!(peek.getItem() instanceof TarkovMedicalItem medItem)) return;
+
+		MedicalHelper.ApplyResult res = mutateMedicalInContainer(
+			loadout, playerId, health, srcLoc, srcIdx, srcEntryId, targetPart, true, serverPlayer.isCreative()
+		);
+		if (!res.applied()) {
+			holder.tarkovcraft$syncBodyHealth();
+			return;
+		}
+
+		if (res.exhaustionToAdd() > 0.0f) {
+			serverPlayer.addExhaustion(res.exhaustionToAdd());
+		}
+		serverPlayer.getItemCooldownManager().set(medItem, medItem.getMedicalType().getCooldownTicks());
+		serverPlayer.setHealth(Math.max(1.0f, health.getTotalRatio() * serverPlayer.getMaxHealth()));
+		MedicalHelper.playMedicalSound(serverPlayer, medItem.getMedicalType());
+		holder.tarkovcraft$syncBodyHealth();
+		markExternalDirty();
+		syncToClient(serverPlayer);
+	}
+
+	private MedicalHelper.ApplyResult mutateMedicalInContainer(
+		PlayerLoadout loadout,
+		UUID playerId,
+		BodyPartHealth health,
+		byte srcLoc,
+		int srcIdx,
+		@Nullable UUID srcEntryId,
+		@Nullable BodyPart targetPart,
+		boolean allowExternal,
+		boolean isCreative
+	) {
+		MedicalHelper.ApplyResult failed = new MedicalHelper.ApplyResult(false, null, 0.0f, false);
+		return switch (srcLoc) {
+			case TarkovNetworking.LOC_POCKET -> {
+				ItemStack st = loadout.getPocket(srcIdx);
+				if (st.isEmpty()) yield failed;
+				MedicalHelper.ApplyResult res = MedicalHelper.applyMedical(health, st, targetPart, isCreative);
+				if (res.applied() && st.isEmpty()) {
+					loadout.setPocket(srcIdx, ItemStack.EMPTY);
+				}
+				yield res;
+			}
+			case TarkovNetworking.LOC_SECURE_CONTAINER -> {
+				GridContainer grid = loadout.getSecureContainer();
+				GridEntry entry = srcIdx == 0 && srcEntryId != null ? grid.getEntry(srcEntryId) : null;
+				if (entry == null) yield failed;
+				MedicalHelper.ApplyResult res = MedicalHelper.applyMedical(health, entry.getStack(), targetPart, isCreative);
+				if (res.applied() && entry.getStack().isEmpty()) grid.remove(srcEntryId);
+				yield res;
+			}
+			case TarkovNetworking.LOC_RIG_GRID -> applyMedicalInRig(
+				loadout.getEquipment(EquipmentSlotType.RIG), playerId, health, srcIdx, srcEntryId, targetPart, isCreative
+			);
+			case TarkovNetworking.LOC_BACKPACK_GRID -> applyMedicalInBackpack(
+				loadout.getEquipment(EquipmentSlotType.BACKPACK), playerId, health, srcEntryId, targetPart, isCreative
+			);
+			case TarkovNetworking.LOC_CORPSE_RIG_GRID -> {
+				if (!allowExternal) yield failed;
+				ItemStack rig = (mode == MODE_CORPSE && corpse != null)
+					? corpse.getLoadout().getEquipment(EquipmentSlotType.RIG)
+					: (mode == MODE_GROUND_ITEM && groundItem != null ? groundItem.getStack() : ItemStack.EMPTY);
+				yield applyMedicalInRig(rig, playerId, health, srcIdx, srcEntryId, targetPart, isCreative);
+			}
+			case TarkovNetworking.LOC_CORPSE_BACKPACK_GRID -> {
+				if (!allowExternal || mode != MODE_CORPSE || corpse == null) yield failed;
+				yield applyMedicalInBackpack(
+					corpse.getLoadout().getEquipment(EquipmentSlotType.BACKPACK),
+					playerId, health, srcEntryId, targetPart, isCreative
+				);
+			}
+			case TarkovNetworking.LOC_FLOATING_CONTAINER -> {
+				if (!allowExternal || srcEntryId == null) yield failed;
+				int winIdx = srcIdx >> 8;
+				int subIdx = srcIdx & 0xFF;
+				ContainerHandle handle = resolveOpenWindowHandle(winIdx);
+				if (handle == null) yield failed;
+				ItemStack st = handle.getStack();
+				if (ContainerItemHelper.requiresSearch(st)) {
+					ContainerSearchMemory mem = ContainerItemHelper.getSearchMemory(st);
+					if (!mem.isGridRevealed(playerId) || !mem.isEntryDiscovered(playerId, srcEntryId)) yield failed;
+				}
+				List<GridContainer> grids = handle.readGrids();
+				if (subIdx < 0 || subIdx >= grids.size()) yield failed;
+				GridEntry entry = grids.get(subIdx).getEntry(srcEntryId);
+				if (entry == null) yield failed;
+				MedicalHelper.ApplyResult res = MedicalHelper.applyMedical(health, entry.getStack(), targetPart, isCreative);
+				if (res.applied()) {
+					if (entry.getStack().isEmpty()) {
+						grids.get(subIdx).remove(srcEntryId);
+					}
+					handle.saveGrids(grids);
+				}
+				yield res;
+			}
+			case TarkovNetworking.LOC_EXTERNAL_GRID -> {
+				if (!allowExternal || srcEntryId == null) yield failed;
+				if (mode == MODE_GROUND_ITEM && groundItem != null) {
+					yield applyMedicalInSingleContainer(groundItem.getStack(), playerId, health, srcEntryId, targetPart, isCreative);
+				}
+				GridContainer grid = getPrimaryExternalGrid();
+				ContainerSearchMemory mem = getPrimaryExternalMemory();
+				if (grid == null || mem == null || !mem.isGridRevealed(playerId) || !mem.isEntryDiscovered(playerId, srcEntryId)) {
+					yield failed;
+				}
+				GridEntry entry = grid.getEntry(srcEntryId);
+				if (entry == null) yield failed;
+				MedicalHelper.ApplyResult res = MedicalHelper.applyMedical(health, entry.getStack(), targetPart, isCreative);
+				if (res.applied() && entry.getStack().isEmpty()) {
+					grid.remove(srcEntryId);
+				}
+				yield res;
+			}
+			default -> failed;
+		};
+	}
+
+	private static MedicalHelper.ApplyResult applyMedicalInRig(
+		ItemStack rig, UUID playerId, BodyPartHealth health,
+		int idx, @Nullable UUID entryId, @Nullable BodyPart targetPart, boolean isCreative
+	) {
+		MedicalHelper.ApplyResult failed = new MedicalHelper.ApplyResult(false, null, 0.0f, false);
+		if (rig.isEmpty() || !(rig.getItem() instanceof TacticalRigItem) || entryId == null) return failed;
+		if (ContainerItemHelper.requiresSearch(rig)) {
+			ContainerSearchMemory mem = ContainerItemHelper.getSearchMemory(rig);
+			if (!mem.isGridRevealed(playerId) || !mem.isEntryDiscovered(playerId, entryId)) {
+				return failed;
+			}
+		}
+		List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
+		if (idx < 0 || idx >= grids.size()) return failed;
+		GridEntry entry = grids.get(idx).getEntry(entryId);
+		if (entry == null) return failed;
+
+		MedicalHelper.ApplyResult res = MedicalHelper.applyMedical(health, entry.getStack(), targetPart, isCreative);
+		if (res.applied()) {
+			if (entry.getStack().isEmpty()) {
+				grids.get(idx).remove(entryId);
+			}
+			ContainerItemHelper.writeRigGrids(rig, grids);
+		}
+		return res;
+	}
+
+	private static MedicalHelper.ApplyResult applyMedicalInBackpack(
+		ItemStack bp, UUID playerId, BodyPartHealth health,
+		@Nullable UUID entryId, @Nullable BodyPart targetPart, boolean isCreative
+	) {
+		if (bp.isEmpty() || !(bp.getItem() instanceof BackpackItem)) {
+			return new MedicalHelper.ApplyResult(false, null, 0.0f, false);
+		}
+		return applyMedicalInSingleContainer(bp, playerId, health, entryId, targetPart, isCreative);
+	}
+
+	private static MedicalHelper.ApplyResult applyMedicalInSingleContainer(
+		ItemStack container, UUID playerId, BodyPartHealth health,
+		@Nullable UUID entryId, @Nullable BodyPart targetPart, boolean isCreative
+	) {
+		MedicalHelper.ApplyResult failed = new MedicalHelper.ApplyResult(false, null, 0.0f, false);
+		if (!isSingleGridContainer(container) || entryId == null) return failed;
+		if (ContainerItemHelper.requiresSearch(container)) {
+			ContainerSearchMemory mem = ContainerItemHelper.getSearchMemory(container);
+			if (!mem.isGridRevealed(playerId) || !mem.isEntryDiscovered(playerId, entryId)) {
+				return failed;
+			}
+		}
+		GridContainer grid = readSingleContainerGrid(container);
+		GridEntry entry = grid.getEntry(entryId);
+		if (entry == null) return failed;
+
+		MedicalHelper.ApplyResult res = MedicalHelper.applyMedical(health, entry.getStack(), targetPart, isCreative);
+		if (res.applied()) {
+			if (entry.getStack().isEmpty()) {
+				grid.remove(entryId);
+			}
+			writeSingleContainerGrid(container, grid);
+		}
+		return res;
+	}
+
+	private void unequipToStorage(ServerPlayerEntity serverPlayer, PlayerLoadout loadout, UUID playerId, int srcIdx) {
+		EquipmentSlotType slot = slotByOrdinal(srcIdx);
+		if (slot == null) return;
+		ItemStack eq = loadout.getEquipment(slot);
+		if (eq.isEmpty()) return;
+
+		loadout.setEquipment(slot, ItemStack.EMPTY);
+		ItemStack copy = eq.copy();
+		if (loadout.tryInsertItem(copy, playerId) && copy.isEmpty()) {
+			syncToClient(serverPlayer);
+		} else {
+			loadout.setEquipment(slot, eq);
+			serverPlayer.sendMessage(Text.translatable("message.tarkovcraft.no_space"), true);
+		}
+	}
+
+	private static int insertIntoPocketsOrRig(PlayerLoadout loadout, UUID playerId, ItemStack stack) {
+		int before = stack.getCount();
+		if (loadout.canPlaceInPocket(stack)) {
+			if (stack.isStackable()) {
+				for (int i = 0; i < PlayerLoadout.POCKET_COUNT; i++) {
+					ItemStack pocket = loadout.getPocket(i);
+					if (!pocket.isEmpty() && ItemStack.canCombine(pocket, stack) && pocket.getCount() < pocket.getMaxCount()) {
+						int transfer = Math.min(pocket.getMaxCount() - pocket.getCount(), stack.getCount());
+						pocket.increment(transfer);
+						stack.decrement(transfer);
+						if (stack.isEmpty()) return before;
+					}
+				}
+			}
+			for (int i = 0; i < PlayerLoadout.POCKET_COUNT; i++) {
+				if (loadout.getPocket(i).isEmpty()) {
+					loadout.setPocket(i, stack.copy());
+					stack.setCount(0);
+					return before;
+				}
+			}
+		}
+
+		ItemStack rig = loadout.getEquipment(EquipmentSlotType.RIG);
+		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
+			boolean revealed = !ContainerItemHelper.requiresSearch(rig)
+				|| ContainerItemHelper.getSearchMemory(rig).isGridRevealed(playerId);
+			if (revealed) {
+				List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
+				boolean changed = false;
+				for (GridContainer g : grids) {
+					int cBefore = stack.getCount();
+					if (g.tryAutoPlace(stack) || stack.getCount() < cBefore) {
+						changed = true;
+						if (stack.isEmpty()) break;
+					}
+				}
+				if (changed) {
+					ContainerItemHelper.writeRigGrids(rig, grids);
+				}
+			}
+		}
+		return before - stack.getCount();
+	}
+
+	private static int insertIntoOwnBackpack(PlayerLoadout loadout, UUID playerId, ItemStack stack) {
+		int before = stack.getCount();
+		ItemStack bp = loadout.getEquipment(EquipmentSlotType.BACKPACK);
+		if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem) {
+			boolean revealed = !ContainerItemHelper.requiresSearch(bp)
+				|| ContainerItemHelper.getSearchMemory(bp).isGridRevealed(playerId);
+			if (revealed) {
+				GridContainer g = ContainerItemHelper.readBackpackGrid(bp);
+				if (g.tryAutoPlace(stack) || stack.getCount() < before) {
+					ContainerItemHelper.writeBackpackGrid(bp, g);
+				}
+			}
+		}
+		return before - stack.getCount();
+	}
+
+	private boolean placeSplitIntoSameOrOwnFreeCell(
+		PlayerLoadout loadout, UUID playerId, byte srcLoc, int srcIdx, ItemStack splitCopy
+	) {
+		// 1. Try placing into the same grid first
+		if (srcLoc == TarkovNetworking.LOC_SECURE_CONTAINER && PlayerLoadout.canPlaceInSecureContainer(splitCopy)) {
+			if (loadout.getSecureContainer().tryPlaceInFreeCell(splitCopy) != null) {
+				loadout.invalidateExposedCache();
+				return true;
+			}
+		} else if (srcLoc == TarkovNetworking.LOC_RIG_GRID) {
+			if (tryPlaceSplitInRig(loadout.getEquipment(EquipmentSlotType.RIG), playerId, srcIdx, splitCopy)) return true;
+		} else if (srcLoc == TarkovNetworking.LOC_BACKPACK_GRID) {
+			if (tryPlaceSplitInBackpack(loadout.getEquipment(EquipmentSlotType.BACKPACK), playerId, splitCopy)) return true;
+		} else if (srcLoc == TarkovNetworking.LOC_FLOATING_CONTAINER) {
+			int winIdx = srcIdx >> 8;
+			int subIdx = srcIdx & 0xFF;
+			ContainerHandle handle = resolveOpenWindowHandle(winIdx);
+			if (handle != null && canPlaceIntoFloatingContainer(handle, openContainerUuids.get(winIdx), splitCopy)) {
+				List<GridContainer> grids = handle.readGrids();
+				if (subIdx >= 0 && subIdx < grids.size()) {
+					GridEntry created = grids.get(subIdx).tryPlaceInFreeCell(splitCopy);
+					if (created != null) {
+						handle.saveGrids(grids);
+						if (ContainerItemHelper.requiresSearch(handle.getStack())) {
+							ContainerSearchMemory mem = ContainerItemHelper.getSearchMemory(handle.getStack());
+							mem.markEntryDiscovered(playerId, created.getEntryId());
+							handle.saveSearchMemory(mem);
+						}
+						return true;
+					}
+				}
+			}
+		} else if (srcLoc == TarkovNetworking.LOC_EXTERNAL_GRID) {
+			if (mode == MODE_GROUND_ITEM && groundItem != null) {
+				if (tryPlaceSplitInSingleContainer(groundItem.getStack(), playerId, splitCopy)) return true;
+			} else {
+				GridContainer g = getPrimaryExternalGrid();
+				ContainerSearchMemory mem = getPrimaryExternalMemory();
+				if (g != null && mem != null && mem.isGridRevealed(playerId)
+					&& !isVanillaNestingBlocked(splitCopy)
+					&& canAddNewEntryToVanillaGrid(g)) {
+					GridEntry created = g.tryPlaceInFreeCell(splitCopy);
+					if (created != null) {
+						mem.markEntryDiscovered(playerId, created.getEntryId());
+						return true;
+					}
+				}
+			}
+		} else if (srcLoc == TarkovNetworking.LOC_CORPSE_RIG_GRID) {
+			ItemStack rig = (mode == MODE_CORPSE && corpse != null)
+				? corpse.getLoadout().getEquipment(EquipmentSlotType.RIG)
+				: (mode == MODE_GROUND_ITEM && groundItem != null ? groundItem.getStack() : ItemStack.EMPTY);
+			if (tryPlaceSplitInRig(rig, playerId, srcIdx, splitCopy)) return true;
+		} else if (srcLoc == TarkovNetworking.LOC_CORPSE_BACKPACK_GRID && mode == MODE_CORPSE && corpse != null) {
+			if (tryPlaceSplitInBackpack(corpse.getLoadout().getEquipment(EquipmentSlotType.BACKPACK), playerId, splitCopy)) return true;
+		}
+
+		// 2. Try free 1x1 pocket
+		if (loadout.canPlaceInPocket(splitCopy)) {
+			for (int i = 0; i < PlayerLoadout.POCKET_COUNT; i++) {
+				if (loadout.getPocket(i).isEmpty()) {
+					loadout.setPocket(i, splitCopy);
+					return true;
+				}
+			}
+		}
+
+		// 3. Try own Rig free cell
+		ItemStack rig = loadout.getEquipment(EquipmentSlotType.RIG);
+		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
+			List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
+			for (int i = 0; i < grids.size(); i++) {
+				if (tryPlaceSplitInRig(rig, playerId, i, splitCopy)) return true;
+			}
+		}
+
+		// 4. Try own Backpack free cell
+		return tryPlaceSplitInBackpack(loadout.getEquipment(EquipmentSlotType.BACKPACK), playerId, splitCopy);
+	}
+
+	private static boolean tryPlaceSplitInRig(ItemStack rig, UUID playerId, int idx, ItemStack splitCopy) {
+		if (rig.isEmpty() || !(rig.getItem() instanceof TacticalRigItem)) return false;
+		if (ContainerItemHelper.requiresSearch(rig) && !ContainerItemHelper.getSearchMemory(rig).isGridRevealed(playerId)) {
+			return false;
+		}
+		List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
+		if (idx < 0 || idx >= grids.size()) return false;
+		GridEntry created = grids.get(idx).tryPlaceInFreeCell(splitCopy);
+		if (created == null) return false;
+		ContainerItemHelper.writeRigGrids(rig, grids);
+		if (ContainerItemHelper.requiresSearch(rig)) {
+			ContainerSearchMemory mem = ContainerItemHelper.getSearchMemory(rig);
+			mem.markEntryDiscovered(playerId, created.getEntryId());
+			ContainerItemHelper.saveSearchMemory(rig, mem);
+		}
+		return true;
+	}
+
+	private static boolean tryPlaceSplitInBackpack(ItemStack bp, UUID playerId, ItemStack splitCopy) {
+		if (bp.isEmpty() || !(bp.getItem() instanceof BackpackItem)) return false;
+		return tryPlaceSplitInSingleContainer(bp, playerId, splitCopy);
+	}
+
+	private static boolean tryPlaceSplitInSingleContainer(ItemStack container, UUID playerId, ItemStack splitCopy) {
+		if (!isSingleGridContainer(container)) return false;
+		if (ContainerItemHelper.requiresSearch(container) && !ContainerItemHelper.getSearchMemory(container).isGridRevealed(playerId)) {
+			return false;
+		}
+		GridContainer grid = readSingleContainerGrid(container);
+		GridEntry created = grid.tryPlaceInFreeCell(splitCopy);
+		if (created == null) return false;
+		writeSingleContainerGrid(container, grid);
+		if (ContainerItemHelper.requiresSearch(container)) {
+			ContainerSearchMemory mem = ContainerItemHelper.getSearchMemory(container);
+			mem.markEntryDiscovered(playerId, created.getEntryId());
+			ContainerItemHelper.saveSearchMemory(container, mem);
+		}
+		return true;
+	}
+
+	@Nullable
+	private static EquipmentSlotType findFirstMatchingSlot(ItemStack stack) {
+		if (stack == null || stack.isEmpty()) return null;
+		if (stack.getItem() instanceof BackpackItem) return EquipmentSlotType.BACKPACK;
+		if (stack.getItem() instanceof TacticalRigItem) return EquipmentSlotType.RIG;
+		for (EquipmentSlotType slot : new EquipmentSlotType[]{
+			EquipmentSlotType.HELMET, EquipmentSlotType.FACE_MASK, EquipmentSlotType.HEADSET, EquipmentSlotType.BODY_ARMOR,
+			EquipmentSlotType.PISTOL, EquipmentSlotType.PRIMARY_1, EquipmentSlotType.PRIMARY_2, EquipmentSlotType.MELEE
+		}) {
+			if (slot.accepts(stack)) {
+				if ((slot == EquipmentSlotType.PRIMARY_1 || slot == EquipmentSlotType.PRIMARY_2 || slot == EquipmentSlotType.PISTOL)
+					&& !isWeaponLike(stack)) {
+					continue;
+				}
+				return slot;
+			}
+		}
+		return null;
+	}
+
+	@Nullable
+	private static EquipmentSlotType findEquipOrHotswapSlotFor(PlayerLoadout loadout, ItemStack stack) {
+		if (stack.getItem() instanceof BackpackItem) {
+			return EquipmentSlotType.BACKPACK;
+		}
+		if (stack.getItem() instanceof TacticalRigItem) {
+			return EquipmentSlotType.RIG;
+		}
+		return findEmptyEquipSlotFor(loadout, stack);
+	}
+
+	/**
+	 * Equips {@code newStack} into {@code slot}. If {@code slot} already holds an item,
+	 * tries to place the previous item safely into the player's inventory (Pockets -> Rig -> new Backpack,
+	 * enforcing container nesting/recursion rules). Returns the previous stack if it could not fit
+	 * (caller must drop it with all its contents), or {@link ItemStack#EMPTY} if it fit or slot was empty.
+	 */
+	public static ItemStack equipWithHotswap(
+		PlayerLoadout loadout,
+		@Nullable UUID playerId,
+		EquipmentSlotType slot,
+		ItemStack newStack
+	) {
+		ItemStack oldStack = loadout.getEquipment(slot).copy();
+		loadout.setEquipment(slot, newStack);
+		if (oldStack.isEmpty()) {
+			return ItemStack.EMPTY;
+		}
+		ItemStack toStore = oldStack.copy();
+		if (tryInsertContainerSafely(loadout, playerId, toStore) && toStore.isEmpty()) {
+			return ItemStack.EMPTY;
+		}
+		return oldStack;
+	}
+
+	/**
+	 * Safely inserts an unequipped item (including a backpack or rig with its loot) into
+	 * Pockets -> Rig -> Backpack while enforcing anti-recursion and max nesting depth (&lt; 2 inside worn containers).
+	 */
+	public static boolean tryInsertContainerSafely(
+		PlayerLoadout loadout,
+		@Nullable UUID playerId,
+		ItemStack incoming
+	) {
+		if (incoming == null || incoming.isEmpty()) {
+			return false;
+		}
+		if (!ContainerItemHelper.isContainerItem(incoming)) {
+			return loadout.tryInsertItem(incoming, playerId);
+		}
+
+		// 1. Pockets (if 1x1)
+		if (loadout.canPlaceInPocket(incoming)) {
+			for (int i = 0; i < PlayerLoadout.POCKET_COUNT; i++) {
+				if (loadout.getPocket(i).isEmpty()) {
+					loadout.setPocket(i, incoming.copy());
+					incoming.setCount(0);
+					return true;
+				}
+			}
+		}
+
+		// Anti-nesting rule: only containers of depth < 2 (i.e. not already holding another container) can sit inside Rig/Backpack
+		if (ContainerItemHelper.getNestingDepth(incoming) >= 2) {
+			return false;
+		}
+
+		// 2. Equipped Rig
+		ItemStack rig = loadout.getEquipment(EquipmentSlotType.RIG);
+		if (!rig.isEmpty() && rig.getItem() instanceof TacticalRigItem) {
+			UUID rigId = ContainerItemHelper.getContainerUuid(rig);
+			boolean revealed = !ContainerItemHelper.requiresSearch(rig)
+				|| (playerId != null && ContainerItemHelper.getSearchMemory(rig).isGridRevealed(playerId));
+			if (revealed && (rigId == null || !ContainerItemHelper.containsContainerId(incoming, rigId))) {
+				List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
+				for (GridContainer grid : grids) {
+					if (grid.tryAutoPlace(incoming)) {
+						ContainerItemHelper.writeRigGrids(rig, grids);
+						if (incoming.isEmpty()) {
+							return true;
+						}
+						break;
+					}
+				}
+			}
+		}
+
+		// 3. Equipped Backpack
+		ItemStack bp = loadout.getEquipment(EquipmentSlotType.BACKPACK);
+		if (!bp.isEmpty() && bp.getItem() instanceof BackpackItem) {
+			UUID bpId = ContainerItemHelper.getContainerUuid(bp);
+			boolean revealed = !ContainerItemHelper.requiresSearch(bp)
+				|| (playerId != null && ContainerItemHelper.getSearchMemory(bp).isGridRevealed(playerId));
+			if (revealed && (bpId == null || !ContainerItemHelper.containsContainerId(incoming, bpId))) {
+				GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
+				if (bpGrid.tryAutoPlace(incoming)) {
+					ContainerItemHelper.writeBackpackGrid(bp, bpGrid);
+					if (incoming.isEmpty()) {
+						return true;
+					}
+				}
+			}
+		}
+
+		return incoming.isEmpty();
+	}
+
+	@Nullable
+	private static EquipmentSlotType findEmptyEquipSlotFor(PlayerLoadout loadout, ItemStack stack) {
+		if (stack.getItem() instanceof BackpackItem && loadout.getEquipment(EquipmentSlotType.BACKPACK).isEmpty()) {
+			return EquipmentSlotType.BACKPACK;
+		}
+		if (stack.getItem() instanceof TacticalRigItem && loadout.getEquipment(EquipmentSlotType.RIG).isEmpty()) {
+			return EquipmentSlotType.RIG;
+		}
+		for (EquipmentSlotType slot : new EquipmentSlotType[]{
+			EquipmentSlotType.HELMET, EquipmentSlotType.FACE_MASK, EquipmentSlotType.HEADSET, EquipmentSlotType.BODY_ARMOR,
+			EquipmentSlotType.PISTOL, EquipmentSlotType.PRIMARY_1, EquipmentSlotType.PRIMARY_2, EquipmentSlotType.MELEE
+		}) {
+			if (loadout.getEquipment(slot).isEmpty() && loadout.canEquip(slot, stack)) {
+				if ((slot == EquipmentSlotType.PRIMARY_1 || slot == EquipmentSlotType.PRIMARY_2 || slot == EquipmentSlotType.PISTOL)
+					&& !isWeaponLike(stack)) {
+					continue;
+				}
+				return slot;
+			}
+		}
+		return null;
+	}
+
+	private static boolean isWeaponLike(ItemStack stack) {
+		String id = net.minecraft.registry.Registries.ITEM.getId(stack.getItem()).toString();
+		return id.startsWith("tacz:") && id.contains("gun");
+	}
+
+	public void handleMoveAction(
+		ServerPlayerEntity serverPlayer,
+		byte srcLoc, int srcIdx, @Nullable UUID srcEntryId,
+		byte dstLoc, int dstIdx, int dstX, int dstY, boolean dstRotated,
+		int requestedCount
+	) {
+		if (!canUse(serverPlayer)) {
+			return;
+		}
+		UUID playerId = serverPlayer.getUuid();
+		PlayerLoadout loadout = getPlayerLoadout(serverPlayer);
+
+		GridEntry sourceEntry = isGridLocation(srcLoc) ? findSourceGridEntry(loadout, playerId, srcLoc, srcIdx, srcEntryId) : null;
+		ItemStack sourcePeek = sourceEntry != null ? sourceEntry.getStack() : peekNonGridSource(loadout, srcLoc, srcIdx);
+		if (sourcePeek.isEmpty()) {
+			return;
+		}
+
+		int moveCount = (requestedCount <= 0 || requestedCount >= sourcePeek.getCount())
+			? sourcePeek.getCount()
+			: requestedCount;
+		boolean isPartialSplit = moveCount < sourcePeek.getCount();
+
+		ItemStack movingPreview = sourcePeek.copy();
+		movingPreview.setCount(moveCount);
+
+		// 1. Drop to world (supports dropping 1 item OR full stack!)
+		if (dstLoc == TarkovNetworking.LOC_DROP) {
+			ItemStack removed = extractSource(loadout, srcLoc, srcIdx, srcEntryId, moveCount);
+			if (!removed.isEmpty()) {
+				serverPlayer.dropItem(removed, false);
+				markExternalDirty();
+				syncToClient(serverPlayer);
+			}
+			return;
+		}
+
+		// 2. Same-grid repositioning (only for full stack — partial split places a new entry!)
+		if (!isPartialSplit && srcLoc == dstLoc && srcIdx == dstIdx && srcEntryId != null && isGridLocation(srcLoc)) {
+			if (repositionInSameGrid(loadout, playerId, srcLoc, srcIdx, srcEntryId, dstX, dstY, dstRotated)) {
+				markExternalDirty();
+				syncToClient(serverPlayer);
+			}
+			return;
+		}
+
+		if (dstLoc == TarkovNetworking.LOC_EQUIPMENT
+			&& (isPartialSplit || (srcLoc == TarkovNetworking.LOC_EQUIPMENT && srcIdx == dstIdx))) {
+			return;
+		}
+
+		// 3. Validate destination BEFORE mutating source
+		if (dstLoc == TarkovNetworking.LOC_EQUIPMENT && slotByOrdinal(dstIdx) == EquipmentSlotType.HEADSET
+			&& loadout.blocksHeadset()) {
+			serverPlayer.sendMessage(Text.translatable("message.tarkovcraft.headset_blocked"), true);
+			return;
+		}
+
+		if (!canInsertIntoDestination(loadout, playerId, movingPreview, dstLoc, dstIdx, dstX, dstY, dstRotated)) {
+			if (mode == MODE_VANILLA_CONTAINER && dstLoc == TarkovNetworking.LOC_EXTERNAL_GRID && vanillaStored != null) {
+				GridContainer vg = vanillaStored.getGrid();
+				if (!canAddNewEntryToVanillaGrid(vg)
+					&& !isVanillaNestingBlocked(movingPreview)
+					&& vg.canPlace(movingPreview, dstX, dstY, dstRotated)) {
+					serverPlayer.sendMessage(Text.translatable("message.tarkovcraft.container_slot_limit"), true);
+				}
+			}
+			return;
+		}
+
+		// 4. Execute atomic transfer (partial split or full move)
+		ItemStack removed = extractSource(loadout, srcLoc, srcIdx, srcEntryId, moveCount);
+		if (removed.isEmpty()) {
+			return;
+		}
+		if (dstLoc == TarkovNetworking.LOC_EQUIPMENT) {
+			EquipmentSlotType dstSlot = slotByOrdinal(dstIdx);
+			ItemStack previous = loadout.getEquipment(dstSlot);
+			loadout.setEquipment(dstSlot, removed);
+			if (!previous.isEmpty() && !returnSwappedItem(loadout, playerId, previous, dstSlot, srcLoc, srcIdx, sourceEntry)) {
+				ItemStack remainder = previous.copy();
+				tryInsertContainerSafely(loadout, playerId, remainder);
+				if (!remainder.isEmpty()) {
+					serverPlayer.dropItem(remainder, false);
+					serverPlayer.sendMessage(Text.translatable("message.tarkovcraft.hotswap_dropped", remainder.getName())
+						.formatted(net.minecraft.util.Formatting.YELLOW), true);
+				}
+			}
+		} else if (!insertIntoDestination(loadout, playerId, removed, dstLoc, dstIdx, dstX, dstY, dstRotated)) {
+			serverPlayer.dropItem(removed, false);
+		}
+
+		markExternalDirty();
+		syncToClient(serverPlayer);
+	}
+
+	private boolean returnSwappedItem(PlayerLoadout loadout, UUID playerId, ItemStack previous, EquipmentSlotType replacedSlot,
+			byte sourceLoc, int sourceIdx, @Nullable GridEntry sourceEntry) {
+		if (sourceLoc == TarkovNetworking.LOC_EQUIPMENT || sourceLoc == TarkovNetworking.LOC_CORPSE_EQUIPMENT) {
+			EquipmentSlotType sourceSlot = slotByOrdinal(sourceIdx);
+			PlayerLoadout sourceLoadout = sourceLoc == TarkovNetworking.LOC_EQUIPMENT ? loadout : corpse.getLoadout();
+			if (sourceSlot != null && sourceLoadout.getEquipment(sourceSlot).isEmpty() && sourceLoadout.canEquip(sourceSlot, previous)) {
+				sourceLoadout.setEquipment(sourceSlot, previous);
+				return true;
+			}
+			return false;
+		}
+		if (sourceLoc == TarkovNetworking.LOC_POCKET) {
+			return loadout.getPocket(sourceIdx).isEmpty() && loadout.setPocket(sourceIdx, previous);
+		}
+		if (sourceEntry == null
+			|| (sourceLoc == TarkovNetworking.LOC_RIG_GRID && replacedSlot == EquipmentSlotType.RIG)
+			|| (sourceLoc == TarkovNetworking.LOC_BACKPACK_GRID && replacedSlot == EquipmentSlotType.BACKPACK)) {
+			// The original worn compartment can belong to the item being taken off.
+			return false;
+		}
+		int x = sourceEntry.getX();
+		int y = sourceEntry.getY();
+		boolean rotated = sourceEntry.isRotated();
+		if (mode == MODE_CORPSE && corpse != null
+			&& (sourceLoc == TarkovNetworking.LOC_CORPSE_RIG_GRID || sourceLoc == TarkovNetworking.LOC_CORPSE_BACKPACK_GRID)) {
+			boolean rig = sourceLoc == TarkovNetworking.LOC_CORPSE_RIG_GRID;
+			ItemStack container = corpse.getLoadout().getEquipment(rig ? EquipmentSlotType.RIG : EquipmentSlotType.BACKPACK);
+			ContainerHandle handle = wearableHandle(container);
+			int gridIndex = rig ? sourceIdx : 0;
+			return placeInContainerGrid(handle, gridIndex, previous, playerId, x, y, rotated)
+				|| placeInContainerGrid(handle, gridIndex, previous, playerId, x, y, !rotated);
+		}
+		if (canInsertIntoDestination(loadout, playerId, previous, sourceLoc, sourceIdx, x, y, rotated)) {
+			return insertIntoDestination(loadout, playerId, previous, sourceLoc, sourceIdx, x, y, rotated);
+		}
+		return canInsertIntoDestination(loadout, playerId, previous, sourceLoc, sourceIdx, x, y, !rotated)
+			&& insertIntoDestination(loadout, playerId, previous, sourceLoc, sourceIdx, x, y, !rotated);
+	}
+
+	private boolean isGridLocation(byte loc) {
+		return loc == TarkovNetworking.LOC_RIG_GRID
+			|| loc == TarkovNetworking.LOC_BACKPACK_GRID
+			|| loc == TarkovNetworking.LOC_EXTERNAL_GRID
+			|| loc == TarkovNetworking.LOC_CORPSE_RIG_GRID
+			|| loc == TarkovNetworking.LOC_CORPSE_BACKPACK_GRID
+			|| loc == TarkovNetworking.LOC_FLOATING_CONTAINER
+			|| loc == TarkovNetworking.LOC_SECURE_CONTAINER;
+	}
+
+	private ItemStack peekSource(PlayerLoadout loadout, UUID playerId, byte loc, int idx, @Nullable UUID entryId) {
+		if (isGridLocation(loc)) {
+			GridEntry entry = findSourceGridEntry(loadout, playerId, loc, idx, entryId);
+			return entry != null ? entry.getStack() : ItemStack.EMPTY;
+		}
+		return peekNonGridSource(loadout, loc, idx);
+	}
+
+	private ItemStack peekNonGridSource(PlayerLoadout loadout, byte loc, int idx) {
+		return switch (loc) {
+			case TarkovNetworking.LOC_EQUIPMENT -> {
+				EquipmentSlotType slot = slotByOrdinal(idx);
+				yield slot != null ? loadout.getEquipment(slot) : ItemStack.EMPTY;
+			}
+			case TarkovNetworking.LOC_CORPSE_EQUIPMENT -> {
+				if (mode != MODE_CORPSE || corpse == null) yield ItemStack.EMPTY;
+				EquipmentSlotType slot = slotByOrdinal(idx);
+				yield slot != null ? corpse.getLoadout().getEquipment(slot) : ItemStack.EMPTY;
+			}
+			case TarkovNetworking.LOC_POCKET -> loadout.getPocket(idx);
+			default -> ItemStack.EMPTY;
+		};
+	}
+
+	@Nullable
+	private GridEntry findSourceGridEntry(PlayerLoadout loadout, UUID playerId, byte loc, int idx, @Nullable UUID entryId) {
+		if (entryId == null) return null;
+		return switch (loc) {
+			case TarkovNetworking.LOC_SECURE_CONTAINER -> idx == 0 ? loadout.getSecureContainer().getEntry(entryId) : null;
+			case TarkovNetworking.LOC_RIG_GRID -> findRigEntry(loadout.getEquipment(EquipmentSlotType.RIG), playerId, idx, entryId);
+			case TarkovNetworking.LOC_BACKPACK_GRID -> findBackpackEntry(loadout.getEquipment(EquipmentSlotType.BACKPACK), playerId, entryId);
+			case TarkovNetworking.LOC_CORPSE_RIG_GRID -> {
+				if (mode == MODE_CORPSE && corpse != null) {
+					yield findRigEntry(corpse.getLoadout().getEquipment(EquipmentSlotType.RIG), playerId, idx, entryId);
+				}
+				if (mode == MODE_GROUND_ITEM && groundItem != null) {
+					yield findRigEntry(groundItem.getStack(), playerId, idx, entryId);
+				}
+				yield null;
+			}
+			case TarkovNetworking.LOC_CORPSE_BACKPACK_GRID -> (mode == MODE_CORPSE && corpse != null)
+				? findBackpackEntry(corpse.getLoadout().getEquipment(EquipmentSlotType.BACKPACK), playerId, entryId)
+				: null;
+			case TarkovNetworking.LOC_FLOATING_CONTAINER -> {
+				int winIdx = idx >> 8;
+				int subIdx = idx & 0xFF;
+				ContainerHandle handle = resolveOpenWindowHandle(winIdx);
+				if (handle == null || !isEntryVisible(searchMemoryFor(handle.getStack()), playerId, entryId)) yield null;
+				List<GridContainer> grids = handle.readGrids();
+				yield subIdx < grids.size() ? grids.get(subIdx).getEntry(entryId) : null;
+			}
+			case TarkovNetworking.LOC_EXTERNAL_GRID -> {
+				if (mode == MODE_GROUND_ITEM && groundItem != null) {
+					yield findSingleContainerEntry(groundItem.getStack(), playerId, entryId);
+				}
+				GridContainer grid = getPrimaryExternalGrid();
+				ContainerSearchMemory mem = getPrimaryExternalMemory();
+				yield grid != null && mem != null && isEntryVisible(mem, playerId, entryId) ? grid.getEntry(entryId) : null;
+			}
+			default -> null;
+		};
+	}
+
+	@Nullable
+	private static GridEntry findRigEntry(ItemStack rig, UUID playerId, int idx, UUID entryId) {
+		if (rig.isEmpty() || !(rig.getItem() instanceof TacticalRigItem)
+			|| !isEntryVisible(searchMemoryFor(rig), playerId, entryId)) return null;
+		List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
+		return idx >= 0 && idx < grids.size() ? grids.get(idx).getEntry(entryId) : null;
+	}
+
+	@Nullable
+	private static GridEntry findBackpackEntry(ItemStack bp, UUID playerId, UUID entryId) {
+		return bp.getItem() instanceof BackpackItem ? findSingleContainerEntry(bp, playerId, entryId) : null;
+	}
+
+	@Nullable
+	private static GridEntry findSingleContainerEntry(ItemStack container, UUID playerId, UUID entryId) {
+		return isSingleGridContainer(container) && isEntryVisible(searchMemoryFor(container), playerId, entryId)
+			? readSingleContainerGrid(container).getEntry(entryId) : null;
+	}
+
+	@Nullable
+	private static ContainerSearchMemory searchMemoryFor(ItemStack container) {
+		return ContainerItemHelper.requiresSearch(container) ? ContainerItemHelper.getSearchMemory(container) : null;
+	}
+
+	private static boolean isEntryVisible(@Nullable ContainerSearchMemory memory, UUID playerId, UUID entryId) {
+		return memory == null || (memory.isGridRevealed(playerId) && memory.isEntryDiscovered(playerId, entryId));
+	}
+
+	private ItemStack extractSource(PlayerLoadout loadout, byte loc, int idx, @Nullable UUID entryId, int count) {
+		if (count <= 0) return ItemStack.EMPTY;
+		return switch (loc) {
+			case TarkovNetworking.LOC_EQUIPMENT -> {
+				EquipmentSlotType slot = slotByOrdinal(idx);
+				if (slot == null) yield ItemStack.EMPTY;
+				ItemStack st = loadout.getEquipment(slot);
+				ItemStack taken = st.split(count);
+				if (st.isEmpty()) loadout.setEquipment(slot, ItemStack.EMPTY);
+				yield taken;
+			}
+			case TarkovNetworking.LOC_CORPSE_EQUIPMENT -> {
+				if (mode != MODE_CORPSE || corpse == null) yield ItemStack.EMPTY;
+				EquipmentSlotType slot = slotByOrdinal(idx);
+				if (slot == null) yield ItemStack.EMPTY;
+				ItemStack st = corpse.getLoadout().getEquipment(slot);
+				ItemStack taken = st.split(count);
+				if (st.isEmpty()) corpse.getLoadout().setEquipment(slot, ItemStack.EMPTY);
+				corpse.syncVisualFlags();
+				yield taken;
+			}
+			case TarkovNetworking.LOC_POCKET -> {
+				ItemStack st = loadout.getPocket(idx);
+				ItemStack taken = st.split(count);
+				if (st.isEmpty()) loadout.setPocket(idx, ItemStack.EMPTY);
+				yield taken;
+			}
+			case TarkovNetworking.LOC_SECURE_CONTAINER -> {
+				GridContainer grid = loadout.getSecureContainer();
+				GridEntry entry = idx == 0 && entryId != null ? grid.getEntry(entryId) : null;
+				if (entry == null) yield ItemStack.EMPTY;
+				ItemStack removed = entry.getStack().split(count);
+				if (entry.getStack().isEmpty()) grid.remove(entryId);
+				loadout.invalidateExposedCache();
+				yield removed;
+			}
+			case TarkovNetworking.LOC_RIG_GRID -> extractFromRig(loadout.getEquipment(EquipmentSlotType.RIG), idx, entryId, count);
+			case TarkovNetworking.LOC_BACKPACK_GRID -> extractFromBackpack(loadout.getEquipment(EquipmentSlotType.BACKPACK), entryId, count);
+			case TarkovNetworking.LOC_CORPSE_RIG_GRID -> {
+				if (mode == MODE_CORPSE && corpse != null) {
+					yield extractFromRig(corpse.getLoadout().getEquipment(EquipmentSlotType.RIG), idx, entryId, count);
+				}
+				if (mode == MODE_GROUND_ITEM && groundItem != null) {
+					yield extractFromRig(groundItem.getStack(), idx, entryId, count);
+				}
+				yield ItemStack.EMPTY;
+			}
+			case TarkovNetworking.LOC_CORPSE_BACKPACK_GRID -> (mode == MODE_CORPSE && corpse != null)
+				? extractFromBackpack(corpse.getLoadout().getEquipment(EquipmentSlotType.BACKPACK), entryId, count)
+				: ItemStack.EMPTY;
+			case TarkovNetworking.LOC_FLOATING_CONTAINER -> {
+				if (entryId == null) yield ItemStack.EMPTY;
+				int winIdx = idx >> 8;
+				int subIdx = idx & 0xFF;
+				ContainerHandle handle = resolveOpenWindowHandle(winIdx);
+				if (handle == null) yield ItemStack.EMPTY;
+				List<GridContainer> grids = handle.readGrids();
+				if (subIdx < 0 || subIdx >= grids.size()) yield ItemStack.EMPTY;
+				GridEntry entry = grids.get(subIdx).getEntry(entryId);
+				if (entry == null) yield ItemStack.EMPTY;
+				ItemStack taken = entry.getStack().split(count);
+				if (entry.getStack().isEmpty()) {
+					grids.get(subIdx).remove(entryId);
+				}
+				handle.saveGrids(grids);
+				yield taken;
+			}
+			case TarkovNetworking.LOC_EXTERNAL_GRID -> {
+				if (mode == MODE_GROUND_ITEM && groundItem != null) {
+					yield extractFromSingleContainer(groundItem.getStack(), entryId, count);
+				}
+				GridContainer grid = getPrimaryExternalGrid();
+				if (grid == null || entryId == null) yield ItemStack.EMPTY;
+				GridEntry entry = grid.getEntry(entryId);
+				if (entry == null) yield ItemStack.EMPTY;
+				ItemStack taken = entry.getStack().split(count);
+				if (entry.getStack().isEmpty()) {
+					grid.remove(entryId);
+				}
+				yield taken;
+			}
+			default -> ItemStack.EMPTY;
+		};
+	}
+
+	private static ItemStack extractFromRig(ItemStack rig, int idx, @Nullable UUID entryId, int count) {
+		if (rig.isEmpty() || entryId == null) return ItemStack.EMPTY;
+		List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
+		if (idx < 0 || idx >= grids.size()) return ItemStack.EMPTY;
+		GridEntry entry = grids.get(idx).getEntry(entryId);
+		if (entry == null) return ItemStack.EMPTY;
+		ItemStack taken = entry.getStack().split(count);
+		if (entry.getStack().isEmpty()) {
+			grids.get(idx).remove(entryId);
+		}
+		ContainerItemHelper.writeRigGrids(rig, grids);
+		return taken;
+	}
+
+	private static ItemStack extractFromBackpack(ItemStack bp, @Nullable UUID entryId, int count) {
+		if (bp.isEmpty() || !(bp.getItem() instanceof BackpackItem)) return ItemStack.EMPTY;
+		return extractFromSingleContainer(bp, entryId, count);
+	}
+
+	private static ItemStack extractFromSingleContainer(ItemStack container, @Nullable UUID entryId, int count) {
+		if (!isSingleGridContainer(container) || entryId == null) return ItemStack.EMPTY;
+		GridContainer grid = readSingleContainerGrid(container);
+		GridEntry entry = grid.getEntry(entryId);
+		if (entry == null) return ItemStack.EMPTY;
+		ItemStack taken = entry.getStack().split(count);
+		if (entry.getStack().isEmpty()) {
+			grid.remove(entryId);
+		}
+		writeSingleContainerGrid(container, grid);
+		return taken;
+	}
+
+	private boolean repositionInSameGrid(
+		PlayerLoadout loadout, UUID playerId,
+		byte loc, int idx, UUID entryId,
+		int dstX, int dstY, boolean dstRotated
+	) {
+		if (loc == TarkovNetworking.LOC_SECURE_CONTAINER) {
+			GridContainer grid = loadout.getSecureContainer();
+			GridEntry entry = idx == 0 ? grid.getEntry(entryId) : null;
+			if (entry == null || !PlayerLoadout.canPlaceInSecureContainer(entry.getStack())) return false;
+			GridEntry target = grid.getAt(dstX, dstY);
+			if (target != null && target != entry && canStackInto(target.getStack(), entry.getStack())) {
+				target.getStack().increment(entry.getStack().getCount());
+				grid.remove(entryId);
+			} else {
+				if (!grid.canPlace(entry.getStack(), dstX, dstY, dstRotated, entryId)) return false;
+				grid.remove(entryId);
+				grid.placeWithId(entryId, entry.getStack(), dstX, dstY, dstRotated);
+			}
+			loadout.invalidateExposedCache();
+			return true;
+		}
+		if (loc == TarkovNetworking.LOC_RIG_GRID) {
+			ItemStack rig = loadout.getEquipment(EquipmentSlotType.RIG);
+			List<GridContainer> grids = ContainerItemHelper.readRigGrids(rig);
+			if (idx < 0 || idx >= grids.size()) return false;
+			GridContainer grid = grids.get(idx);
+			GridEntry entry = grid.getEntry(entryId);
+			if (entry == null || !grid.canPlace(entry.getStack(), dstX, dstY, dstRotated, entryId)) return false;
+			grid.remove(entryId);
+			grid.placeWithId(entryId, entry.getStack(), dstX, dstY, dstRotated);
+			ContainerItemHelper.writeRigGrids(rig, grids);
+			return true;
+		}
+		if (loc == TarkovNetworking.LOC_BACKPACK_GRID) {
+			ItemStack bp = loadout.getEquipment(EquipmentSlotType.BACKPACK);
+			GridContainer grid = ContainerItemHelper.readBackpackGrid(bp);
+			GridEntry entry = grid.getEntry(entryId);
+			if (entry == null || !grid.canPlace(entry.getStack(), dstX, dstY, dstRotated, entryId)) return false;
+			grid.remove(entryId);
+			grid.placeWithId(entryId, entry.getStack(), dstX, dstY, dstRotated);
+			ContainerItemHelper.writeBackpackGrid(bp, grid);
+			return true;
+		}
+		if (loc == TarkovNetworking.LOC_FLOATING_CONTAINER) {
+			int winIdx = idx >> 8;
+			int subIdx = idx & 0xFF;
+			ContainerHandle handle = resolveOpenWindowHandle(winIdx);
+			if (handle == null) return false;
+			List<GridContainer> grids = handle.readGrids();
+			if (subIdx < 0 || subIdx >= grids.size()) return false;
+			GridContainer grid = grids.get(subIdx);
+			GridEntry entry = grid.getEntry(entryId);
+			if (entry == null || !grid.canPlace(entry.getStack(), dstX, dstY, dstRotated, entryId)) return false;
+			grid.remove(entryId);
+			grid.placeWithId(entryId, entry.getStack(), dstX, dstY, dstRotated);
+			handle.saveGrids(grids);
+			return true;
+		}
+		if (loc == TarkovNetworking.LOC_EXTERNAL_GRID) {
+			if (mode == MODE_GROUND_ITEM && groundItem != null) {
+				ItemStack container = groundItem.getStack();
+				if (!isSingleGridContainer(container)) return false;
+				GridContainer grid = readSingleContainerGrid(container);
+				GridEntry entry = grid.getEntry(entryId);
+				if (entry == null || !grid.canPlace(entry.getStack(), dstX, dstY, dstRotated, entryId)) return false;
+				grid.remove(entryId);
+				grid.placeWithId(entryId, entry.getStack(), dstX, dstY, dstRotated);
+				writeSingleContainerGrid(container, grid);
+				return true;
+			}
+			GridContainer grid = getPrimaryExternalGrid();
+			ContainerSearchMemory mem = getPrimaryExternalMemory();
+			if (grid == null || mem == null || !mem.isEntryDiscovered(playerId, entryId)) return false;
+			GridEntry entry = grid.getEntry(entryId);
+			if (entry == null || !grid.canPlace(entry.getStack(), dstX, dstY, dstRotated, entryId)) return false;
+			grid.remove(entryId);
+			grid.placeWithId(entryId, entry.getStack(), dstX, dstY, dstRotated);
+			return true;
+		}
+		return false;
+	}
+
+	private boolean canInsertIntoDestination(
+		PlayerLoadout loadout, UUID playerId, ItemStack stack,
+		byte loc, int idx, int dstX, int dstY, boolean dstRotated
+	) {
+		if (loc == TarkovNetworking.LOC_EQUIPMENT) {
+			EquipmentSlotType slot = slotByOrdinal(idx);
+			return slot != null && loadout.canEquip(slot, stack);
+		}
+		if (loc == TarkovNetworking.LOC_POCKET) {
+			return idx >= 0 && idx < PlayerLoadout.POCKET_COUNT && loadout.canPlaceInPocket(stack)
+				&& (loadout.getPocket(idx).isEmpty() || canStackInto(loadout.getPocket(idx), stack));
+		}
+		if (loc == TarkovNetworking.LOC_SECURE_CONTAINER) {
+			return idx == 0 && PlayerLoadout.canPlaceInSecureContainer(stack)
+				&& canPlaceInVisibleGrid(loadout.getSecureContainer(), null, playerId, stack, dstX, dstY, dstRotated, true);
+		}
+		if (loc == TarkovNetworking.LOC_EXTERNAL_GRID && mode != MODE_GROUND_ITEM) {
+			GridContainer grid = getPrimaryExternalGrid();
+			ContainerSearchMemory memory = getPrimaryExternalMemory();
+			return grid != null && memory != null && !isVanillaNestingBlocked(stack)
+				&& canPlaceInVisibleGrid(grid, memory, playerId, stack, dstX, dstY, dstRotated, canAddNewEntryToVanillaGrid(grid));
+		}
+
+		ContainerHandle handle = resolveContainerDestination(loadout, loc, idx);
+		if (!acceptsContainerStack(handle, stack)) return false;
+		List<GridContainer> grids = handle.readGrids();
+		int gridIndex = getDestinationGridIndex(loc, idx);
+		return gridIndex >= 0 && gridIndex < grids.size() && canPlaceInVisibleGrid(
+			grids.get(gridIndex), searchMemoryFor(handle.getStack()), playerId, stack, dstX, dstY, dstRotated, true);
+	}
+
+	private boolean insertIntoDestination(
+		PlayerLoadout loadout, UUID playerId, ItemStack stack,
+		byte loc, int idx, int dstX, int dstY, boolean dstRotated
+	) {
+		if (loc == TarkovNetworking.LOC_POCKET) {
+			ItemStack current = loadout.getPocket(idx);
+			if (current.isEmpty()) return loadout.setPocket(idx, stack);
+			if (!canStackInto(current, stack)) return false;
+			current.increment(stack.getCount());
+			return true;
+		}
+		if (loc == TarkovNetworking.LOC_SECURE_CONTAINER) {
+			if (idx != 0 || !PlayerLoadout.canPlaceInSecureContainer(stack)) return false;
+			boolean placed = placeInVisibleGrid(loadout.getSecureContainer(), null, playerId, stack, dstX, dstY, dstRotated, true);
+			if (placed) loadout.invalidateExposedCache();
+			return placed;
+		}
+		if (loc == TarkovNetworking.LOC_EXTERNAL_GRID && mode != MODE_GROUND_ITEM) {
+			GridContainer grid = getPrimaryExternalGrid();
+			ContainerSearchMemory memory = getPrimaryExternalMemory();
+			return grid != null && memory != null && !isVanillaNestingBlocked(stack)
+				&& placeInVisibleGrid(grid, memory, playerId, stack, dstX, dstY, dstRotated, canAddNewEntryToVanillaGrid(grid));
+		}
+		return placeInContainerGrid(resolveContainerDestination(loadout, loc, idx), getDestinationGridIndex(loc, idx),
+			stack, playerId, dstX, dstY, dstRotated);
+	}
+
+	@Nullable
+	private ContainerHandle resolveContainerDestination(PlayerLoadout loadout, byte loc, int idx) {
+		return switch (loc) {
+			case TarkovNetworking.LOC_RIG_GRID -> {
+				ItemStack rig = loadout.getEquipment(EquipmentSlotType.RIG);
+				yield rig.getItem() instanceof TacticalRigItem ? wearableHandle(rig) : null;
+			}
+			case TarkovNetworking.LOC_BACKPACK_GRID -> {
+				ItemStack backpack = loadout.getEquipment(EquipmentSlotType.BACKPACK);
+				yield backpack.getItem() instanceof BackpackItem ? wearableHandle(backpack) : null;
+			}
+			case TarkovNetworking.LOC_FLOATING_CONTAINER -> resolveOpenWindowHandle(idx >> 8);
+			case TarkovNetworking.LOC_EXTERNAL_GRID -> {
+				ItemStack groundStack = mode == MODE_GROUND_ITEM && groundItem != null ? groundItem.getStack() : ItemStack.EMPTY;
+				yield isSingleGridContainer(groundStack) ? wearableHandle(groundStack) : null;
+			}
+			case TarkovNetworking.LOC_CORPSE_RIG_GRID -> {
+				ItemStack groundStack = mode == MODE_GROUND_ITEM && groundItem != null ? groundItem.getStack() : ItemStack.EMPTY;
+				yield groundStack.getItem() instanceof TacticalRigItem ? wearableHandle(groundStack) : null;
+			}
+			default -> null;
+		};
+	}
+
+	private static int getDestinationGridIndex(byte loc, int idx) {
+		return switch (loc) {
+			case TarkovNetworking.LOC_RIG_GRID, TarkovNetworking.LOC_CORPSE_RIG_GRID -> idx;
+			case TarkovNetworking.LOC_FLOATING_CONTAINER -> idx & 0xFF;
+			default -> 0;
+		};
+	}
+
+	@Nullable
+	private static ContainerHandle wearableHandle(ItemStack container) {
+		return ContainerItemHelper.isContainerItem(container) ? directStackHandle(container, false, () -> {}) : null;
+	}
+
+	private boolean acceptsContainerStack(@Nullable ContainerHandle handle, ItemStack stack) {
+		return handle != null && canPlaceIntoFloatingContainer(handle, ContainerItemHelper.getContainerUuid(handle.getStack()), stack);
+	}
+
+	private boolean placeInContainerGrid(@Nullable ContainerHandle handle, int gridIndex, ItemStack stack, UUID playerId,
+			int x, int y, boolean rotated) {
+		if (!acceptsContainerStack(handle, stack)) return false;
+		List<GridContainer> grids = handle.readGrids();
+		if (gridIndex < 0 || gridIndex >= grids.size()) return false;
+		ContainerSearchMemory memory = searchMemoryFor(handle.getStack());
+		if (!placeInVisibleGrid(grids.get(gridIndex), memory, playerId, stack, x, y, rotated, true)) return false;
+		handle.saveGrids(grids);
+		if (memory != null) handle.saveSearchMemory(memory);
+		return true;
+	}
+
+	private static boolean canPlaceInVisibleGrid(GridContainer grid, @Nullable ContainerSearchMemory memory, UUID playerId,
+			ItemStack stack, int x, int y, boolean rotated, boolean allowNewEntry) {
+		if (memory != null && !memory.isGridRevealed(playerId)) return false;
+		GridEntry existing = grid.getAt(x, y);
+		if (existing != null) {
+			return isEntryVisible(memory, playerId, existing.getEntryId()) && canStackInto(existing.getStack(), stack);
+		}
+		return allowNewEntry && grid.canPlace(stack, x, y, rotated);
+	}
+
+	private static boolean placeInVisibleGrid(GridContainer grid, @Nullable ContainerSearchMemory memory, UUID playerId,
+			ItemStack stack, int x, int y, boolean rotated, boolean allowNewEntry) {
+		if (!canPlaceInVisibleGrid(grid, memory, playerId, stack, x, y, rotated, allowNewEntry)) return false;
+		GridEntry placed = grid.place(stack, x, y, rotated);
+		if (placed == null) return false;
+		if (memory != null) memory.markEntryDiscovered(playerId, placed.getEntryId());
+		return true;
+	}
+
+	@Nullable
+	private GridContainer getPrimaryExternalGrid() {
+		if (mode == MODE_LOOT_BLOCK && lootBlock != null) return lootBlock.getGrid();
+		if (mode == MODE_VANILLA_CONTAINER && vanillaStored != null) return vanillaStored.getGrid();
+		if (mode == MODE_CORPSE && corpse != null) return corpse.getPocketsGrid();
+		return null;
+	}
+
+	@Nullable
+	private ContainerSearchMemory getPrimaryExternalMemory() {
+		if (mode == MODE_LOOT_BLOCK && lootBlock != null) return lootBlock.getSearchMemory();
+		if (mode == MODE_VANILLA_CONTAINER && vanillaStored != null) return vanillaStored.getSearchMemory();
+		if (mode == MODE_CORPSE && corpse != null) return corpse.getPocketsSearchMemory();
+		return null;
+	}
+
+	private boolean isVanillaNestingBlocked(ItemStack stack) {
+		return mode == MODE_VANILLA_CONTAINER && vanillaIsShulker && !stack.getItem().canBeNested();
+	}
+
+	private boolean canAddNewEntryToVanillaGrid(GridContainer grid) {
+		return mode != MODE_VANILLA_CONTAINER || vanillaInventory == null || grid.getEntries().size() < vanillaInventory.size();
+	}
+
+	private static boolean canStackInto(ItemStack target, ItemStack incoming) {
+		return target.isStackable()
+			&& ItemStack.canCombine(target, incoming)
+			&& target.getCount() + incoming.getCount() <= target.getMaxCount();
+	}
+
+	@Nullable
+	private static EquipmentSlotType slotByOrdinal(int ordinal) {
+		EquipmentSlotType[] vals = EquipmentSlotType.values();
+		return (ordinal >= 0 && ordinal < vals.length) ? vals[ordinal] : null;
+	}
+
+	private void markExternalDirty() {
+		if (mode == MODE_LOOT_BLOCK && lootBlock != null) {
+			lootBlock.markDirty();
+		} else if (mode == MODE_VANILLA_CONTAINER && vanillaStored != null && vanillaInventory != null) {
+			VanillaContainerBridge.syncGridToInventory(vanillaStored.getGrid(), vanillaInventory);
+			if (vanillaState != null) {
+				vanillaState.markDirty();
+			}
+		} else if (mode == MODE_CORPSE && corpse != null) {
+			corpse.syncVisualFlags();
+		}
+	}
+
+	private static PlayerLoadout getPlayerLoadout(PlayerEntity p) {
+		return ((PlayerLoadoutHolder) p).tarkovcraft$getLoadout();
+	}
+
+	private static boolean isSingleGridContainer(ItemStack stack) {
+		return !stack.isEmpty() && (stack.getItem() instanceof BackpackItem || stack.getItem() instanceof TarkovCaseItem);
+	}
+
+	private static GridContainer readSingleContainerGrid(ItemStack stack) {
+		return stack.getItem() instanceof TarkovCaseItem
+			? ContainerItemHelper.readCaseGrid(stack)
+			: ContainerItemHelper.readBackpackGrid(stack);
+	}
+
+	private static void writeSingleContainerGrid(ItemStack stack, GridContainer grid) {
+		if (stack.getItem() instanceof TarkovCaseItem) {
+			ContainerItemHelper.writeCaseGrid(stack, grid);
+		} else if (stack.getItem() instanceof BackpackItem) {
+			ContainerItemHelper.writeBackpackGrid(stack, grid);
+		}
+	}
+
+	private static List<GridContainer> readContainerGrids(ItemStack stack) {
+		if (stack.getItem() instanceof TacticalRigItem) {
+			return ContainerItemHelper.readRigGrids(stack);
+		}
+		if (stack.getItem() instanceof BackpackItem) {
+			return List.of(ContainerItemHelper.readBackpackGrid(stack));
+		}
+		if (stack.getItem() instanceof TarkovCaseItem) {
+			return List.of(ContainerItemHelper.readCaseGrid(stack));
+		}
+		return List.of();
+	}
+
+	private static void writeContainerGrids(ItemStack stack, List<GridContainer> grids) {
+		if (stack.getItem() instanceof TacticalRigItem) {
+			ContainerItemHelper.writeRigGrids(stack, grids);
+		} else if (stack.getItem() instanceof BackpackItem && !grids.isEmpty()) {
+			ContainerItemHelper.writeBackpackGrid(stack, grids.get(0));
+		} else if (stack.getItem() instanceof TarkovCaseItem && !grids.isEmpty()) {
+			ContainerItemHelper.writeCaseGrid(stack, grids.get(0));
+		}
+	}
+
+	private boolean canPlaceIntoFloatingContainer(ContainerHandle handle, UUID targetUuid, ItemStack incoming) {
+		ItemStack target = handle.getStack();
+		if (target.getItem() instanceof TarkovCaseItem caseItem) {
+			if (!caseItem.canAcceptItem(incoming)) return false;
+			GridContainer secure = getPlayerLoadout(player).getSecureContainer();
+			if (secure.getEntries().stream().anyMatch(entry -> entry.getStack() == target)
+				&& !SecureContainerValidator.allowsCaseInsertion(target, incoming)) return false;
+		}
+		if (targetUuid != null && ContainerItemHelper.containsContainerId(incoming, targetUuid)) {
+			return false;
+		}
+		if (handle.isNestedInsideContainer()) {
+			return !ContainerItemHelper.isContainerItem(incoming);
+		}
+		return ContainerItemHelper.getNestingDepth(incoming) < 2;
+	}
+
+	private interface ContainerHandle {
+		ItemStack getStack();
+		boolean isNestedInsideContainer();
+		List<GridContainer> readGrids();
+		void saveGrids(List<GridContainer> grids);
+		default void saveSearchMemory(ContainerSearchMemory mem) {
+			ContainerItemHelper.saveSearchMemory(getStack(), mem);
+			persistStackMutation();
+		}
+		default void persistStackMutation() {
+		}
+	}
+
+	@Nullable
+	private ContainerHandle resolveOpenWindowHandle(int winIdx) {
+		if (winIdx < 0 || winIdx >= openContainerUuids.size()) {
+			return null;
+		}
+		return resolveContainerHandle(openContainerUuids.get(winIdx));
+	}
+
+	@Nullable
+	private ContainerHandle resolveContainerHandle(@Nullable UUID targetUuid) {
+		if (targetUuid == null) {
+			return null;
+		}
+		UUID playerId = player.getUuid();
+		PlayerLoadout loadout = getPlayerLoadout(player);
+
+		// 1a. Own equipment slots
+		for (EquipmentSlotType slot : EquipmentSlotType.values()) {
+			ItemStack eq = loadout.getEquipment(slot);
+			if (ContainerItemHelper.isContainerItem(eq) && targetUuid.equals(ContainerItemHelper.getContainerUuid(eq))) {
+				return directStackHandle(eq, false, () -> {});
+			}
+		}
+
+		// 1b. Own pockets (0..5)
+		for (int i = 0; i < PlayerLoadout.POCKET_COUNT; i++) {
+			ItemStack pocket = loadout.getPocket(i);
+			if (ContainerItemHelper.isContainerItem(pocket) && targetUuid.equals(ContainerItemHelper.getContainerUuid(pocket))) {
+				return directStackHandle(pocket, false, () -> {});
+			}
+		}
+
+		// 1c. Inside own Tactical Rig
+		ContainerHandle fromOwnRig = findInsideRig(loadout.getEquipment(EquipmentSlotType.RIG), targetUuid, playerId, () -> {});
+		if (fromOwnRig != null) return fromOwnRig;
+
+		// 1d. Inside own Backpack
+		ContainerHandle fromOwnBp = findInsideBackpack(loadout.getEquipment(EquipmentSlotType.BACKPACK), targetUuid, playerId, () -> {});
+		if (fromOwnBp != null) return fromOwnBp;
+
+		ContainerHandle fromSecure = findInsideGrid(loadout.getSecureContainer(), null, targetUuid, playerId,
+			false, grid -> loadout.invalidateExposedCache(), loadout::invalidateExposedCache);
+		if (fromSecure != null) return fromSecure;
+
+		// 2. Creative vanilla inventory
+		if (player.isCreative()) {
+			PlayerInventory inv = player.getInventory();
+			for (int i = 0; i < inv.main.size(); i++) {
+				ItemStack st = inv.main.get(i);
+				if (ContainerItemHelper.isContainerItem(st) && targetUuid.equals(ContainerItemHelper.getContainerUuid(st))) {
+					final int slotIdx = i;
+					return directStackHandle(inv.main.get(slotIdx), false, inv::markDirty);
+				}
+			}
+			for (int i = 0; i < inv.offHand.size(); i++) {
+				ItemStack st = inv.offHand.get(i);
+				if (ContainerItemHelper.isContainerItem(st) && targetUuid.equals(ContainerItemHelper.getContainerUuid(st))) {
+					final int slotIdx = i;
+					return directStackHandle(inv.offHand.get(slotIdx), false, inv::markDirty);
+				}
+			}
+		}
+
+		// 3. Inside open Loot Block
+		if (mode == MODE_LOOT_BLOCK && lootBlock != null && lootBlock.getSearchMemory().isGridRevealed(playerId)) {
+			ContainerHandle fromBlock = findInsideGrid(
+				lootBlock.getGrid(), lootBlock.getSearchMemory(), targetUuid, playerId, false,
+				g -> lootBlock.markDirty(), lootBlock::markDirty
+			);
+			if (fromBlock != null) return fromBlock;
+		}
+
+		// 3b. Inside open Vanilla Container
+		if (mode == MODE_VANILLA_CONTAINER && vanillaStored != null && vanillaStored.getSearchMemory().isGridRevealed(playerId)) {
+			ContainerHandle fromVanilla = findInsideGrid(
+				vanillaStored.getGrid(), vanillaStored.getSearchMemory(), targetUuid, playerId, false,
+				g -> markExternalDirty(), this::markExternalDirty
+			);
+			if (fromVanilla != null) return fromVanilla;
+		}
+
+		// 4. Inside open Corpse
+		if (mode == MODE_CORPSE && corpse != null) {
+			PlayerLoadout cLoadout = corpse.getLoadout();
+			for (EquipmentSlotType slot : EquipmentSlotType.values()) {
+				ItemStack eq = cLoadout.getEquipment(slot);
+				if (ContainerItemHelper.isContainerItem(eq) && targetUuid.equals(ContainerItemHelper.getContainerUuid(eq))) {
+					return directStackHandle(eq, false, corpse::syncVisualFlags);
+				}
+			}
+			if (corpse.getPocketsSearchMemory().isGridRevealed(playerId)) {
+				ContainerHandle fromCPockets = findInsideGrid(
+					corpse.getPocketsGrid(), corpse.getPocketsSearchMemory(), targetUuid, playerId, false,
+					g -> corpse.syncVisualFlags(), corpse::syncVisualFlags
+				);
+				if (fromCPockets != null) return fromCPockets;
+			}
+			ContainerHandle fromCRig = findInsideRig(cLoadout.getEquipment(EquipmentSlotType.RIG), targetUuid, playerId, corpse::syncVisualFlags);
+			if (fromCRig != null) return fromCRig;
+			ContainerHandle fromCBp = findInsideBackpack(cLoadout.getEquipment(EquipmentSlotType.BACKPACK), targetUuid, playerId, corpse::syncVisualFlags);
+			if (fromCBp != null) return fromCBp;
+		}
+
+		// 5. Inside open Ground Container
+		if (mode == MODE_GROUND_ITEM && groundItem != null && !groundItem.getStack().isEmpty()) {
+			ItemStack gStack = groundItem.getStack();
+			if (gStack.getItem() instanceof TacticalRigItem) {
+				ContainerHandle fromGRig = findInsideRig(gStack, targetUuid, playerId, () -> {});
+				if (fromGRig != null) return fromGRig;
+			} else if (isSingleGridContainer(gStack)) {
+				ContainerSearchMemory mem = ContainerItemHelper.requiresSearch(gStack) ? ContainerItemHelper.getSearchMemory(gStack) : null;
+				if (mem == null || mem.isGridRevealed(playerId)) {
+					GridContainer g = readSingleContainerGrid(gStack);
+					ContainerHandle fromG = findInsideGrid(g, mem, targetUuid, playerId, true,
+						updated -> writeSingleContainerGrid(gStack, updated), () -> {});
+					if (fromG != null) return fromG;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	private static ContainerHandle directStackHandle(ItemStack stack, boolean nested, Runnable onSave) {
+		return new ContainerHandle() {
+			@Override
+			public ItemStack getStack() {
+				return stack;
+			}
+
+			@Override
+			public boolean isNestedInsideContainer() {
+				return nested;
+			}
+
+			@Override
+			public List<GridContainer> readGrids() {
+				return readContainerGrids(stack);
+			}
+
+			@Override
+			public void saveGrids(List<GridContainer> grids) {
+				writeContainerGrids(stack, grids);
+				onSave.run();
+			}
+
+			@Override
+			public void persistStackMutation() {
+				onSave.run();
+			}
+		};
+	}
+
+	@Nullable
+	private static ContainerHandle findInsideRig(ItemStack rig, UUID targetUuid, UUID playerId, Runnable onParentSave) {
+		if (rig.isEmpty() || !(rig.getItem() instanceof TacticalRigItem)) return null;
+		ContainerSearchMemory mem = ContainerItemHelper.requiresSearch(rig) ? ContainerItemHelper.getSearchMemory(rig) : null;
+		if (mem != null && !mem.isGridRevealed(playerId)) return null;
+
+		List<GridContainer> rigGrids = ContainerItemHelper.readRigGrids(rig);
+		for (int gi = 0; gi < rigGrids.size(); gi++) {
+			for (GridEntry entry : rigGrids.get(gi).getEntries()) {
+				ItemStack st = entry.getStack();
+				if (ContainerItemHelper.isContainerItem(st) && targetUuid.equals(ContainerItemHelper.getContainerUuid(st))) {
+					if (mem != null && !mem.isEntryDiscovered(playerId, entry.getEntryId())) {
+						return null;
+					}
+					final int gridIndex = gi;
+					final UUID entryId = entry.getEntryId();
+					return new ContainerHandle() {
+						@Override
+						public ItemStack getStack() {
+							List<GridContainer> fresh = ContainerItemHelper.readRigGrids(rig);
+							if (gridIndex >= 0 && gridIndex < fresh.size()) {
+								GridEntry fe = fresh.get(gridIndex).getEntry(entryId);
+								if (fe != null) return fe.getStack();
+							}
+							return st;
+						}
+
+						@Override
+						public boolean isNestedInsideContainer() {
+							return true;
+						}
+
+						@Override
+						public List<GridContainer> readGrids() {
+							return readContainerGrids(getStack());
+						}
+
+						@Override
+						public void saveGrids(List<GridContainer> grids) {
+							List<GridContainer> fresh = ContainerItemHelper.readRigGrids(rig);
+							if (gridIndex >= 0 && gridIndex < fresh.size()) {
+								GridEntry fe = fresh.get(gridIndex).getEntry(entryId);
+								if (fe != null) {
+									writeContainerGrids(fe.getStack(), grids);
+									ContainerItemHelper.writeRigGrids(rig, fresh);
+									onParentSave.run();
+								}
+							}
+						}
+
+						@Override
+						public void saveSearchMemory(ContainerSearchMemory childMem) {
+							List<GridContainer> fresh = ContainerItemHelper.readRigGrids(rig);
+							if (gridIndex >= 0 && gridIndex < fresh.size()) {
+								GridEntry fe = fresh.get(gridIndex).getEntry(entryId);
+								if (fe != null) {
+									ContainerItemHelper.saveSearchMemory(fe.getStack(), childMem);
+									ContainerItemHelper.writeRigGrids(rig, fresh);
+									onParentSave.run();
+								}
+							}
+						}
+					};
+				}
+			}
+		}
+		return null;
+	}
+
+	@Nullable
+	private static ContainerHandle findInsideBackpack(ItemStack bp, UUID targetUuid, UUID playerId, Runnable onParentSave) {
+		if (bp.isEmpty() || !(bp.getItem() instanceof BackpackItem)) return null;
+		ContainerSearchMemory mem = ContainerItemHelper.requiresSearch(bp) ? ContainerItemHelper.getSearchMemory(bp) : null;
+		if (mem != null && !mem.isGridRevealed(playerId)) return null;
+		GridContainer bpGrid = ContainerItemHelper.readBackpackGrid(bp);
+		return findInsideGrid(bpGrid, mem, targetUuid, playerId, true,
+			updated -> ContainerItemHelper.writeBackpackGrid(bp, updated), onParentSave);
+	}
+
+	@Nullable
+	private static ContainerHandle findInsideGrid(
+		GridContainer grid,
+		@Nullable ContainerSearchMemory mem,
+		UUID targetUuid,
+		UUID playerId,
+		boolean nested,
+		java.util.function.Consumer<GridContainer> gridWriter,
+		Runnable onParentSave
+	) {
+		for (GridEntry entry : grid.getEntries()) {
+			ItemStack st = entry.getStack();
+			if (ContainerItemHelper.isContainerItem(st) && targetUuid.equals(ContainerItemHelper.getContainerUuid(st))) {
+				if (mem != null && !mem.isEntryDiscovered(playerId, entry.getEntryId())) {
+					return null;
+				}
+				final UUID entryId = entry.getEntryId();
+				return new ContainerHandle() {
+					@Override
+					public ItemStack getStack() {
+						GridEntry fe = grid.getEntry(entryId);
+						return fe != null ? fe.getStack() : st;
+					}
+
+					@Override
+					public boolean isNestedInsideContainer() {
+						return nested;
+					}
+
+					@Override
+					public List<GridContainer> readGrids() {
+						return readContainerGrids(getStack());
+					}
+
+					@Override
+					public void saveGrids(List<GridContainer> grids) {
+						GridEntry fe = grid.getEntry(entryId);
+						if (fe != null) {
+							writeContainerGrids(fe.getStack(), grids);
+							gridWriter.accept(grid);
+							onParentSave.run();
+						}
+					}
+
+					@Override
+					public void saveSearchMemory(ContainerSearchMemory childMem) {
+						GridEntry fe = grid.getEntry(entryId);
+						if (fe != null) {
+							ContainerItemHelper.saveSearchMemory(fe.getStack(), childMem);
+							gridWriter.accept(grid);
+							onParentSave.run();
+						}
+					}
+				};
+			}
+		}
+		return null;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\screen\TarkovWorkbenchScreenHandler.java ==========
+package com.tarkovcraft.screen;
+
+import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.ammo.TaCZCaliberCatalog;
+import com.tarkovcraft.block.TarkovWorkbenchBlock;
+import com.tarkovcraft.network.TarkovNetworking;
+import com.tarkovcraft.registry.ModScreenHandlers;
+import com.tarkovcraft.workbench.TarkovWorkbenchRecipes;
+import com.tarkovcraft.workbench.WorkbenchInventoryHelper;
+import net.fabricmc.fabric.api.screenhandler.v1.ExtendedScreenHandlerFactory;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.network.PacketByteBuf;
+import net.minecraft.registry.Registries;
+import net.minecraft.screen.ScreenHandler;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.math.BlockPos;
+import org.jetbrains.annotations.Nullable;
+
+/**
+ * Server-authoritative ScreenHandler for the Tarkov Armor & Ammo Workbench.
+ */
+public class TarkovWorkbenchScreenHandler extends ScreenHandler {
+	private final BlockPos workbenchPos;
+
+	public TarkovWorkbenchScreenHandler(int syncId, PlayerInventory inv, BlockPos workbenchPos) {
+		super(ModScreenHandlers.TARKOV_WORKBENCH_SCREEN_HANDLER, syncId);
+		this.workbenchPos = workbenchPos;
+	}
+
+	public static TarkovWorkbenchScreenHandler fromClientBuf(int syncId, PlayerInventory inv, PacketByteBuf buf) {
+		BlockPos pos = buf.readBlockPos();
+		return new TarkovWorkbenchScreenHandler(syncId, inv, pos);
+	}
+
+	public static void openForPlayer(ServerPlayerEntity player, BlockPos pos) {
+		player.openHandledScreen(new ExtendedScreenHandlerFactory() {
+			@Override
+			public void writeScreenOpeningData(ServerPlayerEntity p, PacketByteBuf buf) {
+				buf.writeBlockPos(pos);
+			}
+
+			@Override
+			public Text getDisplayName() {
+				return Text.translatable("screen.tarkovcraft.workbench");
+			}
+
+			@Nullable
+			@Override
+			public ScreenHandler createMenu(int syncId, PlayerInventory inv, PlayerEntity p) {
+				return new TarkovWorkbenchScreenHandler(syncId, inv, pos);
+			}
+		});
+		if (player.currentScreenHandler instanceof TarkovWorkbenchScreenHandler wb) {
+			wb.syncResources(player);
+		}
+	}
+
+	public BlockPos getWorkbenchPos() {
+		return workbenchPos;
+	}
+
+	@Override
+	public ItemStack quickMove(PlayerEntity player, int slot) {
+		return ItemStack.EMPTY;
+	}
+
+	@Override
+	public boolean canUse(PlayerEntity player) {
+		return player.getWorld().getBlockState(workbenchPos).getBlock() instanceof TarkovWorkbenchBlock
+			&& player.squaredDistanceTo(workbenchPos.toCenterPos()) <= 36.0;
+	}
+
+	public void syncResources(ServerPlayerEntity player) {
+		WorkbenchInventoryHelper.SyncPayload payload = WorkbenchInventoryHelper.collectSyncPayload(player);
+		TarkovNetworking.sendWorkbenchSync(player, payload);
+	}
+
+	public void handleCraftAmmo(ServerPlayerEntity player, String ammoId, byte tierOrdinal, boolean upgradeFromFmj) {
+		if (!canUse(player) || player.isSpectator() || !player.isAlive()) {
+			return;
+		}
+		if (!TaCZCaliberCatalog.isBallisticAmmoId(ammoId)) {
+			return;
+		}
+		AmmoTier[] tiers = AmmoTier.values();
+		if (tierOrdinal < 0 || tierOrdinal >= tiers.length) {
+			return;
+		}
+		AmmoTier tier = tiers[tierOrdinal];
+		if (!TaCZCaliberCatalog.isTierAllowed(ammoId, tier)) {
+			return;
+		}
+		WorkbenchInventoryHelper.craftAmmo(player, ammoId, tier, upgradeFromFmj);
+		syncResources(player);
+	}
+
+	public void handleCraftGear(ServerPlayerEntity player, Identifier targetItemId) {
+		if (!canUse(player) || player.isSpectator() || !player.isAlive() || targetItemId == null) {
+			return;
+		}
+		if (!Registries.ITEM.containsId(targetItemId)) {
+			return;
+		}
+		Item item = Registries.ITEM.get(targetItemId);
+		if (!TarkovWorkbenchRecipes.isCraftableGear(item)) {
+			return;
+		}
+		WorkbenchInventoryHelper.craftGear(player, item);
+		syncResources(player);
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\search\ContainerSearchMemory.java ==========
+package com.tarkovcraft.search;
+
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtElement;
+import net.minecraft.nbt.NbtList;
+import net.minecraft.nbt.NbtString;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
+/**
+ * Tracks per-player search progress for a container (or wearable backpack/rig):
+ * - Whether the initial 1-second grid reveal is finished for a specific player.
+ * - Which specific GridEntry UUIDs have been discovered by that player.
+ * Already-searched containers and items stay revealed permanently for that player,
+ * while other players must search them independently.
+ */
+public final class ContainerSearchMemory {
+	private final Map<UUID, PlayerProgress> byPlayer = new HashMap<>();
+
+	public static final class PlayerProgress {
+		private boolean gridRevealed;
+		private final Set<UUID> discoveredEntries = new HashSet<>();
+
+		public boolean isGridRevealed() {
+			return gridRevealed;
+		}
+
+		public void setGridRevealed(boolean gridRevealed) {
+			this.gridRevealed = gridRevealed;
+		}
+
+		public Set<UUID> getDiscoveredEntries() {
+			return discoveredEntries;
+		}
+
+		public boolean isEntryDiscovered(UUID entryId) {
+			return discoveredEntries.contains(entryId);
+		}
+
+		public void markEntryDiscovered(UUID entryId) {
+			discoveredEntries.add(entryId);
+		}
+	}
+
+	public PlayerProgress getOrCreate(UUID playerId) {
+		return byPlayer.computeIfAbsent(playerId, k -> new PlayerProgress());
+	}
+
+	public boolean isGridRevealed(UUID playerId) {
+		PlayerProgress progress = byPlayer.get(playerId);
+		return progress != null && progress.isGridRevealed();
+	}
+
+	public void markGridRevealed(UUID playerId) {
+		getOrCreate(playerId).setGridRevealed(true);
+	}
+
+	public boolean isEntryDiscovered(UUID playerId, UUID entryId) {
+		PlayerProgress progress = byPlayer.get(playerId);
+		return progress != null && progress.isEntryDiscovered(entryId);
+	}
+
+	public void markEntryDiscovered(UUID playerId, UUID entryId) {
+		PlayerProgress progress = getOrCreate(playerId);
+		progress.setGridRevealed(true);
+		progress.markEntryDiscovered(entryId);
+	}
+
+	public void markAllDiscovered(UUID playerId, Iterable<UUID> entryIds) {
+		PlayerProgress progress = getOrCreate(playerId);
+		progress.setGridRevealed(true);
+		for (UUID id : entryIds) {
+			progress.markEntryDiscovered(id);
+		}
+	}
+
+	public void resetForPlayer(UUID playerId) {
+		byPlayer.remove(playerId);
+	}
+
+	public void resetAll() {
+		byPlayer.clear();
+	}
+
+	public NbtCompound toNbt() {
+		NbtCompound root = new NbtCompound();
+		NbtList playersList = new NbtList();
+		for (Map.Entry<UUID, PlayerProgress> entry : byPlayer.entrySet()) {
+			NbtCompound pNbt = new NbtCompound();
+			pNbt.putUuid("PlayerId", entry.getKey());
+			pNbt.putBoolean("GridRevealed", entry.getValue().isGridRevealed());
+			NbtList ids = new NbtList();
+			for (UUID itemId : entry.getValue().getDiscoveredEntries()) {
+				ids.add(NbtString.of(itemId.toString()));
+			}
+			pNbt.put("Discovered", ids);
+			playersList.add(pNbt);
+		}
+		root.put("Players", playersList);
+		return root;
+	}
+
+	public static ContainerSearchMemory fromNbt(NbtCompound nbt) {
+		ContainerSearchMemory memory = new ContainerSearchMemory();
+		if (nbt == null) {
+			return memory;
+		}
+		NbtList playersList = nbt.getList("Players", NbtElement.COMPOUND_TYPE);
+		for (int i = 0; i < playersList.size(); i++) {
+			NbtCompound pNbt = playersList.getCompound(i);
+			if (!pNbt.containsUuid("PlayerId")) {
+				continue;
+			}
+			UUID playerId = pNbt.getUuid("PlayerId");
+			PlayerProgress progress = memory.getOrCreate(playerId);
+			progress.setGridRevealed(pNbt.getBoolean("GridRevealed"));
+			NbtList ids = pNbt.getList("Discovered", NbtElement.STRING_TYPE);
+			for (int j = 0; j < ids.size(); j++) {
+				try {
+					progress.markEntryDiscovered(UUID.fromString(ids.getString(j)));
+				} catch (IllegalArgumentException ignored) {
+				}
+			}
+		}
+		return memory;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\search\ItemRarityRegistry.java ==========
+package com.tarkovcraft.search;
+
+import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.config.TarkovConfig;
+import com.tarkovcraft.item.TarkovArmorItem;
+import com.tarkovcraft.item.TarkovCaseItem;
+import com.tarkovcraft.item.TarkovSizedItem;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.registry.Registries;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.Rarity;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Resolves search duration tier for any ItemStack based on item rarity.
+ */
+public final class ItemRarityRegistry {
+	private static final Map<Identifier, ItemRarityTier> OVERRIDES = new HashMap<>();
+
+	static {
+		OVERRIDES.put(new Identifier("tacz", "modern_kinetic_gun"), ItemRarityTier.RARE);
+		OVERRIDES.put(new Identifier("tacz", "ammo_box"), ItemRarityTier.UNCOMMON);
+		OVERRIDES.put(new Identifier("tacz", "attachment"), ItemRarityTier.UNCOMMON);
+	}
+
+	private ItemRarityRegistry() {
+	}
+
+	public static void register(Identifier itemId, ItemRarityTier tier) {
+		OVERRIDES.put(itemId, tier);
+	}
+
+	public static ItemRarityTier getTier(ItemStack stack) {
+		if (stack == null || stack.isEmpty()) {
+			return ItemRarityTier.COMMON;
+		}
+		if (AmmoTier.isTaczAmmoStack(stack)) {
+			return switch (AmmoTier.getFromAmmoStack(stack)) {
+				case IGN -> ItemRarityTier.EPIC;
+				case AP -> ItemRarityTier.RARE;
+				case FMJ -> ItemRarityTier.UNCOMMON;
+				case HP -> ItemRarityTier.COMMON;
+			};
+		}
+		Item item = stack.getItem();
+		Identifier id = Registries.ITEM.getId(item);
+		ItemRarityTier override = OVERRIDES.get(id);
+		if (override != null) {
+			return override;
+		}
+		if (item instanceof TarkovArmorItem armor) {
+			ItemRarityTier base = armor.getRarityTier();
+			int ac = armor.getArmorClass();
+			if (ac >= 5) {
+				return maxTier(base, ItemRarityTier.EPIC);
+			}
+			if (ac == 4) {
+				return maxTier(base, ItemRarityTier.RARE);
+			}
+			if (ac >= 2) {
+				return maxTier(base, ItemRarityTier.UNCOMMON);
+			}
+			return base;
+		}
+		if (item instanceof TarkovCaseItem caseItem) {
+			int slots = caseItem.getGridWidth() * caseItem.getGridHeight();
+			if (slots >= 25) {
+				return maxTier(caseItem.getRarityTier(), ItemRarityTier.EPIC);
+			}
+			if (slots >= 9) {
+				return maxTier(caseItem.getRarityTier(), ItemRarityTier.RARE);
+			}
+			return caseItem.getRarityTier();
+		}
+		if (item instanceof TarkovSizedItem sized) {
+			return sized.getRarityTier();
+		}
+		Rarity rarity = stack.getRarity();
+		return switch (rarity) {
+			case COMMON -> ItemRarityTier.COMMON;
+			case UNCOMMON -> ItemRarityTier.UNCOMMON;
+			case RARE -> ItemRarityTier.RARE;
+			case EPIC -> ItemRarityTier.EPIC;
+		};
+	}
+
+	private static ItemRarityTier maxTier(ItemRarityTier a, ItemRarityTier b) {
+		return a.ordinal() >= b.ordinal() ? a : b;
+	}
+
+	public static int getSearchTicks(ItemStack stack) {
+		int base = getTier(stack).getSearchTicks();
+		return Math.max(4, Math.round(base * TarkovConfig.get().searchTimeMultiplier));
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\search\ItemRarityTier.java ==========
+package com.tarkovcraft.search;
+
+public enum ItemRarityTier {
+	COMMON(10),    // 0.5s
+	UNCOMMON(20),  // 1.0s
+	RARE(36),      // 1.8s
+	EPIC(56);      // 2.8s
+
+	private final int searchTicks;
+
+	ItemRarityTier(int searchTicks) {
+		this.searchTicks = searchTicks;
+	}
+
+	public int getSearchTicks() {
+		return searchTicks;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\search\SearchSession.java ==========
+package com.tarkovcraft.search;
+
+import com.tarkovcraft.grid.GridEntry;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Server-authoritative 2-stage search state machine supporting ordered search queues:
+ * - External targets (e.g. Loot Crate, or on a Corpse: Pockets -> Tactical Rig -> Backpack)
+ *   are searched automatically in order while looting.
+ * - Own taken containers (Backpack / Rig stripped from a corpse) ONLY search while
+ *   ownInventoryOpen == true (never in the background!).
+ *
+ * Stage 1: Fixed 20-tick (1.0s) reveal of container slots -> exposes item silhouettes.
+ * Stage 2: Searches each undiscovered item individually; duration depends on item rarity.
+ */
+public final class SearchSession {
+	public static final int GRID_REVEAL_TICKS = 20; // 1.0 second at 20 TPS
+
+	public enum Stage {
+		IDLE,
+		REVEALING_GRID,
+		SEARCHING_ITEM
+	}
+
+	private final UUID playerId;
+	private Stage stage = Stage.IDLE;
+	@Nullable
+	private UUID activeTargetId;
+	@Nullable
+	private UUID activeEntryId;
+	@Nullable
+	private UUID prioritizedTargetId;
+	private int progressTicks;
+	private int totalTicks;
+
+	public SearchSession(UUID playerId) {
+		this.playerId = playerId;
+	}
+
+	public Stage getStage() {
+		return stage;
+	}
+
+	@Nullable
+	public UUID getActiveTargetId() {
+		return activeTargetId;
+	}
+
+	@Nullable
+	public UUID getActiveEntryId() {
+		return activeEntryId;
+	}
+
+	public int getProgressTicks() {
+		return progressTicks;
+	}
+
+	public int getTotalTicks() {
+		return totalTicks;
+	}
+
+	public float getProgressRatio() {
+		if (totalTicks <= 0) {
+			return 0.0f;
+		}
+		return Math.min(1.0f, (float) progressTicks / (float) totalTicks);
+	}
+
+	public void prioritizeTarget(@Nullable UUID targetId) {
+		this.prioritizedTargetId = targetId;
+	}
+
+	public void reset() {
+		this.stage = Stage.IDLE;
+		this.activeTargetId = null;
+		this.activeEntryId = null;
+		this.prioritizedTargetId = null;
+		this.progressTicks = 0;
+		this.totalTicks = 0;
+	}
+
+	/**
+	 * Convenience overload for single external + single own backpack target.
+	 */
+	public boolean tick(boolean ownInventoryOpen, @Nullable SearchTarget externalTarget, @Nullable SearchTarget ownBackpackTarget) {
+		List<SearchTarget> ext = externalTarget == null ? List.of() : List.of(externalTarget);
+		List<SearchTarget> own = ownBackpackTarget == null ? List.of() : List.of(ownBackpackTarget);
+		return tickQueue(ownInventoryOpen, ext, own);
+	}
+
+	/**
+	 * Advances search by 1 server tick across ordered external and own container queues.
+	 * External targets always search before own taken containers; own taken containers
+	 * ONLY search while ownInventoryOpen == true.
+	 */
+	public boolean tickQueue(boolean ownInventoryOpen, List<SearchTarget> externalTargets, List<SearchTarget> ownTargets) {
+		SearchTarget target = selectActiveTarget(ownInventoryOpen, externalTargets, ownTargets);
+		if (target == null) {
+			if (stage != Stage.IDLE) {
+				reset();
+				return true;
+			}
+			return false;
+		}
+
+		if (!target.getTargetId().equals(activeTargetId)) {
+			activeTargetId = target.getTargetId();
+			activeEntryId = null;
+			progressTicks = 0;
+			totalTicks = 0;
+		}
+
+		// Stage 1: Reveal grid slots (fixed 1 second) -> silhouettes appear
+		if (!target.isGridRevealed(playerId)) {
+			if (stage != Stage.REVEALING_GRID) {
+				stage = Stage.REVEALING_GRID;
+				activeEntryId = null;
+				progressTicks = 0;
+				totalTicks = com.tarkovcraft.config.TarkovConfig.get().getContainerRevealTicks();
+			}
+			progressTicks++;
+			if (progressTicks >= totalTicks) {
+				target.getMemory().markGridRevealed(playerId);
+				target.markDirty();
+				progressTicks = 0;
+				totalTicks = 0;
+				stage = Stage.IDLE;
+				return true;
+			}
+			return false;
+		}
+
+		// Stage 2: Search each undiscovered item individually by rarity
+		GridEntry nextEntry = target.findNextUndiscoveredEntry(playerId);
+		if (nextEntry == null) {
+			reset();
+			return false;
+		}
+
+		if (stage != Stage.SEARCHING_ITEM || !nextEntry.getEntryId().equals(activeEntryId)) {
+			stage = Stage.SEARCHING_ITEM;
+			activeEntryId = nextEntry.getEntryId();
+			progressTicks = 0;
+			totalTicks = ItemRarityRegistry.getSearchTicks(nextEntry.getStack());
+		}
+
+		progressTicks++;
+		if (progressTicks >= totalTicks) {
+			target.getMemory().markEntryDiscovered(playerId, nextEntry.getEntryId());
+			target.markDirty();
+			activeEntryId = null;
+			progressTicks = 0;
+			totalTicks = 0;
+			stage = Stage.IDLE;
+			return true;
+		}
+		return false;
+	}
+
+	@Nullable
+	private SearchTarget selectActiveTarget(boolean ownInventoryOpen, List<SearchTarget> externalTargets, List<SearchTarget> ownTargets) {
+		if (prioritizedTargetId != null) {
+			for (SearchTarget t : externalTargets) {
+				if (t != null && prioritizedTargetId.equals(t.getTargetId()) && !t.isFullySearched(playerId)) {
+					return t;
+				}
+			}
+			if (ownInventoryOpen) {
+				for (SearchTarget t : ownTargets) {
+					if (t != null && prioritizedTargetId.equals(t.getTargetId()) && !t.isFullySearched(playerId)) {
+						return t;
+					}
+				}
+			}
+			prioritizedTargetId = null;
+		}
+		for (SearchTarget t : externalTargets) {
+			if (t != null && !t.isFullySearched(playerId)) {
+				return t;
+			}
+		}
+		if (ownInventoryOpen) {
+			for (SearchTarget t : ownTargets) {
+				if (t != null && !t.isFullySearched(playerId)) {
+					return t;
+				}
+			}
+		}
+		return null;
+	}
+
+	public static boolean canTakeEntry(UUID playerId, SearchTarget target, UUID entryId) {
+		return target.isGridRevealed(playerId) && target.getMemory().isEntryDiscovered(playerId, entryId);
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\search\SearchTarget.java ==========
+package com.tarkovcraft.search;
+
+import com.tarkovcraft.grid.GridContainer;
+import com.tarkovcraft.grid.GridEntry;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Represents a searchable container (one or more grids + its per-player search memory).
+ */
+public final class SearchTarget {
+	private final UUID targetId;
+	private final List<GridContainer> grids;
+	private final ContainerSearchMemory memory;
+	private final Runnable onDirty;
+
+	public SearchTarget(UUID targetId, List<GridContainer> grids, ContainerSearchMemory memory, Runnable onDirty) {
+		this.targetId = targetId;
+		this.grids = grids;
+		this.memory = memory;
+		this.onDirty = onDirty;
+	}
+
+	public UUID getTargetId() {
+		return targetId;
+	}
+
+	public List<GridContainer> getGrids() {
+		return grids;
+	}
+
+	public ContainerSearchMemory getMemory() {
+		return memory;
+	}
+
+	public void markDirty() {
+		if (onDirty != null) {
+			onDirty.run();
+		}
+	}
+
+	public boolean isGridRevealed(UUID playerId) {
+		return memory.isGridRevealed(playerId);
+	}
+
+	@Nullable
+	public GridEntry findNextUndiscoveredEntry(UUID playerId) {
+		for (GridContainer grid : grids) {
+			for (GridEntry entry : grid.getEntries()) {
+				if (!entry.getStack().isEmpty() && !memory.isEntryDiscovered(playerId, entry.getEntryId())) {
+					return entry;
+				}
+			}
+		}
+		return null;
+	}
+
+	public boolean isFullySearched(UUID playerId) {
+		return isGridRevealed(playerId) && findNextUndiscoveredEntry(playerId) == null;
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\TarkovCraftMod.java ==========
+package com.tarkovcraft;
+
+import com.tarkovcraft.ammo.AmmoReloadTracker;
+import com.tarkovcraft.arena.ArenaBossSpawner;
+import com.tarkovcraft.arena.ArenaEvents;
+import com.tarkovcraft.command.TarkovCommand;
+import com.tarkovcraft.container.VanillaContainerBridge;
+import com.tarkovcraft.grid.ItemSizeRegistry;
+import com.tarkovcraft.health.BodyHealthTicker;
+import com.tarkovcraft.health.TaCZBulletHelper;
+import com.tarkovcraft.item.HeldItemInteraction;
+import com.tarkovcraft.loadout.PlayerLoadoutHolder;
+import com.tarkovcraft.item.TarkovArmorRepairItem;
+import com.tarkovcraft.network.AmmoSelectionNetworking;
+import com.tarkovcraft.network.EquipmentAppearanceSync;
+import com.tarkovcraft.network.TarkovNetworking;
+import com.tarkovcraft.registry.ModBlocks;
+import com.tarkovcraft.registry.ModEntities;
+import com.tarkovcraft.registry.ModItems;
+import com.tarkovcraft.registry.ModScreenHandlers;
+import com.tarkovcraft.screen.TarkovScreenHandler;
+import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
+import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
+import net.minecraft.block.BlockState;
+import net.minecraft.resource.ResourceManager;
+import net.minecraft.resource.ResourceType;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.ActionResult;
+import net.minecraft.util.Hand;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.GameRules;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class TarkovCraftMod implements ModInitializer {
+	public static final String MOD_ID = "tarkovcraft";
+	public static final Logger LOGGER = LoggerFactory.getLogger("TarkovCraft");
+
+	@Override
+	public void onInitialize() {
+		com.tarkovcraft.config.TarkovConfig.loadOrCreate();
+		ModBlocks.init();
+		ModItems.init();
+		ModEntities.init();
+		ModScreenHandlers.init();
+		com.tarkovcraft.worldgen.ModWorldGen.init();
+		com.tarkovcraft.entity.MobGearSpawner.register();
+		ArenaBossSpawner.register();
+		TarkovNetworking.registerServerReceivers();
+		AmmoSelectionNetworking.register();
+		EquipmentAppearanceSync.register();
+		ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> TaCZBulletHelper.onEntityLoad(entity));
+		ServerEntityEvents.ENTITY_UNLOAD.register((entity, world) -> TaCZBulletHelper.onEntityUnload(entity));
+		ServerLifecycleEvents.SERVER_STOPPED.register(server -> TaCZBulletHelper.clearProjectiles());
+
+		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
+			TarkovCommand.register(dispatcher)
+		);
+
+		// Reload JSON item sizes from datapacks
+		ResourceManagerHelper.get(ResourceType.SERVER_DATA).registerReloadListener(new SimpleSynchronousResourceReloadListener() {
+			@Override
+			public Identifier getFabricId() {
+				return new Identifier(MOD_ID, "item_sizes");
+			}
+
+			@Override
+			public void reload(ResourceManager manager) {
+				ItemSizeRegistry.reloadFromResources(manager);
+			}
+		});
+
+		// Tick open TarkovScreenHandlers + bleeding/injury penalties + TaCZ reload tracking + Airdrops + MedUse
+		ServerTickEvents.END_SERVER_TICK.register(server -> {
+			com.tarkovcraft.airdrop.AirdropManager.tickServer(server);
+			ArenaEvents.tick(server);
+			for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+				BodyHealthTicker.tickPlayer(player);
+				com.tarkovcraft.health.MedicalUseManager.tickPlayer(player);
+				TarkovArmorRepairItem.tickPlayer(player);
+				AmmoReloadTracker.tickPlayer(player);
+				if (player.currentScreenHandler instanceof TarkovScreenHandler tsh) {
+					tsh.tickServer(player);
+				}
+			}
+		});
+
+		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+			AmmoReloadTracker.removePlayer(handler.getPlayer().getUuid());
+			com.tarkovcraft.health.MedicalUseManager.removePlayer(handler.getPlayer().getUuid());
+			TarkovArmorRepairItem.removePlayer(handler.getPlayer().getUuid());
+			com.tarkovcraft.compat.voicechat.VoicechatAdapter.removePlayer(handler.getPlayer().getUuid());
+		});
+
+		// Sync loadout & body health when player joins
+		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+			ServerPlayerEntity player = handler.getPlayer();
+			if (player instanceof PlayerLoadoutHolder holder) {
+				holder.tarkovcraft$syncLoadout();
+				holder.tarkovcraft$syncBodyHealth();
+			}
+		});
+
+		// Keep loadout & health on dimension change or KEEP_INVENTORY; reset body health on respawn
+		ServerPlayerEvents.COPY_FROM.register((oldPlayer, newPlayer, alive) -> {
+			if (oldPlayer instanceof PlayerLoadoutHolder oldHolder && newPlayer instanceof PlayerLoadoutHolder newHolder) {
+				boolean keepInv = oldPlayer.getWorld().getGameRules().getBoolean(GameRules.KEEP_INVENTORY);
+				if (alive || keepInv) {
+					newHolder.tarkovcraft$getLoadout().readNbt(oldHolder.tarkovcraft$getLoadout().writeNbt());
+				} else {
+					newHolder.tarkovcraft$getLoadout().copySecureContainerFrom(oldHolder.tarkovcraft$getLoadout());
+				}
+				if (alive) {
+					newHolder.tarkovcraft$getBodyHealth().readNbt(oldHolder.tarkovcraft$getBodyHealth().writeNbt());
+				} else {
+					newHolder.tarkovcraft$getBodyHealth().resetFull();
+				}
+			}
+		});
+
+		ServerLifecycleEvents.SERVER_STARTED.register(server -> com.tarkovcraft.airdrop.AirdropManager.resetTimer());
+		ServerLifecycleEvents.SERVER_STOPPED.register(server -> com.tarkovcraft.airdrop.AirdropManager.resetTimer());
+
+		ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> {
+			if (newPlayer instanceof PlayerLoadoutHolder holder) {
+				holder.tarkovcraft$syncLoadout();
+				holder.tarkovcraft$syncBodyHealth();
+			}
+		});
+
+		// Vanilla storage containers: track player-placed containers so hourly city auto-loot never overwrites personal storage,
+		// and intercept Survival/Adventure RMB into EFT search UI (respecting Shift+RMB, Creative, and TaCZ ADS)
+		java.util.Queue<java.util.Map.Entry<ServerWorld, BlockPos>> pendingPlayerPlaced = new java.util.concurrent.ConcurrentLinkedQueue<>();
+		ServerTickEvents.END_SERVER_TICK.register(server -> {
+			java.util.Map.Entry<ServerWorld, BlockPos> placed;
+			while ((placed = pendingPlayerPlaced.poll()) != null) {
+				VanillaContainerBridge.markPlayerPlaced(placed.getKey(), placed.getValue());
+			}
+		});
+
+		UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
+			if (player.isSpectator()) {
+				return ActionResult.PASS;
+			}
+			BlockPos pos = hitResult.getBlockPos();
+			BlockState state = world.getBlockState(pos);
+			if (!world.isClient && world instanceof ServerWorld sw) {
+				net.minecraft.item.ItemStack held = player.getStackInHand(hand);
+				if (held.getItem() instanceof net.minecraft.item.BlockItem bi
+					&& VanillaContainerBridge.isSupportedBlock(bi.getBlock())
+					&& (!VanillaContainerBridge.isSupportedBlock(state.getBlock()) || player.shouldCancelInteraction() || player.isCreative())) {
+					BlockPos placePos = state.isReplaceable() ? pos : pos.offset(hitResult.getSide());
+					pendingPlayerPlaced.add(java.util.Map.entry(sw, placePos.toImmutable()));
+				}
+			}
+			if (!VanillaContainerBridge.isSupportedBlock(state.getBlock())) {
+				return ActionResult.PASS;
+			}
+			if (player.shouldCancelInteraction() || player.isCreative()) {
+				return ActionResult.PASS;
+			}
+			if (HeldItemInteraction.takesPriority(player, hand)) {
+				return ActionResult.PASS;
+			}
+			if (!world.isClient && hand == Hand.MAIN_HAND && player instanceof ServerPlayerEntity sp) {
+				VanillaContainerBridge.tryOpenForPlayer(sp, pos);
+			}
+			return ActionResult.SUCCESS;
+		});
+
+		PlayerBlockBreakEvents.AFTER.register((world, player, pos, state, blockEntity) -> {
+			if (world instanceof ServerWorld serverWorld) {
+				VanillaContainerBridge.removeForBrokenBlock(serverWorld, pos, state);
+			}
+		});
+
+		LOGGER.info("TarkovCraft initialized (Grid Inventory, Zonal Armor, Ballistic Ammo, Workbench, Worldgen & Airdrops).");
+	}
+}
+
+// ========== .\src\main\java\com\tarkovcraft\workbench\TarkovWorkbenchRecipes.java ==========
+package com.tarkovcraft.workbench;
+
+import com.tarkovcraft.TarkovCraftMod;
+import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.ammo.TaCZCaliberCatalog;
+import com.tarkovcraft.item.BackpackItem;
+import com.tarkovcraft.item.TacticalRigItem;
+import com.tarkovcraft.item.TarkovArmorItem;
+import com.tarkovcraft.item.TarkovArmorRepairItem;
+import com.tarkovcraft.loadout.EquipmentSlotType;
+import com.tarkovcraft.registry.ModItems;
+import com.tarkovcraft.registry.TarkovItemCatalog;
+import net.minecraft.item.Item;
+import net.minecraft.item.Items;
+import net.minecraft.registry.Registries;
+import net.minecraft.util.Identifier;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Deterministic recipe engine for the Tarkov Workbench:
+ * - AMMO tab: scratch crafting & FMJ -> HP/AP/IGN reloading for any TaCZ ballistic caliber.
+ * - ARMOR & GEAR tab: auto-generated recipes for all Helmets, Body Armor, Face Masks, Repair Kits, Rigs, and Backpacks.
+ */
+public final class TarkovWorkbenchRecipes {
+	private static final Map<GearCategory, List<GearRecipe>> GEAR_CACHE = new EnumMap<>(GearCategory.class);
+	public record Ingredient(Item item, int count) {
+	}
+
+	public record AmmoRecipe(
+		String ammoId,
+		AmmoTier tier,
+		boolean upgradeFromFmj,
+		int batchSize,
+		int requiredFmjCount,
+		List<Ingredient> materials
+	) {
+	}
+
+	public enum GearCategory {
+		HELMET("ui.tarkovcraft.wb_cat_helmets"),
+		BODY_ARMOR("ui.tarkovcraft.wb_cat_armor"),
+		FACE_MASK("ui.tarkovcraft.wb_cat_masks"),
+		REPAIR_KITS("ui.tarkovcraft.wb_cat_repair_kits"),
+		RIG("ui.tarkovcraft.wb_cat_rigs"),
+		BACKPACK("ui.tarkovcraft.wb_cat_backpacks");
+
+		private final String translationKey;
+
+		GearCategory(String translationKey) {
+			this.translationKey = translationKey;
+		}
+
+		public String getTranslationKey() {
+			return translationKey;
+		}
+	}
+
+	public record GearRecipe(
+		Item resultItem,
+		GearCategory category,
+		List<Ingredient> materials
+	) {
+	}
+
+	private TarkovWorkbenchRecipes() {
+	}
+
+	public static AmmoRecipe getAmmoRecipe(String ammoId, AmmoTier tier, boolean upgradeFromFmj) {
+		TaCZCaliberCatalog.CaliberSpec spec = TaCZCaliberCatalog.getSpecOrDynamic(ammoId);
+		int m = spec.group().getMaterialMultiplier();
+		int batch = spec.getBatchSize();
+		AmmoTier safeTier = tier != null ? tier : AmmoTier.FMJ;
+		boolean isUpgrade = upgradeFromFmj && safeTier != AmmoTier.FMJ;
+
+		List<Ingredient> materials = isUpgrade ? switch (safeTier) {
+			case HP -> List.of(material("brass_casings", m), material("gunpowder_hawk", m));
+			case AP -> List.of(material("ceramic_plate_raw", 2 * m), material("gunpowder_hawk", m));
+			case IGN -> List.of(material("military_electronics", m), material("gunpowder_hawk", 2 * m));
+			case FMJ -> throw new IllegalStateException("FMJ cannot be upgraded from FMJ");
+		} : switch (safeTier) {
+			case FMJ -> List.of(material("brass_casings", 4 * m), material("gunpowder_hawk", 2 * m));
+			case HP -> List.of(material("brass_casings", 5 * m), material("gunpowder_hawk", 2 * m));
+			case AP -> List.of(material("brass_casings", 4 * m), material("ceramic_plate_raw", 2 * m),
+				material("gunpowder_hawk", 3 * m));
+			case IGN -> List.of(material("brass_casings", 4 * m), material("military_electronics", m),
+				material("gunpowder_hawk", 4 * m));
+		};
+		return new AmmoRecipe(spec.ammoId(), safeTier, isUpgrade, batch, isUpgrade ? batch : 0, materials);
+	}
+
+	public static boolean isCraftableGear(Item item) {
+		if (item == null || item == Items.AIR) {
+			return false;
+		}
+		Identifier id = Registries.ITEM.getId(item);
+		if (!TarkovCraftMod.MOD_ID.equals(id.getNamespace())) {
+			return false;
+		}
+		return item instanceof TarkovArmorItem
+			|| item instanceof TarkovArmorRepairItem
+			|| item instanceof TacticalRigItem
+			|| item instanceof BackpackItem;
+	}
+
+	public static synchronized List<GearRecipe> getGearRecipes(GearCategory category) {
+		List<GearRecipe> cached = GEAR_CACHE.get(category);
+		if (cached != null) {
+			return cached;
+		}
+		List<Item> candidates = new ArrayList<>();
+		switch (category) {
+			case HELMET -> {
+				candidates.add(ModItems.SSH68_HELMET);
+				candidates.add(ModItems.RATNIK_6B47_HELMET);
+				candidates.add(ModItems.ALTYN_HELMET);
+				for (Item it : TarkovItemCatalog.getArmorItems()) {
+					if (it instanceof TarkovArmorItem armor && armor.getTargetSlot() == EquipmentSlotType.HELMET) {
+						candidates.add(it);
+					}
+				}
+			}
+			case BODY_ARMOR -> {
+				candidates.add(ModItems.PACA_ARMOR);
+				candidates.add(ModItems.PRESS_ARMOR);
+				candidates.add(ModItems.ZABRALO_ARMOR);
+				for (Item it : TarkovItemCatalog.getArmorItems()) {
+					if (it instanceof TarkovArmorItem armor && armor.getTargetSlot() == EquipmentSlotType.BODY_ARMOR) {
+						candidates.add(it);
+					}
+				}
+			}
+			case FACE_MASK -> {
+				candidates.add(ModItems.BALACLAVA_MASK);
+				candidates.add(ModItems.DEATH_SHADOW_MASK);
+				for (Item it : TarkovItemCatalog.getArmorItems()) {
+					if (it instanceof TarkovArmorItem armor && armor.getTargetSlot() == EquipmentSlotType.FACE_MASK) {
+						candidates.add(it);
+					}
+				}
+			}
+			case REPAIR_KITS -> {
+				for (Item it : TarkovItemCatalog.getArmorItems()) {
+					if (it instanceof TarkovArmorRepairItem) {
+						candidates.add(it);
+					}
+				}
+			}
+			case RIG -> {
+				candidates.add(ModItems.SCAV_VEST);
+				candidates.add(ModItems.BANK_ROBBER_RIG);
+				candidates.add(ModItems.TRITON_RIG);
+				candidates.addAll(TarkovItemCatalog.getRigItems());
+			}
+			case BACKPACK -> {
+				candidates.add(ModItems.SLING_BACKPACK);
+				candidates.add(ModItems.BERKUT_BACKPACK);
+				candidates.add(ModItems.TRIZIP_BACKPACK);
+				candidates.addAll(TarkovItemCatalog.getBackpackItems());
+			}
+		}
+
+		List<GearRecipe> out = new ArrayList<>(candidates.size());
+		for (Item item : candidates) {
+			out.add(new GearRecipe(item, category, computeGearIngredients(item)));
+		}
+		List<GearRecipe> immutable = Collections.unmodifiableList(out);
+		GEAR_CACHE.put(category, immutable);
+		return immutable;
+	}
+
+	public static List<Ingredient> computeGearIngredients(Item item) {
+		List<Ingredient> mats = new ArrayList<>();
+		if (item instanceof TarkovArmorItem armor) {
+			double s = switch (armor.getTargetSlot()) {
+				case BODY_ARMOR -> 1.5;
+				case HELMET -> 1.0;
+				case FACE_MASK -> 0.75;
+				default -> 1.0;
+			};
+			int armorClass = armor.getArmorClass();
+			mats.add(material("kevlar_fabric", ceilMul(Math.min(4, armorClass + 2), s)));
+			if (armorClass > 0) {
+				mats.add(material("weapon_parts", ceilMul(2 * armorClass, s)));
+			}
+			if (armorClass >= 3) {
+				mats.add(material("ceramic_plate_raw", ceilMul(2 * (armorClass - 2), s)));
+			}
+			if (armorClass >= 5 || armor.isGasProtection()) {
+				mats.add(material("military_electronics", ceilMul(Math.max(1, armorClass - 4), s)));
+			}
+		} else if (item instanceof TarkovArmorRepairItem repair) {
+			int rep = repair.getRepairAmount();
+			mats.add(material("weapon_parts", Math.max(2, rep / 10)));
+			mats.add(material("kevlar_fabric", Math.max(2, rep / 15)));
+			if (rep >= 40) {
+				mats.add(material("military_electronics", 1));
+			} else if (rep >= 25) {
+				mats.add(material("ceramic_plate_raw", 1));
+			}
+		} else if (item instanceof TacticalRigItem rig) {
+			int totalCells = rig.getCompartmentLayouts().stream().mapToInt(sz -> sz.width() * sz.height()).sum();
+			mats.add(material("kevlar_fabric", Math.max(3, totalCells / 2)));
+			mats.add(material("weapon_parts", Math.max(1, totalCells / 8)));
+			if (totalCells >= 18) {
+				mats.add(material("ceramic_plate_raw", 2));
+			}
+		} else if (item instanceof BackpackItem bp) {
+			int cells = bp.getGridWidth() * bp.getGridHeight();
+			mats.add(material("kevlar_fabric", Math.max(4, cells / 3)));
+			mats.add(material("weapon_parts", Math.max(1, cells / 12)));
+			if (cells >= 30) {
+				mats.add(material("ceramic_plate_raw", 2));
+			}
+		}
+		return List.copyOf(mats);
+	}
+
+	private static Ingredient material(String id, int count) {
+		Identifier itemId = new Identifier(TarkovCraftMod.MOD_ID, id);
+		Item item = Registries.ITEM.get(itemId);
+		if (item == Items.AIR) {
+			throw new IllegalStateException("Missing workbench material " + itemId);
+		}
+		return new Ingredient(item, count);
+	}
+
+	private static int ceilMul(int base, double scale) {
+		return Math.max(1, (int) Math.ceil(base * scale));
 	}
 }
