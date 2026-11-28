@@ -9,6 +9,7 @@ import com.tarkovcraft.client.TaCZGunInfoHelper;
 import com.tarkovcraft.client.TarkovCraftClient;
 import com.tarkovcraft.client.WorldInteractState;
 import com.tarkovcraft.client.hud.BodyHealthHudHelper;
+import com.tarkovcraft.client.hud.RaidExtractHud;
 import com.tarkovcraft.client.screen.TarkovUiTheme;
 import com.tarkovcraft.entity.CorpseEntity;
 import com.tarkovcraft.health.BodyPartHealth;
@@ -102,10 +103,11 @@ public abstract class InGameHudMixin {
 		PlayerLoadout loadout = ClientLoadoutCache.getLoadout();
 
 		// 1. Top-right Tarkov Body-Part Silhouette HUD
-		BodyHealthHudHelper.drawCompactTopRight(context, client.textRenderer, client.player, screenW);
+		int extractListTop = BodyHealthHudHelper.drawCompactTopRight(context, client.textRenderer, client.player, screenW);
+		boolean extractPrompt = RaidExtractHud.render(context, client, screenW, screenH, extractListTop, tickDelta);
 
 		// 2. Center crosshair [F] prompt / scrollable action menu
-		if (client.currentScreen == null) {
+		if (client.currentScreen == null && !extractPrompt) {
 			renderWorldInteractPrompt(context, loadout, screenW, screenH);
 		} else {
 			WorldInteractState.updateTarget(null);
@@ -210,7 +212,8 @@ public abstract class InGameHudMixin {
 			prompt = Text.translatable("prompt.tarkovcraft.search", key, corpse.getOwnerName());
 		} else if (target instanceof ItemEntity itemEntity && !itemEntity.getStack().isEmpty()) {
 			ItemStack st = itemEntity.getStack();
-			boolean willEquip = st.getItem() instanceof TarkovArmorItem a && loadout.getEquipment(a.getTargetSlot()).isEmpty();
+			boolean willEquip = st.getItem() instanceof TarkovArmorItem a
+				&& loadout.getEquipment(a.getTargetSlot()).isEmpty() && loadout.canEquip(a.getTargetSlot(), st);
 			prompt = Text.translatable(willEquip ? "prompt.tarkovcraft.equip" : "prompt.tarkovcraft.take", key, st.getName().getString());
 		} else if (client.crosshairTarget instanceof BlockHitResult bhr && bhr.getType() == HitResult.Type.BLOCK) {
 			BlockState state = client.world.getBlockState(bhr.getBlockPos());

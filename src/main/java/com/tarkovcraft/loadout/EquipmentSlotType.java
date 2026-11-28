@@ -4,7 +4,7 @@ import com.tarkovcraft.grid.ItemSizeRegistry;
 import com.tarkovcraft.item.BackpackItem;
 import com.tarkovcraft.item.TacticalRigItem;
 import com.tarkovcraft.item.TarkovArmorItem;
-import com.tarkovcraft.item.TarkovFunctionalItem;
+import com.tarkovcraft.item.TarkovHeadsetItem;
 import net.minecraft.item.AxeItem;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
@@ -46,7 +46,7 @@ public enum EquipmentSlotType {
 		}
 		Item item = stack.getItem();
 		Identifier itemId = Registries.ITEM.getId(item);
-		boolean isHeadset = item instanceof TarkovFunctionalItem functional && functional.isHeadset();
+		boolean isHeadset = item instanceof TarkovHeadsetItem;
 		boolean isTaczGun = "tacz".equals(itemId.getNamespace()) && itemId.getPath().contains("gun");
 
 		return switch (this) {

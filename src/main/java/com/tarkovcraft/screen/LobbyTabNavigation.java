@@ -11,6 +11,7 @@ public final class LobbyTabNavigation {
 	public static final int WORKBENCH = 103;
 	public static final int SERVICE = 104;
 	public static final int EDITOR = 105;
+	public static final int LOADOUT = 106;
 
 	private LobbyTabNavigation() { }
 
@@ -19,7 +20,7 @@ public final class LobbyTabNavigation {
 	}
 
 	public static boolean handle(ServerPlayerEntity player, int button) {
-		if (button < PLAY || button > EDITOR || !canUse(player)) return false;
+		if (button < PLAY || button > LOADOUT || !canUse(player)) return false;
 		if (button == EDITOR) return LobbyManager.toggleEditor(player);
 		player.onHandledScreenClosed();
 		switch (button) {
@@ -27,6 +28,7 @@ public final class LobbyTabNavigation {
 			case CHARACTER -> TarkovScreenHandler.openStash(player);
 			case TRADERS -> LobbyTraderScreenHandler.open(player);
 			case WORKBENCH -> TarkovWorkbenchScreenHandler.openForPlayer(player, null);
+			case LOADOUT -> LobbyLoadoutScreenHandler.open(player);
 			case SERVICE -> LobbyServiceScreenHandler.open(player);
 			default -> throw new IllegalArgumentException("Unknown lobby tab " + button);
 		}

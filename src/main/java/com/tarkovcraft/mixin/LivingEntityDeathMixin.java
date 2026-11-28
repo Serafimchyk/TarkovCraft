@@ -1,10 +1,14 @@
 package com.tarkovcraft.mixin;
 
+import com.tarkovcraft.arena.ArenaBossSpawner;
+import com.tarkovcraft.arena.RaidSession;
 import com.tarkovcraft.config.TarkovConfig;
 import com.tarkovcraft.entity.CorpseEntity;
 import com.tarkovcraft.entity.MobGearSpawner;
+import com.tarkovcraft.entity.TarkovScavEntity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.damage.DamageSource;
+import net.minecraft.entity.damage.DamageTracker;
 import net.minecraft.entity.mob.HostileEntity;
 import net.minecraft.entity.mob.IllagerEntity;
 import net.minecraft.entity.mob.PiglinEntity;
@@ -13,6 +17,7 @@ import net.minecraft.entity.mob.ZombieEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
@@ -21,10 +26,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  */
 @Mixin(LivingEntity.class)
 public abstract class LivingEntityDeathMixin {
+	@Redirect(method = "applyDamage", at = @At(value = "INVOKE",
+		target = "Lnet/minecraft/entity/damage/DamageTracker;onDamage(Lnet/minecraft/entity/damage/DamageSource;F)V"))
+	private void tarkovcraft$recordRaidDamage(DamageTracker tracker, DamageSource source, float amount) {
+		tracker.onDamage(source, amount);
+		LivingEntity target = (LivingEntity) (Object) this;
+		RaidSession.recordDamage(target, source, Math.min(target.getHealth(), amount));
+	}
+
 	@Inject(method = "onDeath", at = @At("TAIL"))
 	private void tarkovcraft$spawnMobCorpse(DamageSource damageSource, CallbackInfo ci) {
 		LivingEntity self = (LivingEntity) (Object) this;
-		if (self.getWorld().isClient) {
+		if (self.getWorld().isClient || self instanceof TarkovScavEntity || ArenaBossSpawner.isLegacyBoss(self)) {
 			return;
 		}
 		if (self instanceof ZombieEntity

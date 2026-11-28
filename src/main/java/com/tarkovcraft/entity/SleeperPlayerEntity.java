@@ -32,7 +32,6 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtHelper;
 import net.minecraft.nbt.NbtList;
-import net.minecraft.registry.Registries;
 import net.minecraft.registry.tag.DamageTypeTags;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
@@ -107,12 +106,7 @@ public final class SleeperPlayerEntity extends LivingEntity {
 		profile.getProperties().putAll("textures", player.getGameProfile().getProperties().get("textures"));
 		sleeper.dataTracker.set(PROFILE, NbtHelper.writeGameProfile(new NbtCompound(), profile));
 		sleeper.dataTracker.set(LEFT_HANDED, player.getMainArm() == Arm.LEFT);
-		NbtCompound gear = new NbtCompound();
-		int index = 0;
-		for (Item item : EquipmentAppearance.capture(sleeper.loadout).items()) {
-			gear.putInt(Integer.toString(index++), Registries.ITEM.getRawId(item));
-		}
-		sleeper.dataTracker.set(GEAR, gear);
+		sleeper.dataTracker.set(GEAR, EquipmentAppearance.capture(sleeper.loadout).toTrackedNbt());
 		sleeper.setCustomName(player.getName());
 		return sleeper;
 	}
@@ -174,11 +168,7 @@ public final class SleeperPlayerEntity extends LivingEntity {
 	public List<Item> getVisibleGear() {
 		NbtCompound tag = dataTracker.get(GEAR);
 		if (tag != cachedGearTag) {
-			List<Item> items = new ArrayList<>(tag.getSize());
-			for (int i = 0; i < tag.getSize(); i++) {
-				items.add(Registries.ITEM.get(tag.getInt(Integer.toString(i))));
-			}
-			cachedGear = List.copyOf(items);
+			cachedGear = EquipmentAppearance.fromTrackedNbt(tag).items();
 			cachedGearTag = tag;
 		}
 		return cachedGear;
@@ -256,10 +246,16 @@ public final class SleeperPlayerEntity extends LivingEntity {
 		}
 		Entity attacker = source.getAttacker();
 		String killer = attacker == null ? sourceName : attacker.getDisplayName().getString();
+		float hpBefore = bodyHealth.getTotalHp();
+		String weaponName = bullet.weaponName();
+		if (weaponName.isEmpty() && attacker instanceof LivingEntity living && !living.getMainHandStack().isEmpty()) {
+			weaponName = living.getMainHandStack().getName().getString();
+		}
 		bodyHealth.applyHit(loadout, HitZoneResolver.resolveFromDamage(this, source),
 			damage, bullet.penetrationPower(), bullet.armorWearMultiplier(), bypassArmor, canRicochet,
-			random.nextFloat(), random.nextFloat(), random.nextFloat(), killer, bullet.weaponName(),
+			random.nextFloat(), random.nextFloat(), random.nextFloat(), killer, weaponName,
 			bullet.ammoName(), attacker == null ? 0.0f : distanceTo(attacker));
+		RaidSession.recordDamage(this, source, hpBefore - bodyHealth.getTotalHp());
 		updateVanillaHealth();
 	}
 
@@ -284,7 +280,7 @@ public final class SleeperPlayerEntity extends LivingEntity {
 		}
 		List<ItemStack> overflow = new ArrayList<>();
 		CorpseEntity corpse = CorpseEntity.fromSnapshot(world, getPos(), getYaw(),
-			ownerUuid, getName().getString(), loadout, extras, overflow);
+			getOwnerProfile(), getName().getString(), loadout, extras, overflow);
 		if (world.spawnEntity(corpse)) {
 			overflow.forEach(this::dropStack);
 		}

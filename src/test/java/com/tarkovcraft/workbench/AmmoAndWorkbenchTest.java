@@ -7,6 +7,7 @@ import com.tarkovcraft.grid.ContainerItemHelper;
 import com.tarkovcraft.grid.GridContainer;
 import com.tarkovcraft.health.TaCZBulletHelper;
 import com.tarkovcraft.item.TarkovFunctionalItem;
+import com.tarkovcraft.loadout.ArmorHandling;
 import com.tarkovcraft.loadout.EquipmentSlotType;
 import com.tarkovcraft.loadout.PlayerLoadout;
 import com.tarkovcraft.registry.ModBlocks;
@@ -33,6 +34,33 @@ class AmmoAndWorkbenchTest {
 		Bootstrap.initialize();
 		ModBlocks.init();
 		ModItems.init();
+	}
+
+	@Test
+	void armorHandlingCombinesEquippedVestAndHelmet() {
+		PlayerLoadout loadout = new PlayerLoadout();
+		loadout.setEquipment(EquipmentSlotType.BODY_ARMOR, new ItemStack(ModItems.PACA_ARMOR));
+		assertEquals(new ArmorHandling(0, 0), ArmorHandling.equipped(loadout));
+		assertEquals(new ArmorHandling(2, 3), ArmorHandling.forArmor(EquipmentSlotType.BODY_ARMOR, 5, 7.2f));
+		assertEquals(new ArmorHandling(5, 9), ArmorHandling.forArmor(EquipmentSlotType.BODY_ARMOR, 6, 11.5f));
+
+		loadout.setEquipment(EquipmentSlotType.BODY_ARMOR, new ItemStack(ModItems.ZABRALO_ARMOR));
+		ArmorHandling heavy = ArmorHandling.equipped(loadout);
+		assertEquals(new ArmorHandling(12, 20), heavy);
+		assertEquals(0.36f, heavy.aimDuration(0.3f), 0.0001f);
+		assertEquals(heavy, ArmorHandling.forArmor(EquipmentSlotType.BODY_ARMOR, 6, 18.0f));
+		loadout.setEquipment(EquipmentSlotType.HELMET, new ItemStack(ModItems.SSH68_HELMET));
+		assertEquals(heavy, ArmorHandling.equipped(loadout));
+		assertEquals(new ArmorHandling(3, 5), ArmorHandling.forArmor(EquipmentSlotType.HELMET, 4, 2.7f));
+		assertEquals(new ArmorHandling(6, 10), ArmorHandling.forArmor(EquipmentSlotType.HELMET, 6, 5.0f));
+		loadout.setEquipment(EquipmentSlotType.HELMET, new ItemStack(ModItems.ALTYN_HELMET));
+		ArmorHandling combined = ArmorHandling.equipped(loadout);
+		assertEquals(new ArmorHandling(18, 30), combined);
+		assertEquals(0.39f, combined.aimDuration(0.3f), 0.0001f);
+		loadout.setEquipment(EquipmentSlotType.BODY_ARMOR, ItemStack.EMPTY);
+		assertEquals(new ArmorHandling(6, 10), ArmorHandling.equipped(loadout));
+		loadout.setEquipment(EquipmentSlotType.HELMET, ItemStack.EMPTY);
+		assertEquals(new ArmorHandling(0, 0), ArmorHandling.equipped(loadout));
 	}
 
 	@Test

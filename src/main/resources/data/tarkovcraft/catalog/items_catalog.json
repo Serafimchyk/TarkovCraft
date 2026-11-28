@@ -7,7 +7,9 @@
       "height": 1,
       "rarity": "UNCOMMON",
       "weight": 1.0,
-      "medPreset": "CAR_MEDKIT"
+      "medPreset": "CAR_MEDKIT",
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:avtomobilnaya_aptechka_590c66"
     },
     {
       "id": "aptechka_grizzly_590c65",
@@ -16,7 +18,9 @@
       "height": 4,
       "rarity": "EPIC",
       "weight": 1.8,
-      "medPreset": "GRIZZLY"
+      "medPreset": "GRIZZLY",
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:aptechka_grizzly_590c65"
     },
     {
       "id": "armeyskiy_bint_5751a2",
@@ -61,7 +65,9 @@
       "height": 1,
       "rarity": "RARE",
       "weight": 0.45,
-      "medPreset": "AFAK"
+      "medPreset": "AFAK",
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:individualnaya_takticheskaya_aptechk_60098a"
     },
     {
       "id": "individualnaya_takticheskaya_aptechk_590c67",
@@ -70,7 +76,9 @@
       "height": 1,
       "rarity": "RARE",
       "weight": 0.35,
-      "medPreset": "IFAK"
+      "medPreset": "IFAK",
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:individualnaya_takticheskaya_aptechk_590c67"
     },
     {
       "id": "maz_zolotaya_zvezda_5751a8",
@@ -797,7 +805,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.6
+      "hearingMultiplier": 0.6,
+      "modelSilhouette": "helmet_ronin",
+      "groundSilhouette": "ground_helmet_visor",
+      "modelTexture": "tarkovcraft:ballisticheskiy_shlem_devtac_ronin_r_5b4329"
     },
     {
       "id": "broneshlem_lshz_5_vulkan_5_chernyy_5ca20e",
@@ -817,7 +828,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.55
+      "hearingMultiplier": 0.55,
+      "modelSilhouette": "helmet_visor",
+      "groundSilhouette": "ground_helmet_visor",
+      "modelTexture": "tarkovcraft:broneshlem_lshz_5_vulkan_5_chernyy_5ca20e"
     },
     {
       "id": "broneshlem_maska_1shch_killa_edition_5c0e87",
@@ -837,7 +851,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.55
+      "hearingMultiplier": 0.55,
+      "modelSilhouette": "helmet_visor",
+      "groundSilhouette": "ground_helmet_visor",
+      "modelTexture": "tarkovcraft:broneshlem_maska_1shch_killa_edition_5c0e87"
     },
     {
       "id": "broneshlem_maska_1shch_oliva_5c091a",
@@ -857,7 +874,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.55
+      "hearingMultiplier": 0.55,
+      "modelSilhouette": "helmet_visor",
+      "groundSilhouette": "ground_helmet_visor",
+      "modelTexture": "tarkovcraft:broneshlem_maska_1shch_oliva_5c091a"
     },
     {
       "id": "broneshlem_rys_t_chernyy_5f60c7",
@@ -877,7 +897,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.55
+      "hearingMultiplier": 0.55,
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:broneshlem_rys_t_chernyy_5f60c7"
     },
     {
       "id": "legkaya_maska_shattered_5b432b",
@@ -893,7 +916,10 @@
       "zones": [
         "HEAD_TOP",
         "HEAD_EARS"
-      ]
+      ],
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:legkaya_maska_shattered_5b432b"
     },
     {
       "id": "obshchevoyskovoy_shlem_6b47_ratnik_b_5aa7cf",
@@ -911,7 +937,10 @@
         "HEAD_EARS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.85
+      "hearingMultiplier": 0.85,
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:obshchevoyskovoy_shlem_6b47_ratnik_b_5aa7cf"
     },
     {
       "id": "svarochnaya_maska_tagilly_gorilla_60a7ad",
@@ -931,7 +960,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.5
+      "hearingMultiplier": 0.5,
+      "modelSilhouette": "mask_tagilla",
+      "groundSilhouette": "ground_mask_tagilla",
+      "modelTexture": "tarkovcraft:svarochnaya_maska_tagilly_gorilla_60a7ad"
     },
     {
       "id": "svarochnaya_maska_tagilly_ubey_60a7ad",
@@ -951,7 +983,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.5
+      "hearingMultiplier": 0.5,
+      "modelSilhouette": "mask_tagilla",
+      "groundSilhouette": "ground_mask_tagilla",
+      "modelTexture": "tarkovcraft:svarochnaya_maska_tagilly_ubey_60a7ad"
     },
     {
       "id": "takticheskaya_tykva_59ef13",
@@ -966,7 +1001,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:takticheskaya_tykva_59ef13"
     },
     {
       "id": "shlem_crye_precision_airframe_pesoch_5c17a7",
@@ -981,7 +1019,10 @@
       "ricochet": 0.38,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_crye_precision_airframe_pesoch_5c17a7"
     },
     {
       "id": "shlem_diamond_age_bastion_chernyy_5ea17c",
@@ -996,7 +1037,10 @@
       "ricochet": 0.38,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_diamond_age_bastion_chernyy_5ea17c"
     },
     {
       "id": "shlem_galvion_caiman_hybrid_seryy_5f60b3",
@@ -1012,7 +1056,10 @@
       "zones": [
         "HEAD_TOP",
         "HEAD_EARS"
-      ]
+      ],
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_galvion_caiman_hybrid_seryy_5f60b3"
     },
     {
       "id": "shlem_highcom_striker_achhc_iiia_oli_5b40e4",
@@ -1027,7 +1074,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_highcom_striker_achhc_iiia_oli_5b40e4"
     },
     {
       "id": "shlem_highcom_striker_achhc_iiia_che_5b40e3",
@@ -1042,7 +1092,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_highcom_striker_achhc_iiia_che_5b40e3"
     },
     {
       "id": "shlem_highcom_striker_ulach_iiia_des_5b40e2",
@@ -1058,7 +1111,10 @@
       "zones": [
         "HEAD_TOP",
         "HEAD_EARS"
-      ]
+      ],
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_highcom_striker_ulach_iiia_des_5b40e2"
     },
     {
       "id": "shlem_highcom_striker_ulach_iiia_che_5b40e1",
@@ -1074,7 +1130,10 @@
       "zones": [
         "HEAD_TOP",
         "HEAD_EARS"
-      ]
+      ],
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_highcom_striker_ulach_iiia_che_5b40e1"
     },
     {
       "id": "shlem_msa_ach_tc_2001_mich_series_ol_5d5e7d",
@@ -1089,7 +1148,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_msa_ach_tc_2001_mich_series_ol_5d5e7d"
     },
     {
       "id": "shlem_msa_ach_tc_2002_mich_series_ol_5d5e9c",
@@ -1104,7 +1166,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_msa_ach_tc_2002_mich_series_ol_5d5e9c"
     },
     {
       "id": "shlem_msa_gallet_tc_800_high_cut_che_5e4bfc",
@@ -1119,7 +1184,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_msa_gallet_tc_800_high_cut_che_5e4bfc"
     },
     {
       "id": "shlem_nfm_hjelm_hellhound_grey_61bca7",
@@ -1134,7 +1202,10 @@
       "ricochet": 0.38,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_nfm_hjelm_hellhound_grey_61bca7"
     },
     {
       "id": "shlem_ops_core_fast_mt_super_high_cu_5ac8d6",
@@ -1149,7 +1220,10 @@
       "ricochet": 0.38,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_ops_core_fast_mt_super_high_cu_5ac8d6"
     },
     {
       "id": "shlem_ops_core_fast_mt_super_high_cu_5a154d",
@@ -1164,7 +1238,10 @@
       "ricochet": 0.38,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_ops_core_fast_mt_super_high_cu_5a154d"
     },
     {
       "id": "shlem_tac_kek_fast_mt_replika_5ea05c",
@@ -1179,7 +1256,10 @@
       "ricochet": 0.38,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_tac_kek_fast_mt_replika_5ea05c"
     },
     {
       "id": "shlem_team_wendy_exfil_ballistic_coy_5e01ef",
@@ -1194,7 +1274,10 @@
       "ricochet": 0.38,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_team_wendy_exfil_ballistic_coy_5e01ef"
     },
     {
       "id": "shlem_team_wendy_exfil_ballistic_che_5e00c1",
@@ -1209,7 +1292,10 @@
       "ricochet": 0.38,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_team_wendy_exfil_ballistic_che_5e00c1"
     },
     {
       "id": "shlem_untar_5aa7d0",
@@ -1225,7 +1311,10 @@
       "zones": [
         "HEAD_TOP",
         "HEAD_EARS"
-      ]
+      ],
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_untar_5aa7d0"
     },
     {
       "id": "shlem_bnti_lshz_2dtm_chernyy_5d6d37",
@@ -1240,7 +1329,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_bnti_lshz_2dtm_chernyy_5d6d37"
     },
     {
       "id": "shlem_zsh_1_2m_oliva_5aa7e4",
@@ -1260,7 +1352,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.8
+      "hearingMultiplier": 0.8,
+      "modelSilhouette": "helmet_visor",
+      "groundSilhouette": "ground_helmet_visor",
+      "modelTexture": "tarkovcraft:shlem_zsh_1_2m_oliva_5aa7e4"
     },
     {
       "id": "shlem_zsh_1_2m_chernyy_chekhol_5aa7e4",
@@ -1280,7 +1375,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.8
+      "hearingMultiplier": 0.8,
+      "modelSilhouette": "helmet_visor",
+      "groundSilhouette": "ground_helmet_visor",
+      "modelTexture": "tarkovcraft:shlem_zsh_1_2m_chernyy_chekhol_5aa7e4"
     },
     {
       "id": "shlem_lshz_oliva_5b432d",
@@ -1295,7 +1393,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_lshz_oliva_5b432d"
     },
     {
       "id": "shlem_pozharnyy_shpm_5c08f8",
@@ -1311,7 +1412,10 @@
       "zones": [
         "HEAD_TOP",
         "HEAD_EARS"
-      ]
+      ],
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_pozharnyy_shpm_5c08f8"
     },
     {
       "id": "shlem_protivoudarnyy_kolpak_1s_59e771",
@@ -1329,7 +1433,10 @@
         "HEAD_EARS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.75
+      "hearingMultiplier": 0.75,
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_protivoudarnyy_kolpak_1s_59e771"
     },
     {
       "id": "shlem_psh_97_dzheta_5c0d27",
@@ -1345,7 +1452,10 @@
       "zones": [
         "HEAD_TOP",
         "HEAD_EARS"
-      ]
+      ],
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_psh_97_dzheta_5c0d27"
     },
     {
       "id": "shlem_sssh_94_sfera_s_5aa7d1",
@@ -1361,7 +1471,10 @@
       "zones": [
         "HEAD_TOP",
         "HEAD_EARS"
-      ]
+      ],
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_sssh_94_sfera_s_5aa7d1"
     },
     {
       "id": "shlem_fort_kiver_m_5645bc",
@@ -1377,7 +1490,10 @@
       "zones": [
         "HEAD_TOP",
         "HEAD_EARS"
-      ]
+      ],
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_fort_kiver_m_5645bc"
     },
     {
       "id": "shlemofon_tankovyy_tsh_4m_l_5df8a5",
@@ -1393,7 +1509,10 @@
       "zones": [
         "HEAD_TOP",
         "HEAD_EARS"
-      ]
+      ],
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlemofon_tankovyy_tsh_4m_l_5df8a5"
     },
     {
       "id": "bronezhilet_5_11_tactical_hexgrid_pl_5fd4c4",
@@ -1407,7 +1526,10 @@
       "material": "UHMWPE",
       "zones": [
         "THORAX"
-      ]
+      ],
+      "modelSilhouette": "armor_slick",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_5_11_tactical_hexgrid_pl_5fd4c4"
     },
     {
       "id": "bronezhilet_6b13_shturmovoy_flora_ts_5c0e53",
@@ -1422,7 +1544,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_6b13_shturmovoy_flora_ts_5c0e53"
     },
     {
       "id": "bronezhilet_6b13_shturmovoy_flora_5c0e51",
@@ -1437,7 +1562,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_6b13_shturmovoy_flora_5c0e51"
     },
     {
       "id": "bronezhilet_6b2_flora_5df8a2",
@@ -1452,7 +1580,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_slick",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_6b2_flora_5df8a2"
     },
     {
       "id": "bronezhilet_6b23_1_flora_tsifra_5c0e5b",
@@ -1467,7 +1598,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_6b23_1_flora_tsifra_5c0e5b"
     },
     {
       "id": "bronezhilet_6b23_2_gornaya_flora_5c0e57",
@@ -1482,7 +1616,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_6b23_2_gornaya_flora_5c0e57"
     },
     {
       "id": "bronezhilet_6b45_flora_tsifra_68948a",
@@ -1496,7 +1633,10 @@
       "material": "COMBINED",
       "zones": [
         "THORAX"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_6b45_flora_tsifra_68948a"
     },
     {
       "id": "bronezhilet_blue_force_gear_platemin_6a7d89",
@@ -1510,7 +1650,10 @@
       "material": "COMBINED",
       "zones": [
         "THORAX"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_blue_force_gear_platemin_6a7d89"
     },
     {
       "id": "bronezhilet_blue_force_gear_plate_6a7d89_2",
@@ -1524,7 +1667,10 @@
       "material": "COMBINED",
       "zones": [
         "THORAX"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_blue_force_gear_plate_6a7d89_2"
     },
     {
       "id": "bronezhilet_drd_body_armor_62a09d",
@@ -1539,7 +1685,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_slick",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_drd_body_armor_62a09d"
     },
     {
       "id": "bronezhilet_hexatac_hpc_multicam_bla_63737f",
@@ -1553,7 +1702,10 @@
       "material": "COMBINED",
       "zones": [
         "THORAX"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_hexatac_hpc_multicam_bla_63737f"
     },
     {
       "id": "bronezhilet_hexatac_hpc_multicam_67ab2e",
@@ -1567,7 +1719,10 @@
       "material": "COMBINED",
       "zones": [
         "THORAX"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_hexatac_hpc_multicam_67ab2e"
     },
     {
       "id": "bronezhilet_highcom_trooper_tfo_coyo_67ab2f",
@@ -1581,7 +1736,10 @@
       "material": "COMBINED",
       "zones": [
         "THORAX"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_highcom_trooper_tfo_coyo_67ab2f"
     },
     {
       "id": "bronezhilet_highcom_trooper_tfo_mult_5c0e65",
@@ -1595,7 +1753,10 @@
       "material": "COMBINED",
       "zones": [
         "THORAX"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_highcom_trooper_tfo_mult_5c0e65"
     },
     {
       "id": "bronezhilet_interceptor_otv_ucp_64abd9",
@@ -1610,7 +1771,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_interceptor_otv_ucp_64abd9"
     },
     {
       "id": "bronezhilet_interceptor_otv_woodland_68a899",
@@ -1625,7 +1789,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_interceptor_otv_woodland_68a899"
     },
     {
       "id": "bronezhilet_iotv_gen4_mobilnyy_multi_5b44d0",
@@ -1643,7 +1810,10 @@
         "NECK",
         "ARMPIT_LEFT",
         "ARMPIT_RIGHT"
-      ]
+      ],
+      "modelSilhouette": "armor_heavy",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_iotv_gen4_mobilnyy_multi_5b44d0"
     },
     {
       "id": "bronezhilet_iotv_gen4_polnaya_zashch_5b44cd",
@@ -1661,7 +1831,10 @@
         "NECK",
         "ARMPIT_LEFT",
         "ARMPIT_RIGHT"
-      ]
+      ],
+      "modelSilhouette": "armor_heavy",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_iotv_gen4_polnaya_zashch_5b44cd"
     },
     {
       "id": "bronezhilet_iotv_gen4_shturmovoy_mul_5b44cf",
@@ -1679,7 +1852,10 @@
         "NECK",
         "ARMPIT_LEFT",
         "ARMPIT_RIGHT"
-      ]
+      ],
+      "modelSilhouette": "armor_heavy",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_iotv_gen4_shturmovoy_mul_5b44cf"
     },
     {
       "id": "bronezhilet_lbt_6094a_slick_plate_ca_6038b4",
@@ -1693,7 +1869,10 @@
       "material": "UHMWPE",
       "zones": [
         "THORAX"
-      ]
+      ],
+      "modelSilhouette": "armor_slick",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_lbt_6094a_slick_plate_ca_6038b4"
     },
     {
       "id": "bronezhilet_lbt_6094a_slick_plate_6038b4_2",
@@ -1707,7 +1886,10 @@
       "material": "UHMWPE",
       "zones": [
         "THORAX"
-      ]
+      ],
+      "modelSilhouette": "armor_slick",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_lbt_6094a_slick_plate_6038b4_2"
     },
     {
       "id": "bronezhilet_lbt_6094a_slick_plate_ca_5e4abb",
@@ -1721,7 +1903,10 @@
       "material": "UHMWPE",
       "zones": [
         "THORAX"
-      ]
+      ],
+      "modelSilhouette": "armor_slick",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_lbt_6094a_slick_plate_ca_5e4abb"
     },
     {
       "id": "bronezhilet_mf_untar_5ab8e4",
@@ -1736,7 +1921,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_mf_untar_5ab8e4"
     },
     {
       "id": "bronezhilet_nfm_thor_concealable_rei_68a891",
@@ -1751,7 +1939,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_slick",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_nfm_thor_concealable_rei_68a891"
     },
     {
       "id": "bronezhilet_nfm_thor_concealable_rei_609e85",
@@ -1766,7 +1957,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_slick",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_nfm_thor_concealable_rei_609e85"
     },
     {
       "id": "bronezhilet_nfm_thor_integrated_carr_60a283",
@@ -1784,7 +1978,10 @@
         "NECK",
         "ARMPIT_LEFT",
         "ARMPIT_RIGHT"
-      ]
+      ],
+      "modelSilhouette": "armor_heavy",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_nfm_thor_integrated_carr_60a283"
     },
     {
       "id": "bronezhilet_paca_soft_armor_rivals_e_607f20",
@@ -1799,7 +1996,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_slick",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_paca_soft_armor_rivals_e_607f20"
     },
     {
       "id": "bronezhilet_bnti_gzhel_k_5ab8e7",
@@ -1814,7 +2014,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_bnti_gzhel_k_5ab8e7"
     },
     {
       "id": "bronezhilet_bnti_zhuk_flora_tsifra_5c0e62",
@@ -1829,7 +2032,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_bnti_zhuk_flora_tsifra_5c0e62"
     },
     {
       "id": "bronezhilet_bnti_kirasa_n_zelenyy_67ab2f",
@@ -1844,7 +2050,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_bnti_kirasa_n_zelenyy_67ab2f"
     },
     {
       "id": "bronezhilet_bnti_kirasa_n_5b44d2",
@@ -1859,7 +2068,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_bnti_kirasa_n_5b44d2"
     },
     {
       "id": "bronezhilet_bnti_modul_3m_59e763",
@@ -1874,7 +2086,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_bnti_modul_3m_59e763"
     },
     {
       "id": "bronezhilet_modifitsirovannyy_6b13_m_5c0e54",
@@ -1892,7 +2107,10 @@
         "NECK",
         "ARMPIT_LEFT",
         "ARMPIT_RIGHT"
-      ]
+      ],
+      "modelSilhouette": "armor_heavy",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_modifitsirovannyy_6b13_m_5c0e54"
     },
     {
       "id": "bronezhilet_modifitsirovannyy_6b13_m_674d91",
@@ -1907,7 +2125,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_modifitsirovannyy_6b13_m_674d91"
     },
     {
       "id": "bronezhilet_npp_klass_kora_kulon_flo_64be79",
@@ -1922,7 +2143,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_npp_klass_kora_kulon_flo_64be79"
     },
     {
       "id": "bronezhilet_npp_klass_kora_kulon_che_64be79",
@@ -1937,7 +2161,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_npp_klass_kora_kulon_che_64be79"
     },
     {
       "id": "bronezhilet_npp_klass_korund_vm_kamy_68a970",
@@ -1955,7 +2182,10 @@
         "NECK",
         "ARMPIT_LEFT",
         "ARMPIT_RIGHT"
-      ]
+      ],
+      "modelSilhouette": "armor_heavy",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_npp_klass_korund_vm_kamy_68a970"
     },
     {
       "id": "bronezhilet_npp_klass_korund_vm_cher_5f5f41",
@@ -1973,7 +2203,10 @@
         "NECK",
         "ARMPIT_LEFT",
         "ARMPIT_RIGHT"
-      ]
+      ],
+      "modelSilhouette": "armor_heavy",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_npp_klass_korund_vm_cher_5f5f41"
     },
     {
       "id": "bronezhilet_fort_gladiator_s_seryy_69d370",
@@ -1988,7 +2221,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_fort_gladiator_s_seryy_69d370"
     },
     {
       "id": "bronezhilet_fort_defender_2_flektarn_69b119",
@@ -2006,7 +2242,10 @@
         "NECK",
         "ARMPIT_LEFT",
         "ARMPIT_RIGHT"
-      ]
+      ],
+      "modelSilhouette": "armor_heavy",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_fort_defender_2_flektarn_69b119"
     },
     {
       "id": "bronezhilet_fort_defender_2_5e9dac",
@@ -2024,7 +2263,10 @@
         "NECK",
         "ARMPIT_LEFT",
         "ARMPIT_RIGHT"
-      ]
+      ],
+      "modelSilhouette": "armor_heavy",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_fort_defender_2_5e9dac"
     },
     {
       "id": "bronezhilet_fort_redut_m_sk_woodland_67ab2f",
@@ -2039,7 +2281,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_fort_redut_m_sk_woodland_67ab2f"
     },
     {
       "id": "bronezhilet_fort_redut_m_uznik_areny_69cf96",
@@ -2054,7 +2299,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_fort_redut_m_uznik_areny_69cf96"
     },
     {
       "id": "bronezhilet_fort_redut_m_chernyy_69cfef",
@@ -2069,7 +2317,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_fort_redut_m_chernyy_69cfef"
     },
     {
       "id": "bronezhilet_fort_redut_m_5ca215",
@@ -2084,7 +2335,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_fort_redut_m_5ca215"
     },
     {
       "id": "bronezhilet_fort_redut_t5_smog_5ca21c",
@@ -2102,7 +2356,10 @@
         "NECK",
         "ARMPIT_LEFT",
         "ARMPIT_RIGHT"
-      ]
+      ],
+      "modelSilhouette": "armor_heavy",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:bronezhilet_fort_redut_t5_smog_5ca21c"
     },
     {
       "id": "razgruzochnyy_zhilet_s_broneplastina_5d5d64",
@@ -2117,7 +2374,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:razgruzochnyy_zhilet_s_broneplastina_5d5d64"
     },
     {
       "id": "razgruzochnyy_zhilet_s_broneplastina_5c0e44",
@@ -2132,7 +2392,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:razgruzochnyy_zhilet_s_broneplastina_5c0e44"
     },
     {
       "id": "razgruzochnyy_zhilet_s_broneplastina_5c0e3e",
@@ -2147,7 +2410,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:razgruzochnyy_zhilet_s_broneplastina_5c0e3e"
     },
     {
       "id": "chekhol_dlya_broneplit_5_11_tactical_5b44ca",
@@ -2161,7 +2427,10 @@
       "material": "COMBINED",
       "zones": [
         "THORAX"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_5_11_tactical_5b44ca"
     },
     {
       "id": "chekhol_dlya_broneplit_ana_tactical_5c0e72",
@@ -2176,7 +2445,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_ana_tactical_5c0e72"
     },
     {
       "id": "chekhol_dlya_broneplit_ana_tactical_5ab8dc",
@@ -2191,7 +2463,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_ana_tactical_5ab8dc"
     },
     {
       "id": "chekhol_dlya_broneplit_ars_arma_a18_5d5d87",
@@ -2206,7 +2481,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_ars_arma_a18_5d5d87"
     },
     {
       "id": "chekhol_dlya_broneplit_ars_arma_cpc_5e4ac4",
@@ -2220,7 +2498,10 @@
       "material": "COMBINED",
       "zones": [
         "THORAX"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_ars_arma_cpc_5e4ac4"
     },
     {
       "id": "chekhol_dlya_broneplit_cqc_osprey_mk_60a3c7",
@@ -2234,7 +2515,10 @@
       "material": "COMBINED",
       "zones": [
         "THORAX"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_cqc_osprey_mk_60a3c7"
     },
     {
       "id": "chekhol_dlya_broneplit_cqc_osprey_mk_60a3c6",
@@ -2248,7 +2532,10 @@
       "material": "COMBINED",
       "zones": [
         "THORAX"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_cqc_osprey_mk_60a3c6"
     },
     {
       "id": "chekhol_dlya_broneplit_crye_precisio_544a5c",
@@ -2262,7 +2549,10 @@
       "material": "COMBINED",
       "zones": [
         "THORAX"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_crye_precisio_544a5c"
     },
     {
       "id": "chekhol_dlya_broneplit_crye_precisio_609e86",
@@ -2276,7 +2566,10 @@
       "material": "COMBINED",
       "zones": [
         "THORAX"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_crye_precisio_609e86"
     },
     {
       "id": "chekhol_dlya_broneplit_crye_precisio_628b9c",
@@ -2290,7 +2583,10 @@
       "material": "COMBINED",
       "zones": [
         "THORAX"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_crye_precisio_628b9c"
     },
     {
       "id": "chekhol_dlya_broneplit_eagle_allied_64a536",
@@ -2305,7 +2601,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_eagle_allied_64a536"
     },
     {
       "id": "chekhol_dlya_broneplit_eagle_industr_61bc85",
@@ -2319,7 +2618,10 @@
       "material": "COMBINED",
       "zones": [
         "THORAX"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_eagle_industr_61bc85"
     },
     {
       "id": "chekhol_dlya_broneplit_eclipse_rbav_628dc7",
@@ -2334,7 +2636,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_eclipse_rbav_628dc7"
     },
     {
       "id": "chekhol_dlya_broneplit_first_spear_s_61bcc8",
@@ -2348,7 +2653,10 @@
       "material": "COMBINED",
       "zones": [
         "THORAX"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_first_spear_s_61bcc8"
     },
     {
       "id": "chekhol_dlya_broneplit_s_s_precision_628b97",
@@ -2363,7 +2671,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_s_s_precision_628b97"
     },
     {
       "id": "chekhol_dlya_broneplit_shellback_tac_639343",
@@ -2378,7 +2689,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_shellback_tac_639343"
     },
     {
       "id": "chekhol_dlya_broneplit_tasmanian_tig_628cd6",
@@ -2393,7 +2707,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_tasmanian_tig_628cd6"
     },
     {
       "id": "chekhol_dlya_broneplit_wartech_tv_11_5c0e74",
@@ -2407,7 +2724,10 @@
       "material": "COMBINED",
       "zones": [
         "THORAX"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_wartech_tv_11_5c0e74"
     },
     {
       "id": "chekhol_dlya_broneplit_wartech_tv_11_64a536",
@@ -2422,7 +2742,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_wartech_tv_11_64a536"
     },
     {
       "id": "chekhol_dlya_broneplit_npp_klass_bag_628d06",
@@ -2437,7 +2760,10 @@
       "zones": [
         "THORAX",
         "STOMACH"
-      ]
+      ],
+      "modelSilhouette": "armor_medium",
+      "groundSilhouette": "ground_armor",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_npp_klass_bag_628d06"
     },
     {
       "id": "diy_razgruzochnaya_nagrudnaya_sistem_5fd4c4",
@@ -2471,7 +2797,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:diy_razgruzochnaya_nagrudnaya_sistem_5fd4c4"
     },
     {
       "id": "zhilet_okhrannika_5fd4c5",
@@ -2505,7 +2834,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_scav_vest",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:zhilet_okhrannika_5fd4c5"
     },
     {
       "id": "okhotnichiy_zhilet_umka_m33_set1_oli_6034cf",
@@ -2547,7 +2879,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_scav_vest",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:okhotnichiy_zhilet_umka_m33_set1_oli_6034cf"
     },
     {
       "id": "razgruzka_umtbs_6sh112_razvedchik_st_5929a2",
@@ -2589,7 +2924,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzka_umtbs_6sh112_razvedchik_st_5929a2"
     },
     {
       "id": "razgruzochnaya_nagrudnaya_sistema_bl_5b44c8",
@@ -2631,7 +2969,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnaya_nagrudnaya_sistema_bl_5b44c8"
     },
     {
       "id": "razgruzochnaya_nagrudnaya_sistema_bl_5c0e9f",
@@ -2673,7 +3014,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnaya_nagrudnaya_sistema_bl_5c0e9f"
     },
     {
       "id": "razgruzochnaya_nagrudnaya_sistema_cs_6034d0",
@@ -2715,7 +3059,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnaya_nagrudnaya_sistema_cs_6034d0"
     },
     {
       "id": "razgruzochnaya_nagrudnaya_sistema_di_6a565b",
@@ -2757,7 +3104,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnaya_nagrudnaya_sistema_di_6a565b"
     },
     {
       "id": "razgruzochnaya_nagrudnaya_sistema_di_69b11f",
@@ -2799,7 +3149,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnaya_nagrudnaya_sistema_di_69b11f"
     },
     {
       "id": "razgruzochnaya_nagrudnaya_sistema_di_5f5f41",
@@ -2841,7 +3194,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnaya_nagrudnaya_sistema_di_5f5f41"
     },
     {
       "id": "razgruzochnaya_nagrudnaya_sistema_ha_6a7c85",
@@ -2883,7 +3239,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnaya_nagrudnaya_sistema_ha_6a7c85"
     },
     {
       "id": "razgruzochnaya_nagrudnaya_sistema_ha_5d5d85",
@@ -2925,7 +3284,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnaya_nagrudnaya_sistema_ha_5d5d85"
     },
     {
       "id": "razgruzochnaya_nagrudnaya_sistema_ha_69d370",
@@ -2967,7 +3329,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnaya_nagrudnaya_sistema_ha_69d370"
     },
     {
       "id": "razgruzochnaya_nagrudnaya_sistema_so_5d5d8c",
@@ -3009,7 +3374,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnaya_nagrudnaya_sistema_so_5d5d8c"
     },
     {
       "id": "razgruzochnaya_nagrudnaya_sistema_sp_674589",
@@ -3043,7 +3411,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnaya_nagrudnaya_sistema_sp_674589"
     },
     {
       "id": "razgruzochnaya_nagrudnaya_sistema_wa_5ab8da",
@@ -3085,7 +3456,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnaya_nagrudnaya_sistema_wa_5ab8da"
     },
     {
       "id": "razgruzochnaya_nagrudnaya_sistema_wa_68a986",
@@ -3127,7 +3501,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnaya_nagrudnaya_sistema_wa_68a986"
     },
     {
       "id": "razgruzochnaya_nagrudnaya_sistema_zu_64be70",
@@ -3161,7 +3538,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnaya_nagrudnaya_sistema_zu_64be70"
     },
     {
       "id": "razgruzochnaya_nagrudnaya_sistema_az_6040dd",
@@ -3203,7 +3583,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnaya_nagrudnaya_sistema_az_6040dd"
     },
     {
       "id": "razgruzochnaya_nagrudnaya_sistema_az_603648",
@@ -3245,7 +3628,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnaya_nagrudnaya_sistema_az_603648"
     },
     {
       "id": "razgruzochnaya_nagrudnaya_sistema_az_636118",
@@ -3287,7 +3673,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnaya_nagrudnaya_sistema_az_636118"
     },
     {
       "id": "razgruzochnaya_sistema_blue_force_ge_6a7b44",
@@ -3321,7 +3710,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnaya_sistema_blue_force_ge_6a7b44"
     },
     {
       "id": "razgruzochnyy_zhilet_ana_tactical_al_68a85a",
@@ -3355,7 +3747,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnyy_zhilet_ana_tactical_al_68a85a"
     },
     {
       "id": "razgruzochnyy_zhilet_ana_tactical_al_67ab3e",
@@ -3389,7 +3784,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnyy_zhilet_ana_tactical_al_67ab3e"
     },
     {
       "id": "razgruzochnyy_zhilet_ana_tactical_al_592c2d",
@@ -3423,7 +3821,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnyy_zhilet_ana_tactical_al_592c2d"
     },
     {
       "id": "razgruzochnyy_zhilet_blackrock_chest_5648a6",
@@ -3457,7 +3858,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnyy_zhilet_blackrock_chest_5648a6"
     },
     {
       "id": "razgruzochnyy_zhilet_blackrock_chest_67ab3f",
@@ -3491,7 +3895,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnyy_zhilet_blackrock_chest_67ab3f"
     },
     {
       "id": "razgruzochnyy_zhilet_lbt_1961a_load_69b124",
@@ -3525,7 +3932,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnyy_zhilet_lbt_1961a_load_69b124"
     },
     {
       "id": "razgruzochnyy_zhilet_lbt_1961a_load_628baf",
@@ -3559,7 +3969,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnyy_zhilet_lbt_1961a_load_628baf"
     },
     {
       "id": "razgruzochnyy_zhilet_lbt_1961a_load_5e9db1",
@@ -3593,7 +4006,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnyy_zhilet_lbt_1961a_load_5e9db1"
     },
     {
       "id": "razgruzochnyy_zhilet_lbt_1961a_load_69cfc2",
@@ -3627,7 +4043,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnyy_zhilet_lbt_1961a_load_69cfc2"
     },
     {
       "id": "razgruzochnyy_zhilet_lbt_1961a_load_68bee2",
@@ -3661,7 +4080,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnyy_zhilet_lbt_1961a_load_68bee2"
     },
     {
       "id": "razgruzochnyy_zhilet_stich_profi_che_60a622",
@@ -3695,7 +4117,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnyy_zhilet_stich_profi_che_60a622"
     },
     {
       "id": "razgruzochnyy_zhilet_stich_profi_che_69cfbf",
@@ -3729,7 +4154,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnyy_zhilet_stich_profi_che_69cfbf"
     },
     {
       "id": "razgruzochnyy_zhilet_stich_profi_che_60a621",
@@ -3763,7 +4191,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnyy_zhilet_stich_profi_che_60a621"
     },
     {
       "id": "razgruzochnyy_zhilet_velocity_system_5df8a4",
@@ -3805,7 +4236,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnyy_zhilet_velocity_system_5df8a4"
     },
     {
       "id": "razgruzochnyy_zhilet_splav_tarzan_m2_5e4abf",
@@ -3847,7 +4281,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnyy_zhilet_splav_tarzan_m2_5e4abf"
     },
     {
       "id": "razgruzochnyy_zhilet_tip_56_chi_kom_64be71",
@@ -3881,7 +4318,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnyy_zhilet_tip_56_chi_kom_64be71"
     },
     {
       "id": "razgruzochnyy_zhilet_tip_56_chi_kom_6a7c84",
@@ -3915,7 +4355,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_chest_heavy",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:razgruzochnyy_zhilet_tip_56_chi_kom_6a7c84"
     },
     {
       "id": "remenno_plechevaya_sistema_gear_craf_5fd4c6",
@@ -3949,7 +4392,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_belt_rps",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:remenno_plechevaya_sistema_gear_craf_5fd4c6"
     },
     {
       "id": "remenno_plechevaya_sistema_wartech_t_59e764",
@@ -3983,7 +4429,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_belt_rps",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:remenno_plechevaya_sistema_wartech_t_59e764"
     },
     {
       "id": "remenno_plechevaya_sistema_poyas_a_p_5c0e6a",
@@ -4017,7 +4466,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_belt_rps",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:remenno_plechevaya_sistema_poyas_a_p_5c0e6a"
     },
     {
       "id": "chekhol_dlya_broneplit_5_11_tactical_67ab4b",
@@ -4059,7 +4511,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_5_11_tactical_67ab4b"
     },
     {
       "id": "chekhol_dlya_broneplit_6b45_meditsin_68948a",
@@ -4093,7 +4548,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_6b45_meditsin_68948a"
     },
     {
       "id": "chekhol_dlya_broneplit_6b45_universa_68948a",
@@ -4127,7 +4585,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_6b45_universa_68948a"
     },
     {
       "id": "chekhol_dlya_broneplit_6b45_shturmov_68948b",
@@ -4161,7 +4622,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_6b45_shturmov_68948b"
     },
     {
       "id": "chekhol_dlya_broneplit_ana_tactical_6a576f",
@@ -4195,7 +4659,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_ana_tactical_6a576f"
     },
     {
       "id": "chekhol_dlya_broneplit_ana_tactical_6a562a",
@@ -4229,7 +4696,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_ana_tactical_6a562a"
     },
     {
       "id": "chekhol_dlya_broneplit_ana_tactical_6a5629",
@@ -4263,7 +4733,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_ana_tactical_6a5629"
     },
     {
       "id": "chekhol_dlya_broneplit_ana_tactical_69412e",
@@ -4297,7 +4770,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_ana_tactical_69412e"
     },
     {
       "id": "chekhol_dlya_broneplit_blue_force_ge_6a7c84",
@@ -4331,7 +4807,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_blue_force_ge_6a7c84"
     },
     {
       "id": "chekhol_dlya_broneplit_blue_force_ge_6a7b45",
@@ -4365,7 +4844,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_blue_force_ge_6a7b45"
     },
     {
       "id": "chekhol_dlya_broneplit_blue_force_6a7c84_2",
@@ -4399,7 +4881,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_blue_force_6a7c84_2"
     },
     {
       "id": "chekhol_dlya_broneplit_blue_force_6a7c84_3",
@@ -4433,7 +4918,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_blue_force_6a7c84_3"
     },
     {
       "id": "chekhol_dlya_broneplit_crye_precisio_67ab49",
@@ -4475,7 +4963,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_crye_precisio_67ab49"
     },
     {
       "id": "chekhol_dlya_broneplit_crye_precisio_693fd0",
@@ -4509,7 +5000,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_crye_precisio_693fd0"
     },
     {
       "id": "chekhol_dlya_broneplit_ferro_concept_689479",
@@ -4551,7 +5045,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_ferro_concept_689479"
     },
     {
       "id": "chekhol_dlya_broneplit_first_spear_s_68947a",
@@ -4585,7 +5082,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_first_spear_s_68947a"
     },
     {
       "id": "chekhol_dlya_broneplit_first_spear_s_68a85a",
@@ -4619,7 +5119,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_first_spear_s_68a85a"
     },
     {
       "id": "chekhol_dlya_broneplit_first_spear_s_69d363",
@@ -4653,7 +5156,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_first_spear_s_69d363"
     },
     {
       "id": "chekhol_dlya_broneplit_spiritus_syst_689479",
@@ -4687,7 +5193,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_spiritus_syst_689479"
     },
     {
       "id": "chekhol_dlya_broneplit_spiritus_s_689479_2",
@@ -4721,7 +5230,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_spiritus_s_689479_2"
     },
     {
       "id": "chekhol_dlya_broneplit_spiritus_syst_69e244",
@@ -4755,7 +5267,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_spiritus_syst_69e244"
     },
     {
       "id": "chekhol_dlya_broneplit_stich_profi_p_69cfff",
@@ -4789,7 +5304,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_stich_profi_p_69cfff"
     },
     {
       "id": "chekhol_dlya_broneplit_stich_prof_69cfff_2",
@@ -4823,7 +5341,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_stich_prof_69cfff_2"
     },
     {
       "id": "chekhol_dlya_broneplit_stich_profi_p_68a992",
@@ -4857,7 +5378,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_stich_profi_p_68a992"
     },
     {
       "id": "chekhol_dlya_broneplit_stich_profi_p_66b629",
@@ -4891,7 +5415,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_stich_profi_p_66b629"
     },
     {
       "id": "chekhol_dlya_broneplit_stich_profi_s_6a7c85",
@@ -4925,7 +5452,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_stich_profi_s_6a7c85"
     },
     {
       "id": "chekhol_dlya_broneplit_stich_profi_s_66b629",
@@ -4959,7 +5489,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_stich_profi_s_66b629"
     },
     {
       "id": "chekhol_dlya_broneplit_stich_prof_6a7c85_2",
@@ -4993,7 +5526,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_stich_prof_6a7c85_2"
     },
     {
       "id": "chekhol_dlya_broneplit_tac_kek_zhpts_693fd1",
@@ -5027,7 +5563,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_tac_kek_zhpts_693fd1"
     },
     {
       "id": "chekhol_dlya_broneplit_tac_kek_zh_693fd1_2",
@@ -5061,7 +5600,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_tac_kek_zh_693fd1_2"
     },
     {
       "id": "chekhol_dlya_broneplit_tasmanian_tig_66b629",
@@ -5095,7 +5637,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_tasmanian_tig_66b629"
     },
     {
       "id": "chekhol_dlya_broneplit_wartech_tv_11_69b10e",
@@ -5129,7 +5674,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_wartech_tv_11_69b10e"
     },
     {
       "id": "chekhol_dlya_broneplit_fort_gladiato_69d28c",
@@ -5163,7 +5711,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_fort_gladiato_69d28c"
     },
     {
       "id": "chekhol_dlya_broneplit_fort_gladiato_69d275",
@@ -5197,7 +5748,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_fort_gladiato_69d275"
     },
     {
       "id": "chekhol_dlya_broneplit_fort_gladiato_69d27e",
@@ -5231,7 +5785,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_fort_gladiato_69d27e"
     },
     {
       "id": "chekhol_dlya_broneplit_fort_gladiato_69d26f",
@@ -5265,7 +5822,10 @@
           1,
           1
         ]
-      ]
+      ],
+      "modelSilhouette": "rig_armored",
+      "groundSilhouette": "ground_rig",
+      "modelTexture": "tarkovcraft:chekhol_dlya_broneplit_fort_gladiato_69d26f"
     },
     {
       "id": "boevoy_ranets_5_11_tactical_rush_100_674587",
@@ -5275,7 +5835,10 @@
       "gridWidth": 3,
       "gridHeight": 4,
       "rarity": "COMMON",
-      "weight": 0.7
+      "weight": 0.7,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:boevoy_ranets_5_11_tactical_rush_100_674587"
     },
     {
       "id": "boevoy_ranets_ana_tactical_beta_2_ol_5b44c6",
@@ -5285,7 +5848,10 @@
       "gridWidth": 3,
       "gridHeight": 4,
       "rarity": "COMMON",
-      "weight": 0.7
+      "weight": 0.7,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:boevoy_ranets_ana_tactical_beta_2_ol_5b44c6"
     },
     {
       "id": "gruzovaya_rama_mystery_ranch_nice_fr_68947a",
@@ -5295,7 +5861,10 @@
       "gridWidth": 6,
       "gridHeight": 7,
       "rarity": "EPIC",
-      "weight": 2.6
+      "weight": 2.6,
+      "modelSilhouette": "backpack_large",
+      "groundSilhouette": "ground_backpack_large",
+      "modelTexture": "tarkovcraft:gruzovaya_rama_mystery_ranch_nice_fr_68947a"
     },
     {
       "id": "meditsinskiy_ryukzak_lbt_2670_slim_f_5e4abc",
@@ -5305,7 +5874,10 @@
       "gridWidth": 3,
       "gridHeight": 4,
       "rarity": "COMMON",
-      "weight": 0.7
+      "weight": 0.7,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:meditsinskiy_ryukzak_lbt_2670_slim_f_5e4abc"
     },
     {
       "id": "nagruzochnyy_ryukzak_eberlestock_f4_5f5e46",
@@ -5315,7 +5887,10 @@
       "gridWidth": 6,
       "gridHeight": 7,
       "rarity": "EPIC",
-      "weight": 2.6
+      "weight": 2.6,
+      "modelSilhouette": "backpack_large",
+      "groundSilhouette": "ground_backpack_large",
+      "modelTexture": "tarkovcraft:nagruzochnyy_ryukzak_eberlestock_f4_5f5e46"
     },
     {
       "id": "novogodniy_meshok_61b9e1",
@@ -5325,7 +5900,10 @@
       "gridWidth": 3,
       "gridHeight": 4,
       "rarity": "COMMON",
-      "weight": 0.7
+      "weight": 0.7,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:novogodniy_meshok_61b9e1"
     },
     {
       "id": "ranets_patrulnyy_tekhinkom_rk_pt_25_656ddc",
@@ -5335,7 +5913,10 @@
       "gridWidth": 3,
       "gridHeight": 4,
       "rarity": "COMMON",
-      "weight": 0.7
+      "weight": 0.7,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:ranets_patrulnyy_tekhinkom_rk_pt_25_656ddc"
     },
     {
       "id": "ryukzak_direct_action_dragon_egg_mar_656f19",
@@ -5345,7 +5926,10 @@
       "gridWidth": 3,
       "gridHeight": 4,
       "rarity": "COMMON",
-      "weight": 0.7
+      "weight": 0.7,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:ryukzak_direct_action_dragon_egg_mar_656f19"
     },
     {
       "id": "ryukzak_eberlestock_f5_switchblade_d_5f5e46",
@@ -5355,7 +5939,10 @@
       "gridWidth": 5,
       "gridHeight": 6,
       "rarity": "RARE",
-      "weight": 1.8
+      "weight": 1.8,
+      "modelSilhouette": "backpack_large",
+      "groundSilhouette": "ground_backpack_large",
+      "modelTexture": "tarkovcraft:ryukzak_eberlestock_f5_switchblade_d_5f5e46"
     },
     {
       "id": "ryukzak_eberlestock_g2_gunslinger_ii_6034d2",
@@ -5365,7 +5952,10 @@
       "gridWidth": 5,
       "gridHeight": 6,
       "rarity": "RARE",
-      "weight": 1.8
+      "weight": 1.8,
+      "modelSilhouette": "backpack_large",
+      "groundSilhouette": "ground_backpack_large",
+      "modelTexture": "tarkovcraft:ryukzak_eberlestock_g2_gunslinger_ii_6034d2"
     },
     {
       "id": "ryukzak_flyye_mbss_ucp_544a5c",
@@ -5375,7 +5965,10 @@
       "gridWidth": 4,
       "gridHeight": 5,
       "rarity": "UNCOMMON",
-      "weight": 1.1
+      "weight": 1.1,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:ryukzak_flyye_mbss_ucp_544a5c"
     },
     {
       "id": "ryukzak_hazard_4_drawbridge_coyote_t_60a272",
@@ -5385,7 +5978,10 @@
       "gridWidth": 5,
       "gridHeight": 6,
       "rarity": "RARE",
-      "weight": 1.8
+      "weight": 1.8,
+      "modelSilhouette": "backpack_large",
+      "groundSilhouette": "ground_backpack_large",
+      "modelTexture": "tarkovcraft:ryukzak_hazard_4_drawbridge_coyote_t_60a272"
     },
     {
       "id": "ryukzak_hazard_4_pillbox_chernyy_60a282",
@@ -5395,7 +5991,10 @@
       "gridWidth": 5,
       "gridHeight": 6,
       "rarity": "RARE",
-      "weight": 1.8
+      "weight": 1.8,
+      "modelSilhouette": "backpack_large",
+      "groundSilhouette": "ground_backpack_large",
+      "modelTexture": "tarkovcraft:ryukzak_hazard_4_pillbox_chernyy_60a282"
     },
     {
       "id": "ryukzak_lbt_1476a_3day_pack_multicam_674587",
@@ -5405,7 +6004,10 @@
       "gridWidth": 3,
       "gridHeight": 4,
       "rarity": "COMMON",
-      "weight": 0.7
+      "weight": 0.7,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:ryukzak_lbt_1476a_3day_pack_multicam_674587"
     },
     {
       "id": "ryukzak_lbt_1476a_3day_pack_woodland_618cfa",
@@ -5415,7 +6017,10 @@
       "gridWidth": 3,
       "gridHeight": 4,
       "rarity": "COMMON",
-      "weight": 0.7
+      "weight": 0.7,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:ryukzak_lbt_1476a_3day_pack_woodland_618cfa"
     },
     {
       "id": "ryukzak_lbt_8005a_day_pack_multicam_5e9dcf",
@@ -5425,7 +6030,10 @@
       "gridWidth": 3,
       "gridHeight": 4,
       "rarity": "COMMON",
-      "weight": 0.7
+      "weight": 0.7,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:ryukzak_lbt_8005a_day_pack_multicam_5e9dcf"
     },
     {
       "id": "ryukzak_mystery_ranch_2_day_assault_68947a",
@@ -5435,7 +6043,10 @@
       "gridWidth": 6,
       "gridHeight": 7,
       "rarity": "EPIC",
-      "weight": 2.6
+      "weight": 2.6,
+      "modelSilhouette": "backpack_large",
+      "groundSilhouette": "ground_backpack_large",
+      "modelTexture": "tarkovcraft:ryukzak_mystery_ranch_2_day_assault_68947a"
     },
     {
       "id": "ryukzak_mystery_ranch_blackjack_50_m_5c0e77",
@@ -5445,7 +6056,10 @@
       "gridWidth": 6,
       "gridHeight": 7,
       "rarity": "EPIC",
-      "weight": 2.6
+      "weight": 2.6,
+      "modelSilhouette": "backpack_large",
+      "groundSilhouette": "ground_backpack_large",
+      "modelTexture": "tarkovcraft:ryukzak_mystery_ranch_blackjack_50_m_5c0e77"
     },
     {
       "id": "ryukzak_mystery_ranch_terraframe_nov_674da9",
@@ -5455,7 +6069,10 @@
       "gridWidth": 6,
       "gridHeight": 7,
       "rarity": "EPIC",
-      "weight": 2.6
+      "weight": 2.6,
+      "modelSilhouette": "backpack_large",
+      "groundSilhouette": "ground_backpack_large",
+      "modelTexture": "tarkovcraft:ryukzak_mystery_ranch_terraframe_nov_674da9"
     },
     {
       "id": "ryukzak_mystery_ranch_terraframe_oli_674da1",
@@ -5465,7 +6082,10 @@
       "gridWidth": 6,
       "gridHeight": 7,
       "rarity": "EPIC",
-      "weight": 2.6
+      "weight": 2.6,
+      "modelSilhouette": "backpack_large",
+      "groundSilhouette": "ground_backpack_large",
+      "modelTexture": "tarkovcraft:ryukzak_mystery_ranch_terraframe_oli_674da1"
     },
     {
       "id": "ryukzak_oakley_mechanism_chernyy_5d5d94",
@@ -5475,7 +6095,10 @@
       "gridWidth": 5,
       "gridHeight": 6,
       "rarity": "RARE",
-      "weight": 1.8
+      "weight": 1.8,
+      "modelSilhouette": "backpack_large",
+      "groundSilhouette": "ground_backpack_large",
+      "modelTexture": "tarkovcraft:ryukzak_oakley_mechanism_chernyy_5d5d94"
     },
     {
       "id": "ryukzak_tasmanian_tiger_modular_pack_68947a",
@@ -5485,7 +6108,10 @@
       "gridWidth": 3,
       "gridHeight": 4,
       "rarity": "COMMON",
-      "weight": 0.7
+      "weight": 0.7,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:ryukzak_tasmanian_tiger_modular_pack_68947a"
     },
     {
       "id": "ryukzak_tasmanian_tiger_trooper_35_k_639346",
@@ -5495,7 +6121,10 @@
       "gridWidth": 6,
       "gridHeight": 7,
       "rarity": "EPIC",
-      "weight": 2.6
+      "weight": 2.6,
+      "modelSilhouette": "backpack_large",
+      "groundSilhouette": "ground_backpack_large",
+      "modelTexture": "tarkovcraft:ryukzak_tasmanian_tiger_trooper_35_k_639346"
     },
     {
       "id": "ryukzak_vertx_ready_pack_krasnyy_66b5f2",
@@ -5505,7 +6134,10 @@
       "gridWidth": 3,
       "gridHeight": 4,
       "rarity": "COMMON",
-      "weight": 0.7
+      "weight": 0.7,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:ryukzak_vertx_ready_pack_krasnyy_66b5f2"
     },
     {
       "id": "ryukzak_gruppa_99_t20_multicam_619cf0",
@@ -5515,7 +6147,10 @@
       "gridWidth": 3,
       "gridHeight": 4,
       "rarity": "COMMON",
-      "weight": 0.7
+      "weight": 0.7,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:ryukzak_gruppa_99_t20_multicam_619cf0"
     },
     {
       "id": "ryukzak_gruppa_99_t20_umbra_618bb7",
@@ -5525,7 +6160,10 @@
       "gridWidth": 3,
       "gridHeight": 4,
       "rarity": "COMMON",
-      "weight": 0.7
+      "weight": 0.7,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:ryukzak_gruppa_99_t20_umbra_618bb7"
     },
     {
       "id": "ryukzak_gruppa_99_t30_multicam_62a1b7",
@@ -5535,7 +6173,10 @@
       "gridWidth": 3,
       "gridHeight": 4,
       "rarity": "COMMON",
-      "weight": 0.7
+      "weight": 0.7,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:ryukzak_gruppa_99_t30_multicam_62a1b7"
     },
     {
       "id": "ryukzak_gruppa_99_t30_chernyy_628e1f",
@@ -5545,7 +6186,10 @@
       "gridWidth": 3,
       "gridHeight": 4,
       "rarity": "COMMON",
-      "weight": 0.7
+      "weight": 0.7,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:ryukzak_gruppa_99_t30_chernyy_628e1f"
     },
     {
       "id": "ryukzak_dikogo_56e335",
@@ -5555,7 +6199,10 @@
       "gridWidth": 4,
       "gridHeight": 5,
       "rarity": "UNCOMMON",
-      "weight": 1.1
+      "weight": 1.1,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:ryukzak_dikogo_56e335"
     },
     {
       "id": "ryukzak_operatora_3v_gear_paratus_3_5c0e80",
@@ -5565,7 +6212,10 @@
       "gridWidth": 5,
       "gridHeight": 6,
       "rarity": "RARE",
-      "weight": 1.8
+      "weight": 1.8,
+      "modelSilhouette": "backpack_large",
+      "groundSilhouette": "ground_backpack_large",
+      "modelTexture": "tarkovcraft:ryukzak_operatora_3v_gear_paratus_3_5c0e80"
     },
     {
       "id": "ryukzak_reydovyy_6sh118_flora_tsifra_5df8a4",
@@ -5575,7 +6225,10 @@
       "gridWidth": 6,
       "gridHeight": 7,
       "rarity": "EPIC",
-      "weight": 2.6
+      "weight": 2.6,
+      "modelSilhouette": "backpack_large",
+      "groundSilhouette": "ground_backpack_large",
+      "modelTexture": "tarkovcraft:ryukzak_reydovyy_6sh118_flora_tsifra_5df8a4"
     },
     {
       "id": "ryukzak_reydovyy_sso_ataka_2_khaki_5ab8eb",
@@ -5585,7 +6238,10 @@
       "gridWidth": 6,
       "gridHeight": 7,
       "rarity": "EPIC",
-      "weight": 2.6
+      "weight": 2.6,
+      "modelSilhouette": "backpack_large",
+      "groundSilhouette": "ground_backpack_large",
+      "modelTexture": "tarkovcraft:ryukzak_reydovyy_sso_ataka_2_khaki_5ab8eb"
     },
     {
       "id": "ryukzak_shturmovoy_camelbak_tri_zip_66b5f2",
@@ -5595,7 +6251,10 @@
       "gridWidth": 5,
       "gridHeight": 6,
       "rarity": "RARE",
-      "weight": 1.8
+      "weight": 1.8,
+      "modelSilhouette": "backpack_large",
+      "groundSilhouette": "ground_backpack_large",
+      "modelTexture": "tarkovcraft:ryukzak_shturmovoy_camelbak_tri_zip_66b5f2"
     },
     {
       "id": "ryukzak_shturmovoy_mystery_ranch_sat_656e04",
@@ -5605,7 +6264,10 @@
       "gridWidth": 6,
       "gridHeight": 7,
       "rarity": "EPIC",
-      "weight": 2.6
+      "weight": 2.6,
+      "modelSilhouette": "backpack_large",
+      "groundSilhouette": "ground_backpack_large",
+      "modelTexture": "tarkovcraft:ryukzak_shturmovoy_mystery_ranch_sat_656e04"
     },
     {
       "id": "sportivnaya_sumka_56e336",
@@ -5615,7 +6277,10 @@
       "gridWidth": 3,
       "gridHeight": 4,
       "rarity": "COMMON",
-      "weight": 0.7
+      "weight": 0.7,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:sportivnaya_sumka_56e336"
     },
     {
       "id": "sumka_partizana_66a9f9",
@@ -5625,7 +6290,10 @@
       "gridWidth": 3,
       "gridHeight": 4,
       "rarity": "COMMON",
-      "weight": 0.7
+      "weight": 0.7,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:sumka_partizana_66a9f9"
     },
     {
       "id": "sumka_sanitara_5e997f",
@@ -5635,7 +6303,10 @@
       "gridWidth": 4,
       "gridHeight": 5,
       "rarity": "UNCOMMON",
-      "weight": 1.1
+      "weight": 1.1,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:sumka_sanitara_5e997f"
     },
     {
       "id": "sumka_transformer_56e336",
@@ -5645,7 +6316,10 @@
       "gridWidth": 3,
       "gridHeight": 4,
       "rarity": "COMMON",
-      "weight": 0.7
+      "weight": 0.7,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:sumka_transformer_56e336"
     },
     {
       "id": "takticheskaya_odnolyamochnaya_sumka_5ab8f0",
@@ -5655,7 +6329,10 @@
       "gridWidth": 3,
       "gridHeight": 4,
       "rarity": "COMMON",
-      "weight": 0.7
+      "weight": 0.7,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:takticheskaya_odnolyamochnaya_sumka_5ab8f0"
     },
     {
       "id": "takticheskiy_sling_hazard_4_takedown_6038d6",
@@ -5665,7 +6342,10 @@
       "gridWidth": 5,
       "gridHeight": 6,
       "rarity": "RARE",
-      "weight": 1.8
+      "weight": 1.8,
+      "modelSilhouette": "backpack_large",
+      "groundSilhouette": "ground_backpack_large",
+      "modelTexture": "tarkovcraft:takticheskiy_sling_hazard_4_takedown_6038d6"
     },
     {
       "id": "takticheskiy_sling_hazard_4_takedown_6034d1",
@@ -5675,7 +6355,10 @@
       "gridWidth": 5,
       "gridHeight": 6,
       "rarity": "RARE",
-      "weight": 1.8
+      "weight": 1.8,
+      "modelSilhouette": "backpack_large",
+      "groundSilhouette": "ground_backpack_large",
+      "modelTexture": "tarkovcraft:takticheskiy_sling_hazard_4_takedown_6034d1"
     },
     {
       "id": "turisticheskiy_ryukzak_lolkek_3f_tra_5f5e45",
@@ -5685,7 +6368,10 @@
       "gridWidth": 3,
       "gridHeight": 4,
       "rarity": "COMMON",
-      "weight": 0.7
+      "weight": 0.7,
+      "modelSilhouette": "backpack_small",
+      "groundSilhouette": "ground_backpack_small",
+      "modelTexture": "tarkovcraft:turisticheskiy_ryukzak_lolkek_3f_tra_5f5e45"
     },
     {
       "id": "turisticheskiy_ryukzak_piligrim_59e763",
@@ -5695,7 +6381,10 @@
       "gridWidth": 6,
       "gridHeight": 7,
       "rarity": "EPIC",
-      "weight": 2.6
+      "weight": 2.6,
+      "modelSilhouette": "backpack_large",
+      "groundSilhouette": "ground_backpack_large",
+      "modelTexture": "tarkovcraft:turisticheskiy_ryukzak_piligrim_59e763"
     },
     {
       "id": "freym_sistema_mystery_ranch_nice_com_628bc7",
@@ -5705,7 +6394,10 @@
       "gridWidth": 6,
       "gridHeight": 7,
       "rarity": "EPIC",
-      "weight": 2.6
+      "weight": 2.6,
+      "modelSilhouette": "backpack_large",
+      "groundSilhouette": "ground_backpack_large",
+      "modelTexture": "tarkovcraft:freym_sistema_mystery_ranch_nice_com_628bc7"
     },
     {
       "id": "aktivnye_berushi_cens_proflex_dx5_694132",
@@ -5713,7 +6405,10 @@
       "width": 2,
       "height": 2,
       "rarity": "UNCOMMON",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_berushi_cens_proflex_dx5_694132"
     },
     {
       "id": "aktivnye_berushi_peltor_tep_300_coyo_68bf40",
@@ -5721,7 +6416,10 @@
       "width": 2,
       "height": 2,
       "rarity": "UNCOMMON",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_berushi_peltor_tep_300_coyo_68bf40"
     },
     {
       "id": "aktivnye_naushniki_msa_sordin_suprem_5aa2ba",
@@ -5729,7 +6427,10 @@
       "width": 2,
       "height": 2,
       "rarity": "RARE",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_msa_sordin_suprem_5aa2ba"
     },
     {
       "id": "aktivnye_naushniki_ops_core_rac_dlya_5a16b9",
@@ -5737,7 +6438,10 @@
       "width": 2,
       "height": 2,
       "rarity": "RARE",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_ops_core_rac_dlya_5a16b9"
     },
     {
       "id": "aktivnye_naushniki_opsmen_earmor_m32_693bb5",
@@ -5745,7 +6449,10 @@
       "width": 2,
       "height": 2,
       "rarity": "UNCOMMON",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_opsmen_earmor_m32_693bb5"
     },
     {
       "id": "aktivnye_naushniki_opsmen_earmor_m32_6033fa",
@@ -5753,7 +6460,10 @@
       "width": 2,
       "height": 2,
       "rarity": "UNCOMMON",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_opsmen_earmor_m32_6033fa"
     },
     {
       "id": "aktivnye_naushniki_peltor_comtac_ii_5645bc",
@@ -5761,7 +6471,10 @@
       "width": 2,
       "height": 2,
       "rarity": "RARE",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_peltor_comtac_ii_5645bc"
     },
     {
       "id": "aktivnye_naushniki_peltor_comtac_iv_628e4e",
@@ -5769,7 +6482,10 @@
       "width": 2,
       "height": 2,
       "rarity": "RARE",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_peltor_comtac_iv_628e4e"
     },
     {
       "id": "aktivnye_naushniki_peltor_comtac_v_o_66b5f6",
@@ -5777,7 +6493,10 @@
       "width": 2,
       "height": 2,
       "rarity": "RARE",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_peltor_comtac_v_o_66b5f6"
     },
     {
       "id": "aktivnye_naushniki_peltor_comtac_v_d_66b5f6",
@@ -5785,7 +6504,10 @@
       "width": 2,
       "height": 2,
       "rarity": "RARE",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_peltor_comtac_v_d_66b5f6"
     },
     {
       "id": "aktivnye_naushniki_peltor_comtac_vi_66b5f6",
@@ -5793,7 +6515,10 @@
       "width": 2,
       "height": 2,
       "rarity": "RARE",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_peltor_comtac_vi_66b5f6"
     },
     {
       "id": "aktivnye_naushniki_peltor_comtac_vi_69c163",
@@ -5801,7 +6526,10 @@
       "width": 2,
       "height": 2,
       "rarity": "RARE",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_peltor_comtac_vi_69c163"
     },
     {
       "id": "aktivnye_naushniki_peltor_comtac__69c163_2",
@@ -5809,7 +6537,10 @@
       "width": 2,
       "height": 2,
       "rarity": "RARE",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_peltor_comtac__69c163_2"
     },
     {
       "id": "aktivnye_naushniki_peltor_comtac__66b5f6_2",
@@ -5817,7 +6548,10 @@
       "width": 2,
       "height": 2,
       "rarity": "RARE",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_peltor_comtac__66b5f6_2"
     },
     {
       "id": "aktivnye_naushniki_peltor_comtac_vi_69c265",
@@ -5825,7 +6559,10 @@
       "width": 2,
       "height": 2,
       "rarity": "RARE",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_peltor_comtac_vi_69c265"
     },
     {
       "id": "aktivnye_naushniki_peltor_comtac_vi_69c264",
@@ -5833,7 +6570,10 @@
       "width": 2,
       "height": 2,
       "rarity": "RARE",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_peltor_comtac_vi_69c264"
     },
     {
       "id": "aktivnye_naushniki_peltor_tactical_s_5c165d",
@@ -5841,7 +6581,10 @@
       "width": 2,
       "height": 2,
       "rarity": "UNCOMMON",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_peltor_tactical_s_5c165d"
     },
     {
       "id": "aktivnye_naushniki_safariland_libera_6a5615",
@@ -5849,7 +6592,10 @@
       "width": 2,
       "height": 2,
       "rarity": "RARE",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_safariland_libera_6a5615"
     },
     {
       "id": "aktivnye_naushniki_safariland_libera_66b5f6",
@@ -5857,7 +6603,10 @@
       "width": 2,
       "height": 2,
       "rarity": "RARE",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_safariland_libera_66b5f6"
     },
     {
       "id": "aktivnye_naushniki_safariland_libera_69c14f",
@@ -5865,7 +6614,10 @@
       "width": 2,
       "height": 2,
       "rarity": "RARE",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_safariland_libera_69c14f"
     },
     {
       "id": "aktivnye_naushniki_safariland_libera_69c139",
@@ -5873,7 +6625,10 @@
       "width": 2,
       "height": 2,
       "rarity": "RARE",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_safariland_libera_69c139"
     },
     {
       "id": "aktivnye_naushniki_safariland_libera_69c14e",
@@ -5881,7 +6636,10 @@
       "width": 2,
       "height": 2,
       "rarity": "RARE",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_safariland_libera_69c14e"
     },
     {
       "id": "aktivnye_naushniki_walker_s_razor_di_5e4d34",
@@ -5889,7 +6647,10 @@
       "width": 2,
       "height": 2,
       "rarity": "UNCOMMON",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_walker_s_razor_di_5e4d34"
     },
     {
       "id": "aktivnye_naushniki_walker_s_razor_sl_69d3c1",
@@ -5897,7 +6658,10 @@
       "width": 2,
       "height": 2,
       "rarity": "UNCOMMON",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_walker_s_razor_sl_69d3c1"
     },
     {
       "id": "aktivnye_naushniki_walker_s_razor_sl_6a5666",
@@ -5905,7 +6669,10 @@
       "width": 2,
       "height": 2,
       "rarity": "UNCOMMON",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_walker_s_razor_sl_6a5666"
     },
     {
       "id": "aktivnye_naushniki_walker_s_razor_6a5666_2",
@@ -5913,7 +6680,10 @@
       "width": 2,
       "height": 2,
       "rarity": "UNCOMMON",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_walker_s_razor_6a5666_2"
     },
     {
       "id": "aktivnye_naushniki_walker_s_xcel_500_5f60cd",
@@ -5921,7 +6691,10 @@
       "width": 2,
       "height": 2,
       "rarity": "UNCOMMON",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_walker_s_xcel_500_5f60cd"
     },
     {
       "id": "aktivnye_naushniki_gssh_01_5b432b",
@@ -5929,7 +6702,10 @@
       "width": 2,
       "height": 2,
       "rarity": "UNCOMMON",
-      "weight": 0.4
+      "weight": 0.4,
+      "modelSilhouette": "headset_active",
+      "groundSilhouette": "headset_active",
+      "modelTexture": "tarkovcraft:aktivnye_naushniki_gssh_01_5b432b"
     },
     {
       "id": "ballisticheskie_ochki_6b34_5b432b",
@@ -5943,7 +6719,10 @@
       "material": "ARAMID",
       "zones": [
         "HEAD_EYES"
-      ]
+      ],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:ballisticheskie_ochki_6b34_5b432b"
     },
     {
       "id": "ballisticheskie_ochki_wiley_x_spear_69cfe0",
@@ -5957,7 +6736,10 @@
       "material": "ARAMID",
       "zones": [
         "HEAD_EYES"
-      ]
+      ],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:ballisticheskie_ochki_wiley_x_spear_69cfe0"
     },
     {
       "id": "ballisticheskie_ochki_wiley_x_spe_69cfe0_2",
@@ -5971,7 +6753,10 @@
       "material": "ARAMID",
       "zones": [
         "HEAD_EYES"
-      ]
+      ],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:ballisticheskie_ochki_wiley_x_spe_69cfe0_2"
     },
     {
       "id": "vizor_dlya_shlemov_ops_core_fast_5a16b6",
@@ -5983,7 +6768,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "visor",
+      "groundSilhouette": "visor",
+      "modelTexture": "tarkovcraft:vizor_dlya_shlemov_ops_core_fast_5a16b6"
     },
     {
       "id": "zashchitnye_ochki_ess_crossbow_5d5fca",
@@ -5997,7 +6785,10 @@
       "material": "ARAMID",
       "zones": [
         "HEAD_EYES"
-      ]
+      ],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:zashchitnye_ochki_ess_crossbow_5d5fca"
     },
     {
       "id": "zashchitnye_ochki_gatorz_specter_mil_689b3f",
@@ -6009,7 +6800,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:zashchitnye_ochki_gatorz_specter_mil_689b3f"
     },
     {
       "id": "zashchitnye_ochki_oakley_si_batwolf_62a61c",
@@ -6023,7 +6817,10 @@
       "material": "ARAMID",
       "zones": [
         "HEAD_EYES"
-      ]
+      ],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:zashchitnye_ochki_oakley_si_batwolf_62a61c"
     },
     {
       "id": "zashchitnye_ochki_oakley_si_gascan_5d6d2e",
@@ -6035,7 +6832,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:zashchitnye_ochki_oakley_si_gascan_5d6d2e"
     },
     {
       "id": "zashchitnye_ochki_oakley_si_m_frame_67af42",
@@ -6047,7 +6847,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:zashchitnye_ochki_oakley_si_m_frame_67af42"
     },
     {
       "id": "zashchitnye_ochki_oakley_si_m_frame_5c1a1c",
@@ -6059,7 +6862,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:zashchitnye_ochki_oakley_si_m_frame_5c1a1c"
     },
     {
       "id": "zashchitnye_ochki_pyramex_proximity_5c0d32",
@@ -6071,7 +6877,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:zashchitnye_ochki_pyramex_proximity_5c0d32"
     },
     {
       "id": "zashchitnye_ochki_revision_shadowstr_69cfc7",
@@ -6085,7 +6894,10 @@
       "material": "ARAMID",
       "zones": [
         "HEAD_EYES"
-      ]
+      ],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:zashchitnye_ochki_revision_shadowstr_69cfc7"
     },
     {
       "id": "zashchitnye_ochki_revision_shadow_69cfc7_2",
@@ -6099,7 +6911,10 @@
       "material": "ARAMID",
       "zones": [
         "HEAD_EYES"
-      ]
+      ],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:zashchitnye_ochki_revision_shadow_69cfc7_2"
     },
     {
       "id": "zashchitnye_ochki_gazosvarshchika_61c18d",
@@ -6111,7 +6926,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:zashchitnye_ochki_gazosvarshchika_61c18d"
     },
     {
       "id": "zashchitnye_ochki_npp_klass_kondor_603409",
@@ -6125,7 +6943,10 @@
       "material": "ARAMID",
       "zones": [
         "HEAD_EYES"
-      ]
+      ],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:zashchitnye_ochki_npp_klass_kondor_603409"
     },
     {
       "id": "zerkalnye_ochki_belye_68bedd",
@@ -6137,7 +6958,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:zerkalnye_ochki_belye_68bedd"
     },
     {
       "id": "zerkalnye_ochki_zelenye_68bedd",
@@ -6149,7 +6973,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:zerkalnye_ochki_zelenye_68bedd"
     },
     {
       "id": "zerkalnye_ochki_sinie_68bedd",
@@ -6161,7 +6988,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:zerkalnye_ochki_sinie_68bedd"
     },
     {
       "id": "krutye_ochki_68bede",
@@ -6173,7 +7003,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:krutye_ochki_68bede"
     },
     {
       "id": "ochki_figley_zelenye_68bede",
@@ -6185,7 +7018,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:ochki_figley_zelenye_68bede"
     },
     {
       "id": "ochki_figley_krasnye_68bede",
@@ -6197,7 +7033,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:ochki_figley_krasnye_68bede"
     },
     {
       "id": "ochki_figley_68bede",
@@ -6209,7 +7048,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:ochki_figley_68bede"
     },
     {
       "id": "ochki_fit_viper_actualbush_6a8317",
@@ -6221,7 +7063,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:ochki_fit_viper_actualbush_6a8317"
     },
     {
       "id": "ochki_fit_viper_exec_6a8317",
@@ -6233,7 +7078,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:ochki_fit_viper_exec_6a8317"
     },
     {
       "id": "ochki_fit_viper_straya_6a8317",
@@ -6245,7 +7093,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:ochki_fit_viper_straya_6a8317"
     },
     {
       "id": "ochki_johnb_liquid_dnb_62a09e",
@@ -6257,7 +7108,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:ochki_johnb_liquid_dnb_62a09e"
     },
     {
       "id": "ochki_raybench_aviator_s_zelenymi_li_67af42",
@@ -6269,7 +7123,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:ochki_raybench_aviator_s_zelenymi_li_67af42"
     },
     {
       "id": "ochki_raybench_aviator_5d6d2e",
@@ -6281,7 +7138,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:ochki_raybench_aviator_5d6d2e"
     },
     {
       "id": "ochki_raybench_hipster_reserve_5aa2b9",
@@ -6293,7 +7153,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:ochki_raybench_hipster_reserve_5aa2b9"
     },
     {
       "id": "ochki_twitch_rivals_2020_5e71f7",
@@ -6305,7 +7168,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:ochki_twitch_rivals_2020_5e71f7"
     },
     {
       "id": "ochki_zhalyuzi_belye_68bede",
@@ -6317,7 +7183,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:ochki_zhalyuzi_belye_68bede"
     },
     {
       "id": "ochki_zhalyuzi_zelenye_68bede",
@@ -6329,7 +7198,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:ochki_zhalyuzi_zelenye_68bede"
     },
     {
       "id": "ochki_zhalyuzi_krasnye_68bede",
@@ -6341,7 +7213,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:ochki_zhalyuzi_krasnye_68bede"
     },
     {
       "id": "ochki_zhalyuzi_sinie_68bede",
@@ -6353,7 +7228,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:ochki_zhalyuzi_sinie_68bede"
     },
     {
       "id": "ochki_zhalyuzi_chernye_68d6b3",
@@ -6365,7 +7243,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:ochki_zhalyuzi_chernye_68d6b3"
     },
     {
       "id": "ochki_s_krugloy_opravoy_i_zelenymi_l_67af42",
@@ -6377,7 +7258,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:ochki_s_krugloy_opravoy_i_zelenymi_l_67af42"
     },
     {
       "id": "ochki_s_krugloy_opravoy_5aa2b9",
@@ -6389,7 +7273,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:ochki_s_krugloy_opravoy_5aa2b9"
     },
     {
       "id": "protivooskolochnye_ochki_59e770",
@@ -6403,7 +7290,10 @@
       "material": "ARAMID",
       "zones": [
         "HEAD_EYES"
-      ]
+      ],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:protivooskolochnye_ochki_59e770"
     },
     {
       "id": "sportivnye_ochki_dundukk_s_oranzhevy_67af41",
@@ -6415,7 +7305,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:sportivnye_ochki_dundukk_s_oranzhevy_67af41"
     },
     {
       "id": "sportivnye_solntsezashchitnye_ochki_5aa2b9",
@@ -6427,7 +7320,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:sportivnye_solntsezashchitnye_ochki_5aa2b9"
     },
     {
       "id": "takticheskie_ochki_557ff2",
@@ -6441,7 +7337,10 @@
       "material": "ARAMID",
       "zones": [
         "HEAD_EYES"
-      ]
+      ],
+      "modelSilhouette": "tactical_goggles",
+      "groundSilhouette": "tactical_goggles",
+      "modelTexture": "tarkovcraft:takticheskie_ochki_557ff2"
     },
     {
       "id": "apok_tactical_wasteland_gladius_664a54",
@@ -6474,7 +7373,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:devtas_samurai_menpo_mask_belaya_68bee2"
     },
     {
       "id": "devtas_samurai_menpo_mask_zolotaya_68bee2",
@@ -6489,7 +7391,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:devtas_samurai_menpo_mask_zolotaya_68bee2"
     },
     {
       "id": "devtas_samurai_menpo_mask_fioletovay_68bee2",
@@ -6504,7 +7409,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:devtas_samurai_menpo_mask_fioletovay_68bee2"
     },
     {
       "id": "devtas_samurai_menpo_mask_68bee2",
@@ -6519,7 +7427,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:devtas_samurai_menpo_mask_68bee2"
     },
     {
       "id": "kiba_arms_tactical_tomahawk_57cd37",
@@ -6567,7 +7478,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:arafatka_zelenaya_5ab8f8"
     },
     {
       "id": "arafatka_pesochnaya_5b4325",
@@ -6579,7 +7493,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:arafatka_pesochnaya_5b4325"
     },
     {
       "id": "balaklava_belaya_675ac8",
@@ -6591,7 +7508,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_belaya_675ac8"
     },
     {
       "id": "balaklava_zheltaya_67a9cd",
@@ -6603,7 +7523,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_zheltaya_67a9cd"
     },
     {
       "id": "balaklava_zelenaya_67a9cc",
@@ -6615,7 +7538,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_zelenaya_67a9cc"
     },
     {
       "id": "balaklava_arena_cup_series_67f901",
@@ -6627,7 +7553,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_arena_cup_series_67f901"
     },
     {
       "id": "balaklava_born_to_die_67a9cd",
@@ -6639,7 +7568,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_born_to_die_67a9cd"
     },
     {
       "id": "balaklava_momex_5b432f",
@@ -6651,7 +7583,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_momex_5b432f"
     },
     {
       "id": "balaklava_nut_sack_69398e",
@@ -6663,7 +7598,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_nut_sack_69398e"
     },
     {
       "id": "balaklava_smoke_5fd8d2",
@@ -6675,7 +7613,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_smoke_5fd8d2"
     },
     {
       "id": "balaklava_twitch_rivals_2021_607f20",
@@ -6687,7 +7628,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_twitch_rivals_2021_607f20"
     },
     {
       "id": "balaklava_unicorn_68a9ac",
@@ -6699,7 +7643,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_unicorn_68a9ac"
     },
     {
       "id": "balaklava_belyy_oni_67a9ea",
@@ -6711,7 +7658,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_belyy_oni_67a9ea"
     },
     {
       "id": "balaklava_demon_67a9e9",
@@ -6723,7 +7673,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_demon_67a9e9"
     },
     {
       "id": "balaklava_zheltyy_oni_67a9ea",
@@ -6735,7 +7688,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_zheltyy_oni_67a9ea"
     },
     {
       "id": "balaklava_zaebtsa_68a9ad",
@@ -6747,7 +7703,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_zaebtsa_68a9ad"
     },
     {
       "id": "balaklava_zryachego_zavernutaya_636270",
@@ -6759,7 +7718,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_zryachego_zavernutaya_636270"
     },
     {
       "id": "balaklava_zryachego_63626d",
@@ -6771,7 +7733,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_zryachego_63626d"
     },
     {
       "id": "balaklava_krasnyy_oni_67a9ea",
@@ -6783,7 +7748,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_krasnyy_oni_67a9ea"
     },
     {
       "id": "balaklava_krasnyy_nos_67a9e9",
@@ -6795,7 +7763,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_krasnyy_nos_67a9e9"
     },
     {
       "id": "balaklava_mstyashchego_zryachego_zav_653111",
@@ -6807,7 +7778,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_mstyashchego_zryachego_zav_653111"
     },
     {
       "id": "balaklava_mstyashchego_zryachego_6530e8",
@@ -6819,7 +7793,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_mstyashchego_zryachego_6530e8"
     },
     {
       "id": "balaklava_ne_segodnya_67a9cd",
@@ -6831,7 +7808,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_ne_segodnya_67a9cd"
     },
     {
       "id": "balaklava_prizrak_5ab8f4",
@@ -6843,7 +7823,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_prizrak_5ab8f4"
     },
     {
       "id": "balaklava_roskosh_67a9cd",
@@ -6855,7 +7838,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_roskosh_67a9cd"
     },
     {
       "id": "balaklava_strakh_67a9ea",
@@ -6867,7 +7853,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_strakh_67a9ea"
     },
     {
       "id": "balaklava_ulybka_67a9ea",
@@ -6879,7 +7868,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_ulybka_67a9ea"
     },
     {
       "id": "balaklava_tsarapiny_67a9cd",
@@ -6891,7 +7883,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_tsarapiny_67a9cd"
     },
     {
       "id": "balaklava_cherep_67a9e9",
@@ -6903,7 +7898,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_cherep_67a9e9"
     },
     {
       "id": "balaklava_shramy_67a9cc",
@@ -6915,7 +7913,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:balaklava_shramy_67a9cc"
     },
     {
       "id": "ballisticheskaya_maska_atomic_defens_6936ff",
@@ -6930,7 +7931,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:ballisticheskaya_maska_atomic_defens_6936ff"
     },
     {
       "id": "ballisticheskaya_maska_atomic_defens_68a9a1",
@@ -6945,7 +7949,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:ballisticheskaya_maska_atomic_defens_68a9a1"
     },
     {
       "id": "ballisticheskaya_maska_atomic_def_68a9a1_2",
@@ -6960,7 +7967,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:ballisticheskaya_maska_atomic_def_68a9a1_2"
     },
     {
       "id": "ballisticheskaya_maska_atomic_defens_67a5c6",
@@ -6975,7 +7985,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:ballisticheskaya_maska_atomic_defens_67a5c6"
     },
     {
       "id": "ballisticheskaya_maska_atomic_defens_68a9a0",
@@ -6990,7 +8003,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:ballisticheskaya_maska_atomic_defens_68a9a0"
     },
     {
       "id": "ballisticheskaya_maska_atomic_defens_68d54d",
@@ -7005,7 +8021,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:ballisticheskaya_maska_atomic_defens_68d54d"
     },
     {
       "id": "ballisticheskaya_maska_atomic_defens_688b3b",
@@ -7020,7 +8039,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:ballisticheskaya_maska_atomic_defens_688b3b"
     },
     {
       "id": "ballisticheskaya_maska_atomic_defens_67a4b7",
@@ -7035,7 +8057,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:ballisticheskaya_maska_atomic_defens_67a4b7"
     },
     {
       "id": "ballisticheskaya_maska_atomic_defens_67a5c5",
@@ -7050,7 +8075,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:ballisticheskaya_maska_atomic_defens_67a5c5"
     },
     {
       "id": "ballisticheskaya_maska_atomic_def_67a5c6_2",
@@ -7065,7 +8093,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:ballisticheskaya_maska_atomic_def_67a5c6_2"
     },
     {
       "id": "ballisticheskaya_maska_atomic_def_67a5c5_2",
@@ -7080,7 +8111,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:ballisticheskaya_maska_atomic_def_67a5c5_2"
     },
     {
       "id": "ballisticheskaya_maska_atomic_def_68a9a0_2",
@@ -7095,7 +8129,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:ballisticheskaya_maska_atomic_def_68a9a0_2"
     },
     {
       "id": "ballisticheskaya_maska_atomic_def_67a5c6_3",
@@ -7110,7 +8147,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:ballisticheskaya_maska_atomic_def_67a5c6_3"
     },
     {
       "id": "ballisticheskaya_maska_atomic_defens_657089",
@@ -7125,7 +8165,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:ballisticheskaya_maska_atomic_defens_657089"
     },
     {
       "id": "ballisticheskaya_maska_atomic_def_67a5c5_3",
@@ -7140,7 +8183,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:ballisticheskaya_maska_atomic_def_67a5c5_3"
     },
     {
       "id": "ballisticheskiy_shlem_devtac_ronin_r_68a9a8",
@@ -7160,7 +8206,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.6
+      "hearingMultiplier": 0.6,
+      "modelSilhouette": "helmet_ronin",
+      "groundSilhouette": "ground_helmet_visor",
+      "modelTexture": "tarkovcraft:ballisticheskiy_shlem_devtac_ronin_r_68a9a8"
     },
     {
       "id": "ballisticheskiy_shlem_devtac_ronin_r_68a9a9",
@@ -7180,7 +8229,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.6
+      "hearingMultiplier": 0.6,
+      "modelSilhouette": "helmet_ronin",
+      "groundSilhouette": "ground_helmet_visor",
+      "modelTexture": "tarkovcraft:ballisticheskiy_shlem_devtac_ronin_r_68a9a9"
     },
     {
       "id": "ballisticheskiy_shlem_devtac_ronin_r_6a670a",
@@ -7200,7 +8252,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.6
+      "hearingMultiplier": 0.6,
+      "modelSilhouette": "helmet_ronin",
+      "groundSilhouette": "ground_helmet_visor",
+      "modelTexture": "tarkovcraft:ballisticheskiy_shlem_devtac_ronin_r_6a670a"
     },
     {
       "id": "bandana_big_pipe_628e4d",
@@ -7212,7 +8267,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:bandana_big_pipe_628e4d"
     },
     {
       "id": "bandana_5b4327",
@@ -7224,7 +8282,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:bandana_5b4327"
     },
     {
       "id": "beret_goluboy_5f60e7",
@@ -7239,7 +8300,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:beret_goluboy_5f60e7"
     },
     {
       "id": "beret_zelenyy_5f60e7",
@@ -7254,7 +8318,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:beret_zelenyy_5f60e7"
     },
     {
       "id": "beret_chernyy_5f60e6",
@@ -7269,7 +8336,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:beret_chernyy_5f60e6"
     },
     {
       "id": "broneshlem_altyn_testovyy_obrazets_6a82d9",
@@ -7286,7 +8356,10 @@
         "HEAD_TOP"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.5
+      "hearingMultiplier": 0.5,
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:broneshlem_altyn_testovyy_obrazets_6a82d9"
     },
     {
       "id": "broneshlem_lshz_5_vulkan_5_vosmerka_68a986",
@@ -7306,7 +8379,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.55
+      "hearingMultiplier": 0.55,
+      "modelSilhouette": "helmet_visor",
+      "groundSilhouette": "ground_helmet_visor",
+      "modelTexture": "tarkovcraft:broneshlem_lshz_5_vulkan_5_vosmerka_68a986"
     },
     {
       "id": "broneshlem_lshz_5_vulkan_5_kamuflyaz_68a987",
@@ -7326,7 +8402,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.55
+      "hearingMultiplier": 0.55,
+      "modelSilhouette": "helmet_visor",
+      "groundSilhouette": "ground_helmet_visor",
+      "modelTexture": "tarkovcraft:broneshlem_lshz_5_vulkan_5_kamuflyaz_68a987"
     },
     {
       "id": "broneshlem_lshz_5_vulkan_5_plamya_68a987",
@@ -7346,7 +8425,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.55
+      "hearingMultiplier": 0.55,
+      "modelSilhouette": "helmet_visor",
+      "groundSilhouette": "ground_helmet_visor",
+      "modelTexture": "tarkovcraft:broneshlem_lshz_5_vulkan_5_plamya_68a987"
     },
     {
       "id": "broneshlem_maska_1shch_vida_edition_697c79",
@@ -7366,7 +8448,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.55
+      "hearingMultiplier": 0.55,
+      "modelSilhouette": "helmet_visor",
+      "groundSilhouette": "ground_helmet_visor",
+      "modelTexture": "tarkovcraft:broneshlem_maska_1shch_vida_edition_697c79"
     },
     {
       "id": "broneshlem_maska_1shch_novogodnyaya_6759af",
@@ -7386,7 +8471,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.55
+      "hearingMultiplier": 0.55,
+      "modelSilhouette": "helmet_visor",
+      "groundSilhouette": "ground_helmet_visor",
+      "modelTexture": "tarkovcraft:broneshlem_maska_1shch_novogodnyaya_6759af"
     },
     {
       "id": "vyazanaya_shapka_572b7f",
@@ -7401,7 +8489,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "ushanka",
+      "groundSilhouette": "ushanka",
+      "modelTexture": "tarkovcraft:vyazanaya_shapka_572b7f"
     },
     {
       "id": "zayachya_maska_67602a",
@@ -7413,7 +8504,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:zayachya_maska_67602a"
     },
     {
       "id": "kepka_bear_oliva_5aa2b8",
@@ -7428,7 +8522,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_bear_oliva_5aa2b8"
     },
     {
       "id": "kepka_bear_chernaya_5b40e5",
@@ -7443,7 +8540,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_bear_chernaya_5b40e5"
     },
     {
       "id": "kepka_boss_60a7ac",
@@ -7458,7 +8558,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_boss_60a7ac"
     },
     {
       "id": "kepka_rivals_2020_5f9941",
@@ -7473,7 +8576,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_rivals_2020_5f9941"
     },
     {
       "id": "kepka_usec_coyote_5aa2a7",
@@ -7488,7 +8594,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_usec_coyote_5aa2a7"
     },
     {
       "id": "kepka_usec_chernaya_5b40e6",
@@ -7503,7 +8612,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_usec_chernaya_5b40e6"
     },
     {
       "id": "kepka_armeyskaya_cadpat_6040de",
@@ -7518,7 +8630,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_armeyskaya_cadpat_6040de"
     },
     {
       "id": "kepka_armeyskaya_coyote_tan_603619",
@@ -7533,7 +8648,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_armeyskaya_coyote_tan_603619"
     },
     {
       "id": "kepka_armeyskaya_ucp_60361b",
@@ -7548,7 +8666,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_armeyskaya_ucp_60361b"
     },
     {
       "id": "kepka_armeyskaya_pesochnaya_60361b",
@@ -7563,7 +8684,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_armeyskaya_pesochnaya_60361b"
     },
     {
       "id": "kepka_armeyskaya_flora_60361a",
@@ -7578,7 +8702,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_armeyskaya_flora_60361a"
     },
     {
       "id": "kepka_armeyskaya_chernaya_603618",
@@ -7593,7 +8720,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_armeyskaya_chernaya_603618"
     },
     {
       "id": "kepka_armeyskaya_59e770",
@@ -7608,7 +8738,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_armeyskaya_59e770"
     },
     {
       "id": "kepka_basmacha_65749c",
@@ -7623,7 +8756,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_basmacha_65749c"
     },
     {
       "id": "kepka_gusya_65749c",
@@ -7638,7 +8774,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_gusya_65749c"
     },
     {
       "id": "kepka_mchs_5aa2b8",
@@ -7653,7 +8792,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_mchs_5aa2b8"
     },
     {
       "id": "kepka_politseyskaya_5aa2b8",
@@ -7668,7 +8810,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_politseyskaya_5aa2b8"
     },
     {
       "id": "kepka_s_patchem_eft_arena_ne_ispolzu_68dead",
@@ -7683,7 +8828,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_s_patchem_eft_arena_ne_ispolzu_68dead"
     },
     {
       "id": "kepka_s_patchem_eft_arena_68daab",
@@ -7698,7 +8846,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_s_patchem_eft_arena_68daab"
     },
     {
       "id": "kepka_s_patchem_eft_68f263",
@@ -7713,7 +8864,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_s_patchem_eft_68f263"
     },
     {
       "id": "kepka_s_rogami_675aae",
@@ -7728,7 +8882,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_s_rogami_675aae"
     },
     {
       "id": "kepka_beysbolka_multicam_black_69ceab",
@@ -7743,7 +8900,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_beysbolka_multicam_black_69ceab"
     },
     {
       "id": "kepka_beysbolka_multicam_6a8316",
@@ -7758,7 +8918,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_beysbolka_multicam_6a8316"
     },
     {
       "id": "kepka_beysbolka_travma_6a8316",
@@ -7773,7 +8936,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_beysbolka_travma_6a8316"
     },
     {
       "id": "kepka_beysbolka_boston_69ceab",
@@ -7788,7 +8954,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_beysbolka_boston_69ceab"
     },
     {
       "id": "kepka_beysbolka_zaebtsa_red_tigerstr_6a622f",
@@ -7803,7 +8972,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_beysbolka_zaebtsa_red_tigerstr_6a622f"
     },
     {
       "id": "kepka_beysbolka_zaebtsa_woodland_6a622e",
@@ -7818,7 +8990,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_beysbolka_zaebtsa_woodland_6a622e"
     },
     {
       "id": "kepka_beysbolka_zaebtsa_bereza_69ce8e",
@@ -7833,7 +9008,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_beysbolka_zaebtsa_bereza_69ce8e"
     },
     {
       "id": "kepka_beysbolka_zaebtsa_flektarn_69ce8f",
@@ -7848,7 +9026,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_beysbolka_zaebtsa_flektarn_69ce8f"
     },
     {
       "id": "kepka_beysbolka_572b7d",
@@ -7863,7 +9044,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kepka_beysbolka_572b7d"
     },
     {
       "id": "kovboyskaya_shlyapa_5aa2b9",
@@ -7878,7 +9062,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kovboyskaya_shlyapa_5aa2b9"
     },
     {
       "id": "kozhanaya_kepka_chetkogo_patsana_61c18d",
@@ -7893,7 +9080,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:kozhanaya_kepka_chetkogo_patsana_61c18d"
     },
     {
       "id": "labris_tsepen_679ba9",
@@ -7917,7 +9107,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:legkaya_armirovannaya_maska_ten_smer_68a9b8"
     },
     {
       "id": "legkaya_armirovannaya_maska_ten_s_68a9b8_2",
@@ -7932,7 +9125,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:legkaya_armirovannaya_maska_ten_s_68a9b8_2"
     },
     {
       "id": "legkaya_maska_glorious_e_62a09e",
@@ -7944,7 +9140,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:legkaya_maska_glorious_e_62a09e"
     },
     {
       "id": "ledorub_red_rebel_5c0126",
@@ -7965,7 +9164,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:lisya_maska_676029"
     },
     {
       "id": "lom_montirovka_freeman_5c07df",
@@ -7986,7 +9188,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:lyzhnaya_shapka_s_prorezyami_dlya_gl_5ab8f2"
     },
     {
       "id": "malaya_pekhotnaya_lopata_mpl_50_5bead2",
@@ -8007,7 +9212,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:maska_deadly_skull_5b432b"
     },
     {
       "id": "maska_death_knight_62963c",
@@ -8022,7 +9230,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:maska_death_knight_62963c"
     },
     {
       "id": "maska_pestily_5e54f7",
@@ -8034,7 +9245,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:maska_pestily_5e54f7"
     },
     {
       "id": "maska_twitch_rivals_2020_5e71f6",
@@ -8046,7 +9260,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:maska_twitch_rivals_2020_5e71f6"
     },
     {
       "id": "maska_aybolita_676029",
@@ -8058,7 +9275,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:maska_aybolita_676029"
     },
     {
       "id": "maska_astronoma_67602a",
@@ -8070,7 +9290,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:maska_astronoma_67602a"
     },
     {
       "id": "maska_bezlikogo_6176a4",
@@ -8082,7 +9305,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:maska_bezlikogo_6176a4"
     },
     {
       "id": "maska_grincha_67602a",
@@ -8094,7 +9320,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:maska_grincha_67602a"
     },
     {
       "id": "maska_dzheysona_5bd071",
@@ -8106,7 +9335,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:maska_dzheysona_5bd071"
     },
     {
       "id": "maska_mishi_mayorova_5bd071",
@@ -8118,7 +9350,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:maska_mishi_mayorova_5bd071"
     },
     {
       "id": "maska_petushka_676029",
@@ -8130,7 +9365,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:maska_petushka_676029"
     },
     {
       "id": "maska_slendera_5bd06f",
@@ -8142,7 +9380,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:maska_slendera_5bd06f"
     },
     {
       "id": "maska_ten_smerti_seraya_68a9b8",
@@ -8157,7 +9398,10 @@
       "zones": [
         "HEAD_EYES",
         "HEAD_JAWS"
-      ]
+      ],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:maska_ten_smerti_seraya_68a9b8"
     },
     {
       "id": "maska_upyr_6176a4",
@@ -8169,7 +9413,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:maska_upyr_6176a4"
     },
     {
       "id": "maska_cherep_635267",
@@ -8181,7 +9428,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:maska_cherep_635267"
     },
     {
       "id": "maska_chipolino_676029",
@@ -8193,7 +9443,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:maska_chipolino_676029"
     },
     {
       "id": "machete_vyzhivalshchika_sp_8_5c010e",
@@ -8223,7 +9476,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:nakladnaya_boroda_5c1a1e"
     },
     {
       "id": "neoprenovaya_maska_m90_desert_67aaf8",
@@ -8235,7 +9491,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:neoprenovaya_maska_m90_desert_67aaf8"
     },
     {
       "id": "neoprenovaya_maska_loui_peeton_67aaf8",
@@ -8247,7 +9506,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:neoprenovaya_maska_loui_peeton_67aaf8"
     },
     {
       "id": "neoprenovaya_maska_lucha_libre_67aaf8",
@@ -8259,7 +9521,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:neoprenovaya_maska_lucha_libre_67aaf8"
     },
     {
       "id": "neoprenovaya_maska_oni_67aaf8",
@@ -8271,7 +9536,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:neoprenovaya_maska_oni_67aaf8"
     },
     {
       "id": "neoprenovaya_maska_zombi_67aaf8",
@@ -8283,7 +9551,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:neoprenovaya_maska_zombi_67aaf8"
     },
     {
       "id": "neoprenovaya_maska_nichego_ne_govori_67aaf8",
@@ -8295,7 +9566,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:neoprenovaya_maska_nichego_ne_govori_67aaf8"
     },
     {
       "id": "neoprenovaya_maska_5b4326",
@@ -8307,7 +9581,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:neoprenovaya_maska_5b4326"
     },
     {
       "id": "novogodnyaya_ushanka_6937ef",
@@ -8322,7 +9599,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "ushanka",
+      "groundSilhouette": "ushanka",
+      "modelTexture": "tarkovcraft:novogodnyaya_ushanka_6937ef"
     },
     {
       "id": "nozh_ka_bar_usmc_fighter_6a3935",
@@ -8418,7 +9698,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:panama_door_kicker_5d9614"
     },
     {
       "id": "panama_jack_pyke_hunting_llcs_618aef",
@@ -8433,7 +9716,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:panama_jack_pyke_hunting_llcs_618aef"
     },
     {
       "id": "panama_mil_tec_5b4327",
@@ -8448,7 +9734,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:panama_mil_tec_5b4327"
     },
     {
       "id": "panama_stich_profi_khimera_60b52e",
@@ -8463,7 +9752,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "tactical_cap",
+      "groundSilhouette": "tactical_cap",
+      "modelTexture": "tarkovcraft:panama_stich_profi_khimera_60b52e"
     },
     {
       "id": "politseyskaya_dubinka_pr_taran_6540d2",
@@ -8484,7 +9776,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:polumaska_shroud_5e54f7"
     },
     {
       "id": "polumaska_twitch_rivals_2020_5e71fa",
@@ -8496,7 +9791,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:polumaska_twitch_rivals_2020_5e71fa"
     },
     {
       "id": "polumaska_prizrak_6571bd",
@@ -8508,7 +9806,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:polumaska_prizrak_6571bd"
     },
     {
       "id": "pokhodnyy_topor_5c012f",
@@ -8530,7 +9831,10 @@
       "durability": 10,
       "material": "COSMETIC",
       "zones": [],
-      "gasProtection": true
+      "gasProtection": true,
+      "modelSilhouette": "gas_mask",
+      "groundSilhouette": "gas_mask",
+      "modelTexture": "tarkovcraft:protivogaz_avon_m53a1_689b88"
     },
     {
       "id": "protivogaz_msa_millenium_riot_contro_6a8316",
@@ -8543,7 +9847,10 @@
       "durability": 10,
       "material": "COSMETIC",
       "zones": [],
-      "gasProtection": true
+      "gasProtection": true,
+      "modelSilhouette": "gas_mask",
+      "groundSilhouette": "gas_mask",
+      "modelTexture": "tarkovcraft:protivogaz_msa_millenium_riot_contro_6a8316"
     },
     {
       "id": "protivogaz_gp_5_5b432c",
@@ -8556,7 +9863,10 @@
       "durability": 10,
       "material": "COSMETIC",
       "zones": [],
-      "gasProtection": true
+      "gasProtection": true,
+      "modelSilhouette": "gas_mask",
+      "groundSilhouette": "gas_mask",
+      "modelTexture": "tarkovcraft:protivogaz_gp_5_5b432c"
     },
     {
       "id": "protivogaz_gp_7_60363c",
@@ -8569,7 +9879,10 @@
       "durability": 10,
       "material": "COSMETIC",
       "zones": [],
-      "gasProtection": true
+      "gasProtection": true,
+      "modelSilhouette": "gas_mask",
+      "groundSilhouette": "gas_mask",
+      "modelTexture": "tarkovcraft:protivogaz_gp_7_60363c"
     },
     {
       "id": "respirator_gentex_ops_core_sotr_689b40",
@@ -8582,7 +9895,10 @@
       "durability": 10,
       "material": "COSMETIC",
       "zones": [],
-      "gasProtection": true
+      "gasProtection": true,
+      "modelSilhouette": "gas_mask",
+      "groundSilhouette": "gas_mask",
+      "modelTexture": "tarkovcraft:respirator_gentex_ops_core_sotr_689b40"
     },
     {
       "id": "respiratornaya_maska_59e771",
@@ -8595,7 +9911,10 @@
       "durability": 10,
       "material": "COSMETIC",
       "zones": [],
-      "gasProtection": true
+      "gasProtection": true,
+      "modelSilhouette": "gas_mask",
+      "groundSilhouette": "gas_mask",
+      "modelTexture": "tarkovcraft:respiratornaya_maska_59e771"
     },
     {
       "id": "ryzhaya_nakladnaya_boroda_baddie_62a09d",
@@ -8607,7 +9926,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:ryzhaya_nakladnaya_boroda_baddie_62a09d"
     },
     {
       "id": "svarochnaya_maska_tagilly_zabey_678f84",
@@ -8627,7 +9949,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.5
+      "hearingMultiplier": 0.5,
+      "modelSilhouette": "mask_tagilla",
+      "groundSilhouette": "ground_mask_tagilla",
+      "modelTexture": "tarkovcraft:svarochnaya_maska_tagilly_zabey_678f84"
     },
     {
       "id": "takticheskaya_shapka_iz_flisa_pesoch_5aa2ba",
@@ -8642,7 +9967,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "ushanka",
+      "groundSilhouette": "ushanka",
+      "modelTexture": "tarkovcraft:takticheskaya_shapka_iz_flisa_pesoch_5aa2ba"
     },
     {
       "id": "takticheskiy_tomagavk_sog_voodoo_haw_639201",
@@ -8672,7 +10000,10 @@
       "armorClass": 0,
       "durability": 10,
       "material": "COSMETIC",
-      "zones": []
+      "zones": [],
+      "modelSilhouette": "balaclava",
+      "groundSilhouette": "balaclava",
+      "modelTexture": "tarkovcraft:trubka_big_pipe_62a61b"
     },
     {
       "id": "ushanka_domontovicha_6937f0",
@@ -8687,7 +10018,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "ushanka",
+      "groundSilhouette": "ushanka",
+      "modelTexture": "tarkovcraft:ushanka_domontovicha_6937f0"
     },
     {
       "id": "shapka_kotton_5bd073",
@@ -8702,7 +10036,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "ushanka",
+      "groundSilhouette": "ushanka",
+      "modelTexture": "tarkovcraft:shapka_kotton_5bd073"
     },
     {
       "id": "shapka_rivals_2020_5f9947",
@@ -8717,7 +10054,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "ushanka",
+      "groundSilhouette": "ushanka",
+      "modelTexture": "tarkovcraft:shapka_rivals_2020_5f9947"
     },
     {
       "id": "shapka_ux_pro_5aa2ba",
@@ -8732,7 +10072,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "ushanka",
+      "groundSilhouette": "ushanka",
+      "modelTexture": "tarkovcraft:shapka_ux_pro_5aa2ba"
     },
     {
       "id": "shapka_bomber_60bf74",
@@ -8747,7 +10090,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "ushanka",
+      "groundSilhouette": "ushanka",
+      "modelTexture": "tarkovcraft:shapka_bomber_60bf74"
     },
     {
       "id": "shapka_deda_moroza_5a4394",
@@ -8762,7 +10108,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "ushanka",
+      "groundSilhouette": "ushanka",
+      "modelTexture": "tarkovcraft:shapka_deda_moroza_5a4394"
     },
     {
       "id": "shapka_s_pomponom_5b4329",
@@ -8777,7 +10126,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "ushanka",
+      "groundSilhouette": "ushanka",
+      "modelTexture": "tarkovcraft:shapka_s_pomponom_5b4329"
     },
     {
       "id": "shapka_santa_klausa_5a4395",
@@ -8792,7 +10144,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "ushanka",
+      "groundSilhouette": "ushanka",
+      "modelTexture": "tarkovcraft:shapka_santa_klausa_5a4395"
     },
     {
       "id": "shapka_elfa_675aad",
@@ -8807,7 +10162,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "ushanka",
+      "groundSilhouette": "ushanka",
+      "modelTexture": "tarkovcraft:shapka_elfa_675aad"
     },
     {
       "id": "shapka_ushanka_59e770",
@@ -8822,7 +10180,10 @@
       "ricochet": 0.0,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "ushanka",
+      "groundSilhouette": "ushanka",
+      "modelTexture": "tarkovcraft:shapka_ushanka_59e770"
     },
     {
       "id": "shlem_atlant_armour_titan_aramid_mul_69ce70",
@@ -8837,7 +10198,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_atlant_armour_titan_aramid_mul_69ce70"
     },
     {
       "id": "shlem_atlant_armour_titan_aramid_od_69ce70",
@@ -8852,7 +10216,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_atlant_armour_titan_aramid_od_69ce70"
     },
     {
       "id": "shlem_atlant_armour_titan_aramid_rud_69ce70",
@@ -8867,7 +10234,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_atlant_armour_titan_aramid_rud_69ce70"
     },
     {
       "id": "shlem_atlant_armour_titan_aramid_flo_6a5683",
@@ -8882,7 +10252,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_atlant_armour_titan_aramid_flo_6a5683"
     },
     {
       "id": "shlem_ballistic_armor_co_bastion_arm_66b5f6",
@@ -8897,7 +10270,10 @@
       "ricochet": 0.38,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_ballistic_armor_co_bastion_arm_66b5f6"
     },
     {
       "id": "shlem_ballistic_armor_co_bastion_mul_66b5f6",
@@ -8912,7 +10288,10 @@
       "ricochet": 0.38,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_ballistic_armor_co_bastion_mul_66b5f6"
     },
     {
       "id": "shlem_ballistic_armor_co_bastion_od_66b5f6",
@@ -8927,7 +10306,10 @@
       "ricochet": 0.38,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_ballistic_armor_co_bastion_od_66b5f6"
     },
     {
       "id": "shlem_crye_precision_airframe_morbus_69cbfe",
@@ -8942,7 +10324,10 @@
       "ricochet": 0.38,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_crye_precision_airframe_morbus_69cbfe"
     },
     {
       "id": "shlem_crye_precision_airframe_od_gre_69cbfe",
@@ -8957,7 +10342,10 @@
       "ricochet": 0.38,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_crye_precision_airframe_od_gre_69cbfe"
     },
     {
       "id": "shlem_crye_precision_airframe_akula_69cbfe",
@@ -8972,7 +10360,10 @@
       "ricochet": 0.38,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_crye_precision_airframe_akula_69cbfe"
     },
     {
       "id": "shlem_crye_precision_airframe_vintaz_69ce47",
@@ -8987,7 +10378,10 @@
       "ricochet": 0.38,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_crye_precision_airframe_vintaz_69ce47"
     },
     {
       "id": "shlem_crye_precision_airframe_razvod_6a567a",
@@ -9002,7 +10396,10 @@
       "ricochet": 0.38,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_crye_precision_airframe_razvod_6a567a"
     },
     {
       "id": "shlem_crye_precision_airframe_m_lok_69ce47",
@@ -9017,7 +10414,10 @@
       "ricochet": 0.38,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_crye_precision_airframe_m_lok_69ce47"
     },
     {
       "id": "shlem_crye_precision_airframe_m_lok_69cd42",
@@ -9032,7 +10432,10 @@
       "ricochet": 0.38,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_crye_precision_airframe_m_lok_69cd42"
     },
     {
       "id": "shlem_devtac_ronin_raptor_6a8462",
@@ -9052,7 +10455,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.6
+      "hearingMultiplier": 0.6,
+      "modelSilhouette": "helmet_ronin",
+      "groundSilhouette": "ground_helmet_visor",
+      "modelTexture": "tarkovcraft:shlem_devtac_ronin_raptor_6a8462"
     },
     {
       "id": "shlem_devtac_ronin_oliva_6a8462",
@@ -9072,7 +10478,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.6
+      "hearingMultiplier": 0.6,
+      "modelSilhouette": "helmet_ronin",
+      "groundSilhouette": "ground_helmet_visor",
+      "modelTexture": "tarkovcraft:shlem_devtac_ronin_oliva_6a8462"
     },
     {
       "id": "shlem_devtac_ronin_prototip_6a8462",
@@ -9092,7 +10501,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.6
+      "hearingMultiplier": 0.6,
+      "modelSilhouette": "helmet_ronin",
+      "groundSilhouette": "ground_helmet_visor",
+      "modelTexture": "tarkovcraft:shlem_devtac_ronin_prototip_6a8462"
     },
     {
       "id": "shlem_devtac_ronin_66bdc2",
@@ -9112,7 +10524,10 @@
         "HEAD_JAWS"
       ],
       "blocksHeadset": true,
-      "hearingMultiplier": 0.6
+      "hearingMultiplier": 0.6,
+      "modelSilhouette": "helmet_ronin",
+      "groundSilhouette": "ground_helmet_visor",
+      "modelTexture": "tarkovcraft:shlem_devtac_ronin_66bdc2"
     },
     {
       "id": "shlem_diamond_age_neosteel_oranzhevy_68a9be",
@@ -9127,7 +10542,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_diamond_age_neosteel_oranzhevy_68a9be"
     },
     {
       "id": "shlem_diamond_age_neosteel_kare_68a9be",
@@ -9142,7 +10560,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_diamond_age_neosteel_kare_68a9be"
     },
     {
       "id": "shlem_diamond_age_neosteel_chernyy_65709d",
@@ -9157,7 +10578,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_diamond_age_neosteel_chernyy_65709d"
     },
     {
       "id": "shlem_diamond_age_novasteel_custos_m_6a8339",
@@ -9172,7 +10596,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_diamond_age_novasteel_custos_m_6a8339"
     },
     {
       "id": "shlem_diamond_age_novasteel_oliva_6a8339",
@@ -9187,7 +10614,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_diamond_age_novasteel_oliva_6a8339"
     },
     {
       "id": "shlem_diamond_age_novasteel_toksin_6a8339",
@@ -9202,7 +10632,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_diamond_age_novasteel_toksin_6a8339"
     },
     {
       "id": "shlem_galvion_caiman_hybrid_multicam_693be0",
@@ -9218,7 +10651,10 @@
       "zones": [
         "HEAD_TOP",
         "HEAD_EARS"
-      ]
+      ],
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_galvion_caiman_hybrid_multicam_693be0"
     },
     {
       "id": "shlem_galvion_caiman_hybrid_multicam_68a9b3",
@@ -9234,7 +10670,10 @@
       "zones": [
         "HEAD_TOP",
         "HEAD_EARS"
-      ]
+      ],
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_galvion_caiman_hybrid_multicam_68a9b3"
     },
     {
       "id": "shlem_galvion_caiman_hybrid_mutualis_68a9b5",
@@ -9250,7 +10689,10 @@
       "zones": [
         "HEAD_TOP",
         "HEAD_EARS"
-      ]
+      ],
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_galvion_caiman_hybrid_mutualis_68a9b5"
     },
     {
       "id": "shlem_highcom_striker_achhc_iiia_coy_69c26f",
@@ -9265,7 +10707,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_highcom_striker_achhc_iiia_coy_69c26f"
     },
     {
       "id": "shlem_highcom_striker_ulach_iiia_coy_68bee2",
@@ -9281,7 +10726,10 @@
       "zones": [
         "HEAD_TOP",
         "HEAD_EARS"
-      ]
+      ],
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_highcom_striker_ulach_iiia_coy_68bee2"
     },
     {
       "id": "shlem_highcom_striker_ulach_iiia_gre_68bee2",
@@ -9297,7 +10745,10 @@
       "zones": [
         "HEAD_TOP",
         "HEAD_EARS"
-      ]
+      ],
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_highcom_striker_ulach_iiia_gre_68bee2"
     },
     {
       "id": "shlem_highcom_striker_ulach_iiia_mes_68bee2",
@@ -9313,7 +10764,10 @@
       "zones": [
         "HEAD_TOP",
         "HEAD_EARS"
-      ]
+      ],
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_highcom_striker_ulach_iiia_mes_68bee2"
     },
     {
       "id": "shlem_highcom_striker_ulach_iiia_san_68bee2",
@@ -9329,7 +10783,10 @@
       "zones": [
         "HEAD_TOP",
         "HEAD_EARS"
-      ]
+      ],
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_highcom_striker_ulach_iiia_san_68bee2"
     },
     {
       "id": "shlem_highcom_striker_ulach_iiia_zim_693be8",
@@ -9345,7 +10802,10 @@
       "zones": [
         "HEAD_TOP",
         "HEAD_EARS"
-      ]
+      ],
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_highcom_striker_ulach_iiia_zim_693be8"
     },
     {
       "id": "shlem_mtek_flux_ballistic_multicam_a_675956",
@@ -9360,7 +10820,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_mtek_flux_ballistic_multicam_a_675956"
     },
     {
       "id": "shlem_mtek_flux_ballistic_oliva_675965",
@@ -9375,7 +10838,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_mtek_flux_ballistic_oliva_675965"
     },
     {
       "id": "shlem_mtek_strike_ballistic_coyote_67597c",
@@ -9390,7 +10856,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_mtek_strike_ballistic_coyote_67597c"
     },
     {
       "id": "shlem_mtek_strike_ballistic_coyotemu_67597d",
@@ -9405,7 +10874,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_mtek_strike_ballistic_coyotemu_67597d"
     },
     {
       "id": "shlem_mtek_strike_ballistic_karbon_6a568d",
@@ -9420,7 +10892,10 @@
       "ricochet": 0.35,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_mtek_strike_ballistic_karbon_6a568d"
     },
     {
       "id": "shlem_team_wendy_exfil_ballistic_mul_69c267",
@@ -9435,7 +10910,10 @@
       "ricochet": 0.38,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_team_wendy_exfil_ballistic_mul_69c267"
     },
     {
       "id": "shlem_npp_klass_tor_2_oliva_65719f",
@@ -9451,7 +10929,10 @@
       "zones": [
         "HEAD_TOP",
         "HEAD_EARS"
-      ]
+      ],
+      "modelSilhouette": "helmet_lowcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_npp_klass_tor_2_oliva_65719f"
     },
     {
       "id": "shlem_chempiona_68bee2",
@@ -9466,7 +10947,10 @@
       "ricochet": 0.3,
       "zones": [
         "HEAD_TOP"
-      ]
+      ],
+      "modelSilhouette": "helmet_highcut",
+      "groundSilhouette": "ground_helmet_open",
+      "modelTexture": "tarkovcraft:shlem_chempiona_68bee2"
     },
     {
       "id": "shtyk_nozh_er_fulcrum_bayonet_54491b",
@@ -9494,7 +10978,9 @@
       "rarity": "UNCOMMON",
       "weight": 0.5,
       "gridWidth": 4,
-      "gridHeight": 4
+      "gridHeight": 4,
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:banka_pod_bolty_693bfb"
     },
     {
       "id": "bumazhnik_wz_60b0f6",
@@ -9505,7 +10991,9 @@
       "weight": 0.5,
       "gridWidth": 2,
       "gridHeight": 2,
-      "caseRole": "MONEY"
+      "caseRole": "MONEY",
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:bumazhnik_wz_60b0f6"
     },
     {
       "id": "keys_s_i_c_c_5d235b",
@@ -9515,7 +11003,9 @@
       "rarity": "RARE",
       "weight": 1.2,
       "gridWidth": 5,
-      "gridHeight": 5
+      "gridHeight": 5,
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:keys_s_i_c_c_5d235b"
     },
     {
       "id": "keys_dlya_broneplit_676009",
@@ -9526,7 +11016,9 @@
       "weight": 3.5,
       "gridWidth": 7,
       "gridHeight": 7,
-      "caseRole": "ARMOR_PLATE"
+      "caseRole": "ARMOR_PLATE",
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:keys_dlya_broneplit_676009"
     },
     {
       "id": "keys_dlya_veshchey_t_h_i_c_c_5c0a84",
@@ -9536,7 +11028,9 @@
       "rarity": "EPIC",
       "weight": 8.0,
       "gridWidth": 10,
-      "gridHeight": 10
+      "gridHeight": 10,
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:keys_dlya_veshchey_t_h_i_c_c_5c0a84"
     },
     {
       "id": "keys_dlya_veshchey_59fb04",
@@ -9546,7 +11040,9 @@
       "rarity": "RARE",
       "weight": 3.5,
       "gridWidth": 8,
-      "gridHeight": 8
+      "gridHeight": 8,
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:keys_dlya_veshchey_59fb04"
     },
     {
       "id": "keys_dlya_veshchey_6a997c",
@@ -9556,7 +11052,9 @@
       "rarity": "RARE",
       "weight": 3.5,
       "gridWidth": 8,
-      "gridHeight": 8
+      "gridHeight": 8,
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:keys_dlya_veshchey_6a997c"
     },
     {
       "id": "keys_dlya_granat_5e2af5",
@@ -9567,7 +11065,9 @@
       "weight": 3.5,
       "gridWidth": 7,
       "gridHeight": 7,
-      "caseRole": "GRENADE"
+      "caseRole": "GRENADE",
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:keys_dlya_granat_5e2af5"
     },
     {
       "id": "keys_dlya_deneg_59fb01",
@@ -9578,7 +11078,9 @@
       "weight": 1.2,
       "gridWidth": 7,
       "gridHeight": 7,
-      "caseRole": "MONEY"
+      "caseRole": "MONEY",
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:keys_dlya_deneg_59fb01"
     },
     {
       "id": "keys_dlya_zhetonov_5c093e",
@@ -9588,7 +11090,9 @@
       "rarity": "UNCOMMON",
       "weight": 0.5,
       "gridWidth": 6,
-      "gridHeight": 6
+      "gridHeight": 6,
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:keys_dlya_zhetonov_5c093e"
     },
     {
       "id": "keys_dlya_inektorov_619cbf",
@@ -9599,7 +11103,9 @@
       "weight": 1.2,
       "gridWidth": 4,
       "gridHeight": 4,
-      "caseRole": "INJECTOR"
+      "caseRole": "INJECTOR",
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:keys_dlya_inektorov_619cbf"
     },
     {
       "id": "keys_dlya_klyuchey_67d3ed",
@@ -9609,7 +11115,9 @@
       "rarity": "UNCOMMON",
       "weight": 0.5,
       "gridWidth": 4,
-      "gridHeight": 4
+      "gridHeight": 4,
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:keys_dlya_klyuchey_67d3ed"
     },
     {
       "id": "keys_dlya_magazinov_5c127c",
@@ -9620,7 +11128,9 @@
       "weight": 3.5,
       "gridWidth": 7,
       "gridHeight": 7,
-      "caseRole": "AMMO"
+      "caseRole": "AMMO",
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:keys_dlya_magazinov_5c127c"
     },
     {
       "id": "keys_dlya_medikamentov_5aafbc",
@@ -9631,7 +11141,9 @@
       "weight": 3.5,
       "gridWidth": 7,
       "gridHeight": 7,
-      "caseRole": "MEDICAL"
+      "caseRole": "MEDICAL",
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:keys_dlya_medikamentov_5aafbc"
     },
     {
       "id": "keys_dlya_medikamentov_6a997c",
@@ -9642,7 +11154,9 @@
       "weight": 3.5,
       "gridWidth": 7,
       "gridHeight": 7,
-      "caseRole": "MEDICAL"
+      "caseRole": "MEDICAL",
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:keys_dlya_medikamentov_6a997c"
     },
     {
       "id": "keys_dlya_redkikh_zhetonov_twitch_6937ec",
@@ -9652,7 +11166,9 @@
       "rarity": "UNCOMMON",
       "weight": 0.5,
       "gridWidth": 6,
-      "gridHeight": 6
+      "gridHeight": 6,
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:keys_dlya_redkikh_zhetonov_twitch_6937ec"
     },
     {
       "id": "keys_dlya_strimerskikh_predmetov_66bc98",
@@ -9662,7 +11178,9 @@
       "rarity": "UNCOMMON",
       "weight": 0.5,
       "gridWidth": 6,
-      "gridHeight": 6
+      "gridHeight": 6,
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:keys_dlya_strimerskikh_predmetov_66bc98"
     },
     {
       "id": "keys_dlya_khlama_5b7c71",
@@ -9672,7 +11190,9 @@
       "rarity": "RARE",
       "weight": 3.5,
       "gridWidth": 10,
-      "gridHeight": 10
+      "gridHeight": 10,
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:keys_dlya_khlama_5b7c71"
     },
     {
       "id": "keys_derzhatel_dlya_klyuch_kart_619cbf",
@@ -9682,7 +11202,9 @@
       "rarity": "UNCOMMON",
       "weight": 0.5,
       "gridWidth": 3,
-      "gridHeight": 3
+      "gridHeight": 3,
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:keys_derzhatel_dlya_klyuch_kart_619cbf"
     },
     {
       "id": "klyuchnitsa_gingy_62a09d",
@@ -9692,7 +11214,9 @@
       "rarity": "UNCOMMON",
       "weight": 0.5,
       "gridWidth": 2,
-      "gridHeight": 2
+      "gridHeight": 2,
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:klyuchnitsa_gingy_62a09d"
     },
     {
       "id": "klyuchnitsa_59fafd",
@@ -9702,7 +11226,9 @@
       "rarity": "UNCOMMON",
       "weight": 0.5,
       "gridWidth": 4,
-      "gridHeight": 4
+      "gridHeight": 4,
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:klyuchnitsa_59fafd"
     },
     {
       "id": "kopilka_sheefgg_69f9d3",
@@ -9713,7 +11239,9 @@
       "weight": 0.5,
       "gridWidth": 4,
       "gridHeight": 4,
-      "caseRole": "MONEY"
+      "caseRole": "MONEY",
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:kopilka_sheefgg_69f9d3"
     },
     {
       "id": "neprostoy_bumazhnik_loui_peeton_6937ec",
@@ -9724,7 +11252,9 @@
       "weight": 0.5,
       "gridWidth": 2,
       "gridHeight": 2,
-      "caseRole": "MONEY"
+      "caseRole": "MONEY",
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:neprostoy_bumazhnik_loui_peeton_6937ec"
     },
     {
       "id": "oruzheynyy_keys_t_h_i_c_c_5b6d9c",
@@ -9735,7 +11265,9 @@
       "weight": 8.0,
       "gridWidth": 10,
       "gridHeight": 8,
-      "caseRole": "WEAPON"
+      "caseRole": "WEAPON",
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:oruzheynyy_keys_t_h_i_c_c_5b6d9c"
     },
     {
       "id": "oruzheynyy_keys_59fb02",
@@ -9746,7 +11278,9 @@
       "weight": 5.0,
       "gridWidth": 8,
       "gridHeight": 5,
-      "caseRole": "WEAPON"
+      "caseRole": "WEAPON",
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:oruzheynyy_keys_59fb02"
     },
     {
       "id": "oruzheynyy_keys_6a997c",
@@ -9757,7 +11291,9 @@
       "weight": 5.0,
       "gridWidth": 8,
       "gridHeight": 5,
-      "caseRole": "WEAPON"
+      "caseRole": "WEAPON",
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:oruzheynyy_keys_6a997c"
     },
     {
       "id": "pistoletnyy_keys_567143",
@@ -9768,7 +11304,9 @@
       "weight": 1.2,
       "gridWidth": 4,
       "gridHeight": 3,
-      "caseRole": "WEAPON"
+      "caseRole": "WEAPON",
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:pistoletnyy_keys_567143"
     },
     {
       "id": "planshet_dlya_dokumentov_590c60",
@@ -9778,7 +11316,9 @@
       "rarity": "RARE",
       "weight": 1.2,
       "gridWidth": 4,
-      "gridHeight": 4
+      "gridHeight": 4,
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:planshet_dlya_dokumentov_590c60"
     },
     {
       "id": "planshet_dlya_dokumentov_6a9978",
@@ -9788,7 +11328,9 @@
       "rarity": "RARE",
       "weight": 1.2,
       "gridWidth": 4,
-      "gridHeight": 4
+      "gridHeight": 4,
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:planshet_dlya_dokumentov_6a9978"
     },
     {
       "id": "termosumka_mr_holodilnick_5c093d",
@@ -9799,7 +11341,9 @@
       "weight": 3.5,
       "gridWidth": 8,
       "gridHeight": 8,
-      "caseRole": "FOOD"
+      "caseRole": "FOOD",
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:termosumka_mr_holodilnick_5c093d"
     },
     {
       "id": "termosumka_dlya_napitkov_hot_rod_6937ec",
@@ -9810,7 +11354,9 @@
       "weight": 0.5,
       "gridWidth": 5,
       "gridHeight": 5,
-      "caseRole": "FOOD"
+      "caseRole": "FOOD",
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:termosumka_dlya_napitkov_hot_rod_6937ec"
     },
     {
       "id": "tubus_dlya_plakatov_697883",
@@ -9820,7 +11366,9 @@
       "rarity": "UNCOMMON",
       "weight": 0.5,
       "gridWidth": 3,
-      "gridHeight": 6
+      "gridHeight": 6,
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:tubus_dlya_plakatov_697883"
     },
     {
       "id": "yashchik_s_instrumentami_discord_ver_688b2d",
@@ -9830,7 +11378,9 @@
       "rarity": "UNCOMMON",
       "weight": 0.5,
       "gridWidth": 6,
-      "gridHeight": 6
+      "gridHeight": 6,
+      "groundSilhouette": "ground_case_medkit",
+      "modelTexture": "tarkovcraft:yashchik_s_instrumentami_discord_ver_688b2d"
     },
     {
       "id": "gazovaya_granata_cs_model_8230_rde_6_6a9854",

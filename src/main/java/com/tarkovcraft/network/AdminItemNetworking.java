@@ -1,6 +1,7 @@
 package com.tarkovcraft.network;
 
 import com.tarkovcraft.TarkovCraftMod;
+import com.tarkovcraft.ammo.AmmoTier;
 import com.tarkovcraft.item.AdminItemCatalog;
 import com.tarkovcraft.loadout.EquipmentSlotType;
 import com.tarkovcraft.loadout.PlayerLoadout;
@@ -22,7 +23,7 @@ public final class AdminItemNetworking {
 
 	public static void register() {
 		ServerPlayNetworking.registerGlobalReceiver(C2S_ADMIN_GIVE_ITEM, (server, player, handler, buf, sender) -> {
-			if (!player.hasPermissionLevel(2) || buf.readableBytes() > 410) return;
+			if (!player.hasPermissionLevel(2) || buf.readableBytes() > 414) return;
 			try {
 				int syncId = buf.readVarInt();
 				Identifier item = Identifier.tryParse(buf.readString(192));
@@ -30,9 +31,12 @@ public final class AdminItemNetworking {
 				Identifier variant = rawVariant.isEmpty() ? null : Identifier.tryParse(rawVariant);
 				int count = buf.readUnsignedByte();
 				boolean equip = buf.readBoolean();
+				String tierId = buf.isReadable() ? buf.readString(3) : AmmoTier.FMJ.getId();
+				AmmoTier tier = AmmoTier.byId(tierId);
 				if (buf.isReadable() || item == null || (!rawVariant.isEmpty() && variant == null)
+					|| !tier.getId().equals(tierId)
 					|| count < 1 || count > 30 || (equip && count != 1)) return;
-				server.execute(() -> give(player, syncId, new AdminItemCatalog.Entry(item, variant), count, equip));
+				server.execute(() -> give(player, syncId, new AdminItemCatalog.Entry(item, variant, tier), count, equip));
 			} catch (RuntimeException ignored) {
 				// Discard truncated or malformed requests.
 			}
@@ -72,7 +76,9 @@ public final class AdminItemNetworking {
 		}
 		holder.tarkovcraft$syncLoadout();
 		player.playerScreenHandler.sendContentUpdates();
-		player.sendMessage(Text.literal(equip ? "Экипировано · " : "Выдано ×" + count + " · ").append(item.getName()), true);
+		Text message = Text.literal(equip ? "Экипировано · " : "Выдано ×" + count + " · ").append(item.getName());
+		if (entry.tier() != AmmoTier.FMJ) message = message.copy().append(" · " + entry.tier().getBadge());
+		player.sendMessage(message, true);
 	}
 
 	private static void store(ServerPlayerEntity player, PlayerLoadout loadout, ItemStack stack) {

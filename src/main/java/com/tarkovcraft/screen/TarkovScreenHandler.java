@@ -376,7 +376,11 @@ public class TarkovScreenHandler extends ScreenHandler {
 			|| owner.currentScreenHandler != this || !canUse(owner)) return false;
 		if (LobbyTabNavigation.handle(owner, id)) return true;
 		switch (id) {
-			case STASH_PLAY -> RaidScreenHandler.openLobby(owner);
+			case STASH_PLAY -> {
+				// Open Play directly from Character so the client keeps its cursor unlocked.
+				owner.onHandledScreenClosed();
+				RaidScreenHandler.openLobby(owner);
+			}
 			case STASH_EDITOR -> { return LobbyManager.toggleEditor(owner); }
 			case STASH_STORE_ALL -> storeAll(owner);
 			case STASH_SORT -> sortStash(owner);
@@ -971,8 +975,9 @@ public class TarkovScreenHandler extends ScreenHandler {
 		ItemStack peek = peekSource(loadout, playerId, srcLoc, srcIdx, srcEntryId);
 		if (peek.isEmpty()) return;
 
-		if (EquipmentSlotType.HEADSET.accepts(peek) && loadout.blocksHeadset()) {
-			serverPlayer.sendMessage(Text.translatable("message.tarkovcraft.headset_blocked"), true);
+		EquipmentSlotType matchingSlot = findFirstMatchingSlot(peek);
+		if (matchingSlot != null && loadout.hasHeadsetConflict(matchingSlot, peek)) {
+			sendHeadsetConflict(serverPlayer, matchingSlot);
 			return;
 		}
 		EquipmentSlotType targetSlot = findEquipOrHotswapSlotFor(loadout, peek);
@@ -1901,9 +1906,10 @@ public class TarkovScreenHandler extends ScreenHandler {
 		}
 
 		// 3. Validate destination BEFORE mutating source
-		if (dstLoc == TarkovNetworking.LOC_EQUIPMENT && slotByOrdinal(dstIdx) == EquipmentSlotType.HEADSET
-			&& loadout.blocksHeadset()) {
-			serverPlayer.sendMessage(Text.translatable("message.tarkovcraft.headset_blocked"), true);
+		EquipmentSlotType destinationSlot = dstLoc == TarkovNetworking.LOC_EQUIPMENT ? slotByOrdinal(dstIdx) : null;
+		if (destinationSlot != null && destinationSlot.accepts(movingPreview)
+			&& loadout.hasHeadsetConflict(destinationSlot, movingPreview)) {
+			sendHeadsetConflict(serverPlayer, destinationSlot);
 			return;
 		}
 
@@ -1943,6 +1949,11 @@ public class TarkovScreenHandler extends ScreenHandler {
 
 		markExternalDirty();
 		syncToClient(serverPlayer);
+	}
+
+	private static void sendHeadsetConflict(ServerPlayerEntity player, EquipmentSlotType slot) {
+		player.sendMessage(Text.translatable(slot == EquipmentSlotType.HEADSET
+			? "message.tarkovcraft.headset_blocked" : "message.tarkovcraft.headgear_blocked"), true);
 	}
 
 	private boolean returnSwappedItem(PlayerLoadout loadout, UUID playerId, ItemStack previous, EquipmentSlotType replacedSlot,
@@ -2103,7 +2114,7 @@ public class TarkovScreenHandler extends ScreenHandler {
 				ItemStack st = corpse.getLoadout().getEquipment(slot);
 				ItemStack taken = st.split(count);
 				if (st.isEmpty()) corpse.getLoadout().setEquipment(slot, ItemStack.EMPTY);
-				corpse.syncVisualFlags();
+				corpse.syncVisualEquipment();
 				yield taken;
 			}
 			case TarkovNetworking.LOC_POCKET -> {
@@ -2464,7 +2475,7 @@ public class TarkovScreenHandler extends ScreenHandler {
 				vanillaState.markDirty();
 			}
 		} else if (mode == MODE_CORPSE && corpse != null) {
-			corpse.syncVisualFlags();
+			corpse.syncVisualEquipment();
 		}
 	}
 
@@ -2636,19 +2647,19 @@ public class TarkovScreenHandler extends ScreenHandler {
 			for (EquipmentSlotType slot : EquipmentSlotType.values()) {
 				ItemStack eq = cLoadout.getEquipment(slot);
 				if (ContainerItemHelper.isContainerItem(eq) && targetUuid.equals(ContainerItemHelper.getContainerUuid(eq))) {
-					return directStackHandle(eq, false, corpse::syncVisualFlags);
+					return directStackHandle(eq, false, corpse::syncVisualEquipment);
 				}
 			}
 			if (corpse.getPocketsSearchMemory().isGridRevealed(playerId)) {
 				ContainerHandle fromCPockets = findInsideGrid(
 					corpse.getPocketsGrid(), corpse.getPocketsSearchMemory(), targetUuid, playerId, false,
-					g -> corpse.syncVisualFlags(), corpse::syncVisualFlags
+					g -> corpse.syncVisualEquipment(), corpse::syncVisualEquipment
 				);
 				if (fromCPockets != null) return fromCPockets;
 			}
-			ContainerHandle fromCRig = findInsideRig(cLoadout.getEquipment(EquipmentSlotType.RIG), targetUuid, playerId, corpse::syncVisualFlags);
+			ContainerHandle fromCRig = findInsideRig(cLoadout.getEquipment(EquipmentSlotType.RIG), targetUuid, playerId, corpse::syncVisualEquipment);
 			if (fromCRig != null) return fromCRig;
-			ContainerHandle fromCBp = findInsideBackpack(cLoadout.getEquipment(EquipmentSlotType.BACKPACK), targetUuid, playerId, corpse::syncVisualFlags);
+			ContainerHandle fromCBp = findInsideBackpack(cLoadout.getEquipment(EquipmentSlotType.BACKPACK), targetUuid, playerId, corpse::syncVisualEquipment);
 			if (fromCBp != null) return fromCBp;
 		}
 

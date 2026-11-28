@@ -10,7 +10,6 @@ import net.minecraft.world.PersistentState;
 
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -74,12 +73,14 @@ public final class ArenaEventsState extends PersistentState {
 
 	public static final class Arena {
 		final BlockPos anchor;
-		final BlockPos[] corners = new BlockPos[4];
-		private List<BlockPos> polygon = List.of();
+		private List<BlockPos> vertices = List.of();
+		private boolean ready;
 		final Set<BlockPos> airdropPoints = new LinkedHashSet<>();
 		final Set<BlockPos> pointsOfInterest = new LinkedHashSet<>();
 		boolean airdropsEnabled = true;
 		boolean bossEnabled;
+		boolean scavBotsEnabled = true;
+		int scavBotCount = 8;
 		int maxGroundY;
 		BlockPos cratePos;
 		boolean bossSpawned;
@@ -99,46 +100,51 @@ public final class ArenaEventsState extends PersistentState {
 			this.maxGroundY = anchor.getY() + 8;
 		}
 
-		void setCorner(int index, BlockPos pos) {
-			corners[index] = pos.toImmutable();
-			rebuildPolygon();
+		boolean setCorner(int index, BlockPos pos) {
+			if (index < 0 || index > vertices.size()) return false;
+			var updated = new java.util.ArrayList<>(vertices);
+			if (index == updated.size()) updated.add(pos);
+			else updated.set(index, pos);
+			setVertices(updated);
+			return true;
 		}
 
-		private void rebuildPolygon() {
-			polygon = List.of();
-			if (Arrays.stream(corners).anyMatch(p -> p == null)) return;
-			double centerX = Arrays.stream(corners).mapToInt(BlockPos::getX).average().orElseThrow();
-			double centerZ = Arrays.stream(corners).mapToInt(BlockPos::getZ).average().orElseThrow();
-			List<BlockPos> ordered = Arrays.stream(corners)
-				.sorted(Comparator.comparingDouble(p -> Math.atan2(p.getZ() - centerZ, p.getX() - centerX)))
-				.toList();
-			for (int i = 0; i < ordered.size(); i++) {
-				BlockPos a = ordered.get(i);
-				BlockPos b = ordered.get((i + 1) % ordered.size());
-				BlockPos c = ordered.get((i + 2) % ordered.size());
-				if (cross(a, b, c.getX(), c.getZ()) == 0) return;
-			}
-			polygon = ordered;
+		void setVertices(List<BlockPos> points) {
+			setVertices(points, ArenaPolygon.isSimple(points));
 		}
 
-		private static long cross(BlockPos a, BlockPos b, int x, int z) {
-			return ((long) b.getX() - a.getX()) * ((long) z - a.getZ())
-				- ((long) b.getZ() - a.getZ()) * ((long) x - a.getX());
+		void setVertices(List<BlockPos> points, boolean valid) {
+			vertices = points.stream().map(BlockPos::toImmutable).toList();
+			ready = valid;
 		}
 
 		public BlockPos center() {
-			if (Arrays.stream(corners).anyMatch(p -> p == null)) return anchor;
+			if (!ready) return anchor;
 			long x = 0;
 			long z = 0;
-			for (BlockPos corner : corners) {
+			for (BlockPos corner : vertices) {
 				x += corner.getX();
 				z += corner.getZ();
 			}
-			return new BlockPos((int) Math.round(x / 4.0), anchor.getY(), (int) Math.round(z / 4.0));
+			BlockPos mean = new BlockPos((int) Math.round((double) x / vertices.size()), anchor.getY(),
+				(int) Math.round((double) z / vertices.size()));
+			if (contains(mean.getX() + 0.5, mean.getZ() + 0.5)) return mean;
+			if (contains(anchor.getX() + 0.5, anchor.getZ() + 0.5)) return anchor;
+			// A point just inside an edge gives event spawners a search origin even in a deep concavity.
+			for (int i = 0; i < vertices.size(); i++) {
+				BlockPos a = vertices.get(i);
+				BlockPos b = vertices.get((i + 1) % vertices.size());
+				BlockPos middle = BlockPos.ofFloored((a.getX() + (double) b.getX()) / 2, anchor.getY(),
+					(a.getZ() + (double) b.getZ()) / 2);
+				for (BlockPos nearby : BlockPos.iterateOutwards(middle, 2, 0, 2)) {
+					if (contains(nearby.getX() + 0.5, nearby.getZ() + 0.5)) return nearby.toImmutable();
+				}
+			}
+			return mean;
 		}
 
 		public boolean ready() {
-			return !polygon.isEmpty();
+			return ready;
 		}
 
 		public boolean contains(int x, int z) {
@@ -146,25 +152,11 @@ public final class ArenaEventsState extends PersistentState {
 		}
 
 		public boolean contains(double x, double z) {
-			if (!ready()) return false;
-			boolean inside = false;
-			for (int i = 0; i < polygon.size(); i++) {
-				BlockPos a = polygon.get(i);
-				BlockPos b = polygon.get((i + 1) % polygon.size());
-				double side = (b.getX() - (double) a.getX()) * (z - a.getZ())
-					- (b.getZ() - (double) a.getZ()) * (x - a.getX());
-				if (Math.abs(side) < 1.0e-8 && between(x, a.getX(), b.getX()) && between(z, a.getZ(), b.getZ())) return true;
-				if ((a.getZ() > z) != (b.getZ() > z) && (side > 0) == (b.getZ() > a.getZ())) inside = !inside;
-			}
-			return inside;
-		}
-
-		private static boolean between(double value, int first, int second) {
-			return value >= Math.min(first, second) && value <= Math.max(first, second);
+			return ready && ArenaPolygon.contains(vertices, x, z);
 		}
 
 		public List<BlockPos> corners() {
-			return polygon;
+			return vertices;
 		}
 
 		public Set<BlockPos> airdropPoints() {
@@ -182,14 +174,14 @@ public final class ArenaEventsState extends PersistentState {
 		NbtCompound writeNbt() {
 			NbtCompound tag = new NbtCompound();
 			tag.putLong("Anchor", anchor.asLong());
-			for (int i = 0; i < corners.length; i++) {
-				if (corners[i] != null) tag.putLong("Corner" + i, corners[i].asLong());
-			}
+			tag.putLongArray("Vertices", vertices.stream().mapToLong(BlockPos::asLong).toArray());
 			tag.putLongArray("AirdropPoints", airdropPoints.stream().mapToLong(BlockPos::asLong).toArray());
 			tag.putLongArray("Poi", pointsOfInterest.stream().mapToLong(BlockPos::asLong).toArray());
 			tag.putBoolean("AirdropsEnabled", airdropsEnabled);
 			tag.putInt("MaxGroundY", maxGroundY);
 			tag.putBoolean("BossEnabled", bossEnabled);
+			tag.putBoolean("ScavBotsEnabled", scavBotsEnabled);
+			tag.putInt("ScavBotCount", scavBotCount);
 			tag.putString("DisplayName", displayName);
 			tag.putInt("DurationMinutes", durationMinutes);
 			tag.putLongArray("PmcSpawns", pmcSpawns.stream().mapToLong(BlockPos::asLong).toArray());
@@ -200,6 +192,7 @@ public final class ArenaEventsState extends PersistentState {
 				NbtCompound exit = new NbtCompound();
 				exit.putLong("Pos", extract.pos().asLong());
 				exit.putBoolean("Loud", extract.loud());
+				exit.putDouble("Radius", extract.radius());
 				exits.put(name, exit);
 			});
 			tag.put("Extracts", exits);
@@ -211,15 +204,22 @@ public final class ArenaEventsState extends PersistentState {
 
 		static Arena readNbt(NbtCompound tag) {
 			Arena arena = new Arena(BlockPos.fromLong(tag.getLong("Anchor")));
-			for (int i = 0; i < arena.corners.length; i++) {
-				if (tag.contains("Corner" + i)) arena.corners[i] = BlockPos.fromLong(tag.getLong("Corner" + i));
+			if (tag.contains("Vertices", NbtElement.LONG_ARRAY_TYPE)) {
+				arena.setVertices(Arrays.stream(tag.getLongArray("Vertices")).mapToObj(BlockPos::fromLong).toList());
+			} else {
+				BlockPos[] slots = new BlockPos[4];
+				for (int i = 0; i < slots.length; i++) {
+					if (tag.contains("Corner" + i)) slots[i] = BlockPos.fromLong(tag.getLong("Corner" + i));
+				}
+				arena.setVertices(ArenaPolygon.migrateCorners(Arrays.asList(slots)));
 			}
-			arena.rebuildPolygon();
 			for (long point : tag.getLongArray("AirdropPoints")) arena.airdropPoints.add(BlockPos.fromLong(point));
 			for (long point : tag.getLongArray("Poi")) arena.pointsOfInterest.add(BlockPos.fromLong(point));
 			arena.airdropsEnabled = !tag.contains("AirdropsEnabled") || tag.getBoolean("AirdropsEnabled");
 			if (tag.contains("MaxGroundY")) arena.maxGroundY = tag.getInt("MaxGroundY");
 			arena.bossEnabled = tag.getBoolean("BossEnabled");
+			if (tag.contains("ScavBotsEnabled")) arena.scavBotsEnabled = tag.getBoolean("ScavBotsEnabled");
+			if (tag.contains("ScavBotCount")) arena.scavBotCount = Math.max(0, Math.min(32, tag.getInt("ScavBotCount")));
 			arena.displayName = tag.getString("DisplayName");
 			if (tag.contains("DurationMinutes")) arena.durationMinutes = tag.getInt("DurationMinutes");
 			for (long point : tag.getLongArray("PmcSpawns")) arena.pmcSpawns.add(BlockPos.fromLong(point));
@@ -228,7 +228,8 @@ public final class ArenaEventsState extends PersistentState {
 			NbtCompound exits = tag.getCompound("Extracts");
 			for (String name : exits.getKeys()) {
 				NbtCompound exit = exits.getCompound(name);
-				arena.extracts.put(name, new Extract(BlockPos.fromLong(exit.getLong("Pos")), exit.getBoolean("Loud")));
+				arena.extracts.put(name, new Extract(BlockPos.fromLong(exit.getLong("Pos")), exit.getBoolean("Loud"),
+					exit.getDouble("Radius")));
 			}
 			arena.bossSpawned = tag.getBoolean("BossSpawned");
 			if (tag.containsUuid("ActiveBoss")) arena.activeBoss = tag.getUuid("ActiveBoss");
@@ -237,5 +238,17 @@ public final class ArenaEventsState extends PersistentState {
 		}
 	}
 
-	record Extract(BlockPos pos, boolean loud) { }
+	record Extract(BlockPos pos, boolean loud, double radius) {
+		Extract {
+			radius = com.tarkovcraft.network.RaidExtractPackets.validRadius(radius);
+		}
+
+		Extract(BlockPos pos, boolean loud) {
+			this(pos, loud, com.tarkovcraft.network.RaidExtractPackets.DEFAULT_RADIUS);
+		}
+
+		boolean contains(net.minecraft.util.math.Vec3d feet) {
+			return com.tarkovcraft.network.RaidExtractPackets.contains(pos, radius, feet);
+		}
+	}
 }

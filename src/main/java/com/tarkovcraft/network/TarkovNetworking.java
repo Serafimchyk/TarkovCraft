@@ -472,6 +472,7 @@ public final class TarkovNetworking {
 
 	private static void handleInteract(ServerPlayerEntity player, byte actionIndex) {
 		if (player.isSpectator() || !player.isAlive() || RaidSession.isLobby(player)) return;
+		if (RaidSession.activateExtract(player)) return;
 		double reach = 4.2;
 		Vec3d eye = player.getCameraPosVec(1.0f);
 		Vec3d look = player.getRotationVec(1.0f);

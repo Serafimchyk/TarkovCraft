@@ -1,5 +1,7 @@
 package com.tarkovcraft.client.model;
 
+import net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.model.Dilation;
 import net.minecraft.client.model.ModelData;
 import net.minecraft.client.model.ModelPart;
@@ -11,12 +13,17 @@ import net.minecraft.client.render.RenderLayer;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.entity.model.BipedEntityModel;
+import net.minecraft.client.render.entity.model.EntityModelLayer;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.item.Item;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.RotationAxis;
 
+import java.util.Arrays;
 import java.util.Locale;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /** Cuboids and box UVs supplied by the TarkovCraft model pack. */
 public enum GearModel {
@@ -323,7 +330,13 @@ public enum GearModel {
 	private static final float DROPPED_SCALE = 0.85F;
 	private static final float PIXELS_PER_BLOCK = 16.0F;
 
-	private final BakedPart[] parts;
+	private static final Map<String, GearModel> BY_NAME = Arrays.stream(values())
+		.collect(Collectors.toUnmodifiableMap(model -> model.layer.getId().getPath(), Function.identity()));
+
+	private final Part[] geometry;
+	private final EntityModelLayer layer;
+	private final TexturedModelData modelData;
+	private BakedPart[] parts;
 	private final Identifier baseTexture;
 	private final boolean translucent;
 	private final boolean groundModel;
@@ -338,9 +351,11 @@ public enum GearModel {
 	GearModel(int textureWidth, int textureHeight, boolean translucent, String textureName, Part... geometry) {
 		this.groundModel = geometry[0].anchor() == Anchor.GROUND;
 		this.translucent = translucent;
-		String folder = groundModel ? "ground" : "wearable";
-		String file = textureName == null ? name().toLowerCase(Locale.ROOT) : textureName;
-		this.baseTexture = new Identifier("tarkovcraft", "textures/equipment/" + folder + "/" + file + ".png");
+		String silhouette = name().toLowerCase(Locale.ROOT);
+		this.layer = new EntityModelLayer(new Identifier("tarkovcraft", silhouette), "main");
+		this.geometry = geometry;
+		this.baseTexture = GearPalette.path(new Identifier("tarkovcraft",
+			textureName == null ? silhouette : textureName), groundModel);
 
 		ModelData data = new ModelData();
 		float minX = Float.POSITIVE_INFINITY;
@@ -368,23 +383,44 @@ public enum GearModel {
 			}
 			data.getRoot().addChild(anchor.name(), builder, ModelTransform.NONE);
 		}
-		ModelPart model = TexturedModelData.of(data, textureWidth, textureHeight).createModel();
-		this.parts = new BakedPart[geometry.length];
-		for (int index = 0; index < geometry.length; index++) {
-			Anchor anchor = geometry[index].anchor();
-			parts[index] = new BakedPart(anchor, model.getChild(anchor.name()));
-		}
+		this.modelData = TexturedModelData.of(data, textureWidth, textureHeight);
 		this.centerX = (minX + maxX) / (2.0 * PIXELS_PER_BLOCK);
 		this.centerDepth = (minDepth + maxDepth) / (2.0 * PIXELS_PER_BLOCK);
 		this.bottom = lowestPoint / PIXELS_PER_BLOCK;
+	}
+
+	public static GearModel find(String silhouette) {
+		return silhouette == null ? null : BY_NAME.get(silhouette);
+	}
+
+	public static void registerLayers() {
+		for (GearModel model : values()) {
+			EntityModelLayerRegistry.registerModelLayer(model.layer, () -> model.modelData);
+		}
+	}
+
+	static void clearBakedParts() {
+		for (GearModel model : values()) model.parts = null;
+	}
+
+	private BakedPart[] parts() {
+		if (parts == null) {
+			ModelPart root = MinecraftClient.getInstance().getEntityModelLoader().getModelPart(layer);
+			parts = new BakedPart[geometry.length];
+			for (int index = 0; index < geometry.length; index++) {
+				Anchor anchor = geometry[index].anchor();
+				parts[index] = new BakedPart(anchor, root.getChild(anchor.name()));
+			}
+		}
+		return parts;
 	}
 
 	public void renderWorn(MatrixStack matrices, VertexConsumerProvider consumers, int light, BipedEntityModel<?> playerModel, Item item) {
 		if (groundModel) {
 			return;
 		}
-		VertexConsumer vertices = consumers.getBuffer(renderLayer(item));
-		for (BakedPart part : parts) {
+		VertexConsumer vertices = consumers.getBuffer(renderLayer(item, false));
+		for (BakedPart part : parts()) {
 			ModelPart anchor = part.anchor().fromPlayer(playerModel);
 			if (!anchor.visible || anchor.hidden) {
 				continue;
@@ -397,7 +433,7 @@ public enum GearModel {
 	}
 
 	public void renderOnGround(MatrixStack matrices, VertexConsumerProvider consumers, int light, Item item) {
-		VertexConsumer vertices = consumers.getBuffer(renderLayer(item));
+		VertexConsumer vertices = consumers.getBuffer(renderLayer(item, true));
 		matrices.push();
 		matrices.scale(DROPPED_SCALE, DROPPED_SCALE, DROPPED_SCALE);
 		matrices.translate(centerX, -bottom, -centerDepth);
@@ -405,7 +441,7 @@ public enum GearModel {
 			matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees(90.0F));
 		}
 		matrices.scale(-1.0F, -1.0F, 1.0F);
-		for (BakedPart part : parts) {
+		for (BakedPart part : parts()) {
 			Anchor anchor = part.anchor();
 			matrices.push();
 			matrices.translate(anchor.x / PIXELS_PER_BLOCK, anchor.y / PIXELS_PER_BLOCK, 0.0);
@@ -415,8 +451,8 @@ public enum GearModel {
 		matrices.pop();
 	}
 
-	private RenderLayer renderLayer(Item item) {
-		Identifier texture = this == GROUND_CASE_MEDKIT || this == VISOR ? baseTexture : GearPalette.textureFor(item, baseTexture);
+	private RenderLayer renderLayer(Item item, boolean dropped) {
+		Identifier texture = GearPalette.textureFor(item, baseTexture, dropped);
 		return translucent ? RenderLayer.getEntityTranslucent(texture) : RenderLayer.getEntityCutoutNoCull(texture);
 	}
 

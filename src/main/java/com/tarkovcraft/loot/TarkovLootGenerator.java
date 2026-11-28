@@ -13,6 +13,7 @@ import com.tarkovcraft.item.TarkovArmorRepairItem;
 import com.tarkovcraft.item.TarkovCaseItem;
 import com.tarkovcraft.item.TarkovFoodItem;
 import com.tarkovcraft.item.TarkovFunctionalItem;
+import com.tarkovcraft.item.TarkovHeadsetItem;
 import com.tarkovcraft.item.TarkovGrenadeItem;
 import com.tarkovcraft.item.TarkovMedicalItem;
 import com.tarkovcraft.item.TarkovMeleeItem;
@@ -20,7 +21,7 @@ import com.tarkovcraft.item.TarkovStimulatorItem;
 import com.tarkovcraft.loadout.EquipmentSlotType;
 import com.tarkovcraft.registry.ModItems;
 import com.tarkovcraft.registry.TarkovItemCatalog;
-import net.minecraft.enchantment.Enchantments;
+import com.tarkovcraft.ammo.TaCZBotGun;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -191,8 +192,9 @@ public final class TarkovLootGenerator {
 				if (caze.getGridWidth() * caze.getGridHeight() >= 25) LARGE_CASES.add(item);
 			} else if (item instanceof TarkovMeleeItem) {
 				MELEE_WEAPONS.add(item);
+			} else if (item instanceof TarkovHeadsetItem) {
+				HEADSETS.add(item);
 			} else if (item instanceof TarkovFunctionalItem functional) {
-				if (functional.isHeadset()) HEADSETS.add(item);
 				if ("barter".equals(functional.getCategory())) BARTER_COMPONENTS.add(item);
 				if (functional.isValuable()) {
 					VALUABLES.add(item);
@@ -390,6 +392,18 @@ public final class TarkovLootGenerator {
 		nbt.putInt("GunCurrentAmmoCount", loadedCount);
 		nbt.putBoolean("HasBulletInBarrel", true);
 		AmmoTier.stampLoadedTierOnGun(stack, loadedTier != null ? loadedTier : AmmoTier.FMJ);
+		return stack;
+	}
+
+	public static ItemStack createLoadedGunStack(TaCZBotGun gun, AmmoTier tier) {
+		if (!Registries.ITEM.containsId(TACZ_GUN_ITEM_ID)) return ItemStack.EMPTY;
+		ItemStack stack = new ItemStack(Registries.ITEM.get(TACZ_GUN_ITEM_ID));
+		NbtCompound nbt = stack.getOrCreateNbt();
+		nbt.putString("GunId", gun.id().toString());
+		nbt.putString("GunFireMode", gun.fireMode());
+		nbt.putInt("GunCurrentAmmoCount", gun.capacity() - (gun.openBolt() ? 0 : 1));
+		nbt.putBoolean("HasBulletInBarrel", !gun.openBolt());
+		AmmoTier.stampLoadedTierOnGun(stack, tier);
 		return stack;
 	}
 
@@ -611,21 +625,13 @@ public final class TarkovLootGenerator {
 		return pickStack(helmet ? HELMETS_1_TO_3 : ARMOR_1_TO_3, random, 1);
 	}
 
-	public record BossLoot(ItemStack bodyArmor, ItemStack helmet, ItemStack weapon, List<ItemStack> trophies) {
+	public record BossLoot(ItemStack bodyArmor, ItemStack helmet, List<ItemStack> trophies) {
 	}
 
 	public static BossLoot createBossLoot(Random random) {
 		ensurePools();
-		GunPreset gun = AIRDROP_GUNS.get(random.nextInt(AIRDROP_GUNS.size()));
-		AmmoTier tier = TaCZCaliberCatalog.getSpecOrDynamic(gun.ammoId()).clampTier(AmmoTier.IGN);
-		ItemStack weapon = createTaczGunStack(gun, tier, random);
-		if (weapon.isEmpty()) {
-			weapon = new ItemStack(Items.CROSSBOW);
-			weapon.addEnchantment(Enchantments.QUICK_CHARGE, 2);
-			weapon.addEnchantment(Enchantments.PIERCING, 2);
-		}
 		return new BossLoot(pickStack(ARMOR_5_TO_6, random, 1), pickStack(HELMETS_5_TO_6, random, 1),
-			weapon, List.of(pickStack(VALUABLES, random, 1), pickStack(VALUABLES, random, 1)));
+			List.of(pickStack(VALUABLES, random, 1), pickStack(VALUABLES, random, 1)));
 	}
 
 	private static ItemStack rollMedical(Random random) {

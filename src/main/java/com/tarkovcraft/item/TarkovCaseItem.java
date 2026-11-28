@@ -35,7 +35,7 @@ import java.util.UUID;
  * Openable TarkovCraft storage case (Wallet, Keytool, Docs, SICC, Medcase, THICC, etc.).
  * Persists an internal GridContainer in NBT via ContainerItemHelper.
  */
-public class TarkovCaseItem extends Item implements TarkovSizedItem {
+public class TarkovCaseItem extends ModelledItem {
 	public enum CaseRole {
 		GENERAL("general"),
 		MEDICAL("medical"),

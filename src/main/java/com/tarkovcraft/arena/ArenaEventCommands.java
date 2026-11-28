@@ -1,11 +1,14 @@
 package com.tarkovcraft.arena;
 
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.tarkovcraft.airdrop.AirdropManager;
+import com.tarkovcraft.network.RaidExtractPackets;
 import net.minecraft.command.CommandSource;
+import net.minecraft.command.argument.BlockPosArgumentType;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
@@ -30,20 +33,26 @@ public final class ArenaEventCommands {
 				})))))
 			.then(addPoint("add_spawn", arena -> arena.pmcSpawns))
 			.then(addPoint("add_scav_spawn", arena -> arena.scavSpawns))
+			.then(literal("spawn_scav").then(argument("pos", BlockPosArgumentType.blockPos()).executes(ctx -> {
+				var source = ctx.getSource();
+				var pos = BlockPosArgumentType.getLoadedBlockPos(ctx, "pos");
+				var failure = ArenaScavSpawner.spawnManual(source.getWorld(), pos);
+				if (failure != null) {
+					source.sendError(failure);
+					return 0;
+				}
+				source.sendFeedback(() -> Text.translatable("arena.tarkovcraft.scav.spawned",
+					pos.getX(), pos.getY(), pos.getZ()), true);
+				return 1;
+			})))
 			.then(addPoint("add_loot_point", arena -> arena.lootPoints))
 			.then(literal("add_extract").then(argument("id", StringArgumentType.word())
 				.then(argument("name", StringArgumentType.string())
 					.then(argument("type", StringArgumentType.word())
 						.suggests((ctx, builder) -> CommandSource.suggestMatching(java.util.List.of("quiet", "loud"), builder))
-						.executes(ctx -> update(ctx, arena -> {
-							String type = StringArgumentType.getString(ctx, "type");
-							String name = StringArgumentType.getString(ctx, "name");
-							BlockPos pos = position(ctx);
-							if (!(type.equals("quiet") || type.equals("loud")) || name.isBlank() || name.length() > 48
-								|| !arena.contains(pos.getX() + 0.5, pos.getZ() + 0.5)) return null;
-							arena.extracts.put(name, new ArenaEventsState.Extract(pos, type.equals("loud")));
-							return "Extract saved.";
-						}, "Use quiet or loud, a name up to 48 characters, and stand inside the arena."))))))
+						.executes(ctx -> addExtract(ctx, RaidExtractPackets.DEFAULT_RADIUS))
+						.then(argument("radius", DoubleArgumentType.doubleArg(1, 32))
+							.executes(ctx -> addExtract(ctx, DoubleArgumentType.getDouble(ctx, "radius"))))))))
 			.then(literal("set_lobby_anchor").executes(ctx -> {
 				var source = ctx.getSource();
 				if (RaidSession.isActive(source.getServer())) return error(ctx, "Wait until the raid ends.");
@@ -56,10 +65,21 @@ public final class ArenaEventCommands {
 				return save(ctx, "Lobby anchor saved.");
 			}))
 			.then(literal("set_corner").then(argument("id", StringArgumentType.word())
-				.then(argument("corner", IntegerArgumentType.integer(1, 4)).executes(ctx -> update(ctx, arena -> {
-					arena.setCorner(IntegerArgumentType.getInteger(ctx, "corner") - 1, position(ctx));
-					return arena.ready() ? "Arena boundary saved." : "Corner saved. Four distinct corners are required.";
-				})))))
+				.then(argument("corner", IntegerArgumentType.integer(1)).executes(ctx -> update(ctx, arena -> {
+					if (!arena.setCorner(IntegerArgumentType.getInteger(ctx, "corner") - 1, position(ctx))) return null;
+					return arena.ready() ? "Arena boundary saved." : "Vertex saved. A simple polygon needs at least three vertices.";
+				}, "Add vertices in order without skipping an index.")))))
+			.then(literal("wand").then(argument("id", StringArgumentType.word())
+				.suggests((ctx, builder) -> CommandSource.suggestMatching(
+					ArenaEventsState.get(ctx.getSource().getWorld()).definitions().keySet(), builder))
+				.executes(ctx -> {
+					String id = StringArgumentType.getString(ctx, "id");
+					var player = ctx.getSource().getPlayerOrThrow();
+					var world = player.getServerWorld();
+					if (ArenaEventsState.get(world).getArena(id) == null) return error(ctx, "Unknown arena in this dimension.");
+					ArenaBoundaryEditing.give(player, ArenaBoundaryEditing.key(world, id));
+					return 1;
+				})))
 			.then(literal("add_airdrop_point").then(argument("id", StringArgumentType.word()).executes(ctx -> update(ctx, arena -> {
 				BlockPos pos = position(ctx);
 				if (!AirdropManager.isSafeArenaPoint(ctx.getSource().getWorld(), arena, pos)) return null;
@@ -95,13 +115,13 @@ public final class ArenaEventCommands {
 
 	private static int create(CommandContext<ServerCommandSource> ctx, String displayName) {
 		String id = StringArgumentType.getString(ctx, "id");
-		if (!id.matches("[a-z0-9_-]{1,48}") || displayName.isBlank() || displayName.length() > 80) {
+		if (!ArenaInspectorServer.validName(id, displayName)) {
 			return error(ctx, "Use an ID of 1–48 lowercase letters, digits, underscores or hyphens and a name up to 80 characters.");
 		}
 		var state = ArenaEventsState.get(ctx.getSource().getWorld());
 		if (!state.create(id, position(ctx))) return error(ctx, "Arena already exists in this dimension.");
 		state.getArena(id).displayName = displayName;
-		return save(ctx, "Arena created. Set its four corners with /tarkov arena set_corner.");
+		return save(ctx, "Arena created. Get a boundary marker with /tarkov arena wand " + id + ".");
 	}
 
 	private static LiteralArgumentBuilder<ServerCommandSource> addPoint(String command,
@@ -128,6 +148,33 @@ public final class ArenaEventCommands {
 						return command + " → " + value;
 					});
 				})));
+	}
+
+	private static int addExtract(CommandContext<ServerCommandSource> ctx, double radius) {
+		var source = ctx.getSource();
+		var world = source.getWorld();
+		var state = ArenaEventsState.get(world);
+		var arena = state.getArena(StringArgumentType.getString(ctx, "id"));
+		if (arena == null) return error(ctx, "Unknown arena in this dimension.");
+		if (RaidSession.isActiveArena(source.getServer(), arena)) return error(ctx, "Wait until the raid ends.");
+		String type = StringArgumentType.getString(ctx, "type");
+		String name = StringArgumentType.getString(ctx, "name");
+		BlockPos pos = position(ctx);
+		if (!(type.equals("quiet") || type.equals("loud")) || name.isBlank() || name.length() > 48
+			|| !arena.contains(pos.getX() + 0.5, pos.getZ() + 0.5)) {
+			return error(ctx, "Use quiet or loud, a name up to 48 characters, and stand inside the arena.");
+		}
+		var exit = new ArenaEventsState.Extract(pos, type.equals("loud"), radius);
+		var previous = arena.extracts.put(name, exit);
+		if (!ArenaConfig.save(source.getServer())) {
+			if (previous == null) arena.extracts.remove(name);
+			else arena.extracts.put(name, previous);
+			return error(ctx, "The arena JSON could not be saved. Check the server log.");
+		}
+		state.markDirty();
+		var message = ArenaExtractFeedback.confirm(world, source.getPlayer(), name, exit);
+		source.sendFeedback(() -> message, false);
+		return 1;
 	}
 
 	private static int update(

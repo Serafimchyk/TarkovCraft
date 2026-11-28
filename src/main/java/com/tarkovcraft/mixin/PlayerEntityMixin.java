@@ -1,5 +1,7 @@
 package com.tarkovcraft.mixin;
 
+import com.tarkovcraft.arena.RaidSession;
+import com.tarkovcraft.audio.PlayerFootsteps;
 import com.tarkovcraft.entity.CorpseEntity;
 import com.tarkovcraft.health.BodyPart;
 import com.tarkovcraft.health.BodyPartHealth;
@@ -10,8 +12,10 @@ import com.tarkovcraft.health.TaCZBulletHelper;
 import com.tarkovcraft.loadout.PlayerLoadout;
 import com.tarkovcraft.loadout.PlayerLoadoutHolder;
 import com.tarkovcraft.network.TarkovNetworking;
+import net.minecraft.block.BlockState;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.effect.StatusEffects;
@@ -24,6 +28,7 @@ import net.minecraft.registry.tag.DamageTypeTags;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.sound.SoundCategory;
 import net.minecraft.sound.SoundEvents;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.GameRules;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -48,6 +53,22 @@ public abstract class PlayerEntityMixin implements PlayerLoadoutHolder {
 
 	@Unique
 	private final BodyPartHealth tarkovcraft$bodyHealth = new BodyPartHealth();
+
+	@Unique
+	private final PlayerFootsteps tarkovcraft$footsteps = new PlayerFootsteps();
+
+	@Inject(method = "tick", at = @At("TAIL"))
+	private void tarkovcraft$tickFootsteps(CallbackInfo callback) {
+		if ((Object) this instanceof ServerPlayerEntity player) {
+			tarkovcraft$footsteps.tick(player, tarkovcraft$loadout);
+		}
+	}
+
+	@Inject(method = "playStepSound", at = @At("HEAD"), cancellable = true)
+	private void tarkovcraft$replaceVanillaPlayerStep(BlockPos pos, BlockState state, CallbackInfo callback) {
+		// Movement sounds come from accepted server positions, including the local player's steps.
+		callback.cancel();
+	}
 
 	@Override
 	public PlayerLoadout tarkovcraft$getLoadout() {
@@ -213,6 +234,11 @@ public abstract class PlayerEntityMixin implements PlayerLoadoutHolder {
 			}
 		}
 
+		float hpBefore = tarkovcraft$bodyHealth.getTotalHp();
+		String weaponName = bulletInfo.weaponName();
+		if (weaponName.isEmpty() && attacker instanceof LivingEntity living && !living.getMainHandStack().isEmpty()) {
+			weaponName = living.getMainHandStack().getName().getString();
+		}
 		boolean killed = tarkovcraft$bodyHealth.applyHit(
 			tarkovcraft$loadout,
 			zone,
@@ -225,11 +251,12 @@ public abstract class PlayerEntityMixin implements PlayerLoadoutHolder {
 			self.getRandom().nextFloat(),
 			self.getRandom().nextFloat(),
 			killerName,
-			bulletInfo.weaponName(),
+			weaponName,
 			bulletInfo.ammoName(),
 			distance
 		);
 
+		RaidSession.recordDamage(self, source, hpBefore - tarkovcraft$bodyHealth.getTotalHp());
 		List<DamageReport> hits = tarkovcraft$bodyHealth.getRecentHits();
 		if (!hits.isEmpty()) {
 			DamageReport latest = hits.get(0);

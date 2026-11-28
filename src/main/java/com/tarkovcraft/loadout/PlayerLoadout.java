@@ -13,7 +13,6 @@ import com.tarkovcraft.item.TarkovSizedItem;
 import com.tarkovcraft.search.ContainerSearchMemory;
 import net.minecraft.item.ItemStack;
 import com.tarkovcraft.ammo.AmmoTier;
-import com.tarkovcraft.item.TarkovFunctionalItem;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
 import net.minecraft.nbt.NbtList;
@@ -84,7 +83,16 @@ public final class PlayerLoadout {
 	}
 
 	public boolean canEquip(EquipmentSlotType slot, ItemStack stack) {
-		return slot.accepts(stack) && (slot != EquipmentSlotType.HEADSET || stack.isEmpty() || !blocksHeadset());
+		return slot.accepts(stack) && !hasHeadsetConflict(slot, stack);
+	}
+
+	public boolean hasHeadsetConflict(EquipmentSlotType slot, ItemStack stack) {
+		if (stack == null || stack.isEmpty()) return false;
+		return switch (slot) {
+			case HEADSET -> blocksHeadset();
+			case HELMET, FACE_MASK -> blocksHeadset(stack) && !getEquipment(EquipmentSlotType.HEADSET).isEmpty();
+			default -> false;
+		};
 	}
 
 	public void invalidateExposedCache() {
@@ -217,14 +225,14 @@ public final class PlayerLoadout {
 		}
 		if (incoming.getItem() instanceof TarkovArmorItem armor) {
 			EquipmentSlotType slot = armor.getTargetSlot();
-			if (getEquipment(slot).isEmpty()) {
+			if (getEquipment(slot).isEmpty() && canEquip(slot, incoming)) {
 				setEquipment(slot, incoming.copy());
 				incoming.setCount(0);
 				return true;
 			}
 		}
 
-		if (incoming.getItem() instanceof TarkovFunctionalItem functional && functional.isHeadset()
+		if (EquipmentSlotType.HEADSET.accepts(incoming)
 			&& getEquipment(EquipmentSlotType.HEADSET).isEmpty() && canEquip(EquipmentSlotType.HEADSET, incoming)) {
 			setEquipment(EquipmentSlotType.HEADSET, incoming.copy());
 			incoming.setCount(0);

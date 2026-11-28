@@ -2,6 +2,7 @@ package com.tarkovcraft.entity;
 
 import com.tarkovcraft.arena.RaidSession;
 
+import com.tarkovcraft.arena.RaidSession;
 import com.tarkovcraft.health.BodyPartHealth;
 import com.tarkovcraft.health.HitZone;
 import com.tarkovcraft.health.InjuryType;
@@ -68,6 +69,13 @@ public class TarkovGrenadeEntity extends ThrownItemEntity {
 	private TarkovGrenadeItem.GrenadeType grenadeType = TarkovGrenadeItem.GrenadeType.FRAG_F1;
 	private int fuseRemaining = 40;
 	private int cloudRemaining = 0;
+
+	boolean obscures(Vec3d start, Vec3d end) {
+		if (cloudRemaining <= 0 || grenadeType != TarkovGrenadeItem.GrenadeType.SMOKE_M18) return false;
+		double r = grenadeType.getBlastRadius();
+		Box cloud = new Box(getX() - r, getY() - 1, getZ() - r, getX() + r, getY() + 4, getZ() + r);
+		return cloud.contains(start) || cloud.contains(end) || cloud.raycast(start, end).isPresent();
+	}
 	private boolean detonated = false;
 	private boolean emitting = false;
 	private boolean resting = false;
@@ -234,8 +242,10 @@ public class TarkovGrenadeEntity extends ThrownItemEntity {
 			if (target instanceof ServerPlayerEntity sp && !sp.isCreative() && !sp.isSpectator()
 				&& sp instanceof PlayerLoadoutHolder holder) {
 				BodyPartHealth health = holder.tarkovcraft$getBodyHealth();
+				float hpBefore = health.getTotalHp();
 				applyShrapnel(holder.tarkovcraft$getLoadout(), health, effectiveDmg,
 					falloff, exposure, killerName, weaponName, (float) dist);
+				RaidSession.recordDamage(sp, source, hpBefore - health.getTotalHp());
 				holder.tarkovcraft$syncBodyHealth();
 				holder.tarkovcraft$syncLoadout();
 				if (health.isDead()) {
@@ -245,8 +255,10 @@ public class TarkovGrenadeEntity extends ThrownItemEntity {
 					sp.setHealth(Math.max(1.0f, health.getTotalRatio() * sp.getMaxHealth()));
 				}
 			} else if (target instanceof SleeperPlayerEntity sleeper) {
+				float hpBefore = sleeper.getBodyHealth().getTotalHp();
 				applyShrapnel(sleeper.getLoadout(), sleeper.getBodyHealth(), effectiveDmg,
 					falloff, exposure, killerName, weaponName, (float) dist);
+				RaidSession.recordDamage(sleeper, source, hpBefore - sleeper.getBodyHealth().getTotalHp());
 				sleeper.finishZonalDamage(source);
 			} else if (!(target instanceof PlayerEntity)) {
 				target.damage(source, Math.max(1.0f, effectiveDmg / 9.0f));

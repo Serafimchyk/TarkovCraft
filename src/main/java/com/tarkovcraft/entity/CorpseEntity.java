@@ -16,6 +16,7 @@ import com.tarkovcraft.registry.ModItems;
 import com.tarkovcraft.screen.TarkovScreenHandler;
 import com.tarkovcraft.search.ContainerSearchMemory;
 import com.tarkovcraft.search.SearchTarget;
+import com.mojang.authlib.GameProfile;
 import net.fabricmc.fabric.api.screenhandler.v1.ExtendedScreenHandlerFactory;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
@@ -28,9 +29,9 @@ import net.minecraft.entity.data.TrackedDataHandlerRegistry;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
+import net.minecraft.nbt.NbtHelper;
 import net.minecraft.network.PacketByteBuf;
 import net.minecraft.screen.ScreenHandler;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -43,7 +44,10 @@ import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -54,11 +58,40 @@ import java.util.UUID;
  * Both the Rig and Backpack can be stripped whole at any time (even unsearched).
  */
 public class CorpseEntity extends Entity {
-	private static final int MAX_LIFETIME_TICKS = 20 * 60 * 15; // 15 minutes
+	public enum Kind {
+		PLAYER, SCAV, BOSS;
+
+		private static Kind fromName(String name, Kind fallback) {
+			for (Kind kind : values()) {
+				if (kind.name().equals(name)) return kind;
+			}
+			return fallback;
+		}
+	}
+
+	public static final List<EquipmentSlotType> VISIBLE_SLOTS = List.of(
+		EquipmentSlotType.BODY_ARMOR, EquipmentSlotType.RIG, EquipmentSlotType.BACKPACK,
+		EquipmentSlotType.FACE_MASK, EquipmentSlotType.HELMET, EquipmentSlotType.HEADSET);
+
 	private static final int EMPTY_DESPAWN_TICKS = 20 * 10;     // 10 seconds once completely looted
 	private static final TrackedData<String> OWNER_NAME = DataTracker.registerData(CorpseEntity.class, TrackedDataHandlerRegistry.STRING);
-	private static final TrackedData<Boolean> HAS_BACKPACK = DataTracker.registerData(CorpseEntity.class, TrackedDataHandlerRegistry.BOOLEAN);
-	private static final TrackedData<Boolean> HAS_HELMET = DataTracker.registerData(CorpseEntity.class, TrackedDataHandlerRegistry.BOOLEAN);
+	private static final TrackedData<Optional<UUID>> OWNER_UUID =
+		DataTracker.registerData(CorpseEntity.class, TrackedDataHandlerRegistry.OPTIONAL_UUID);
+	private static final TrackedData<String> CORPSE_KIND =
+		DataTracker.registerData(CorpseEntity.class, TrackedDataHandlerRegistry.STRING);
+	private static final TrackedData<NbtCompound> OWNER_PROFILE =
+		DataTracker.registerData(CorpseEntity.class, TrackedDataHandlerRegistry.NBT_COMPOUND);
+	private static final Map<EquipmentSlotType, TrackedData<ItemStack>> GEAR = new EnumMap<>(EquipmentSlotType.class);
+
+	static {
+		for (EquipmentSlotType slot : VISIBLE_SLOTS) {
+			GEAR.put(slot, DataTracker.registerData(CorpseEntity.class, TrackedDataHandlerRegistry.ITEM_STACK));
+		}
+	}
+
+	private NbtCompound cachedProfileTag;
+	@Nullable
+	private GameProfile cachedProfile;
 
 	private PlayerLoadout loadout = new PlayerLoadout();
 	// Corpse pockets represented as a 6x1 searchable grid (6x 1x1 pockets, real Tarkov pockets!)
@@ -66,8 +99,6 @@ public class CorpseEntity extends Entity {
 	private ContainerSearchMemory pocketsSearchMemory = new ContainerSearchMemory();
 	private int ageTicks = 0;
 	private int emptyTicks = 0;
-	@Nullable
-	private UUID ownerUuid;
 
 	public CorpseEntity(EntityType<?> type, World world) {
 		super(type, world);
@@ -85,7 +116,7 @@ public class CorpseEntity extends Entity {
 		List<ItemStack> extras,
 		List<ItemStack> overflow
 	) {
-		return fromSnapshot(world, player.getPos(), player.getYaw(), player.getUuid(),
+		return fromSnapshot(world, player.getPos(), player.getYaw(), player.getGameProfile(),
 			player.getName().getString(), sourceLoadout, extras, overflow);
 	}
 
@@ -93,7 +124,7 @@ public class CorpseEntity extends Entity {
 		World world,
 		Vec3d position,
 		float yaw,
-		UUID ownerUuid,
+		GameProfile ownerProfile,
 		String ownerName,
 		PlayerLoadout sourceLoadout,
 		List<ItemStack> extras,
@@ -102,11 +133,15 @@ public class CorpseEntity extends Entity {
 		CorpseEntity corpse = new CorpseEntity(ModEntities.CORPSE, world);
 		corpse.setPosition(position.x, position.y, position.z);
 		corpse.setYaw(yaw);
-		corpse.ownerUuid = ownerUuid;
+		corpse.dataTracker.set(OWNER_UUID, Optional.of(ownerProfile.getId()));
+		corpse.dataTracker.set(CORPSE_KIND, Kind.PLAYER.name());
+		GameProfile skinProfile = new GameProfile(ownerProfile.getId(), ownerProfile.getName());
+		skinProfile.getProperties().putAll("textures", ownerProfile.getProperties().get("textures"));
+		corpse.dataTracker.set(OWNER_PROFILE, NbtHelper.writeGameProfile(new NbtCompound(), skinProfile));
 		corpse.setOwnerName(ownerName);
 
 		corpse.loadout = transferPlayerInventoryToCorpse(sourceLoadout, corpse.pocketsGrid, extras, overflow);
-		corpse.syncVisualFlags();
+		corpse.syncVisualEquipment();
 		return corpse;
 	}
 
@@ -248,7 +283,7 @@ public class CorpseEntity extends Entity {
 		}
 
 		TarkovLootGenerator.populateLootGrid(corpse.pocketsGrid, TarkovLootPool.SCAV_POCKET, random);
-		corpse.syncVisualFlags();
+		corpse.syncVisualEquipment();
 		return corpse;
 	}
 
@@ -258,7 +293,18 @@ public class CorpseEntity extends Entity {
 		corpse.setYaw(mob.getYaw());
 		corpse.setOwnerName(mob.getDisplayName().getString());
 		TarkovLootGenerator.populateLootGrid(corpse.pocketsGrid, TarkovLootPool.SCAV_POCKET, world.getRandom());
-		corpse.syncVisualFlags();
+		corpse.syncVisualEquipment();
+		return corpse;
+	}
+
+	public static CorpseEntity fromBot(World world, TarkovScavEntity bot, PlayerLoadout loadout, List<ItemStack> overflow) {
+		CorpseEntity corpse = new CorpseEntity(ModEntities.CORPSE, world);
+		corpse.setPosition(bot.getPos());
+		corpse.setYaw(bot.getYaw());
+		corpse.setOwnerName(bot.getDisplayName().getString());
+		corpse.dataTracker.set(CORPSE_KIND, (bot.isBoss() ? Kind.BOSS : Kind.SCAV).name());
+		corpse.loadout = transferPlayerInventoryToCorpse(loadout, corpse.pocketsGrid, List.of(), overflow);
+		corpse.syncVisualEquipment();
 		return corpse;
 	}
 
@@ -293,7 +339,7 @@ public class CorpseEntity extends Entity {
 		}
 
 		TarkovLootGenerator.populateLootGrid(pocketsGrid, TarkovLootPool.SCAV_POCKET, random);
-		syncVisualFlags();
+		syncVisualEquipment();
 	}
 
 	private static void markContainerUnsearched(ItemStack stack) {
@@ -303,16 +349,28 @@ public class CorpseEntity extends Entity {
 		}
 	}
 
-	public void syncVisualFlags() {
-		this.dataTracker.set(HAS_BACKPACK, !loadout.getEquipment(EquipmentSlotType.BACKPACK).isEmpty());
-		this.dataTracker.set(HAS_HELMET, !loadout.getEquipment(EquipmentSlotType.HELMET).isEmpty());
+	public void syncVisualEquipment() {
+		if (getWorld().isClient) return;
+		for (EquipmentSlotType slot : VISIBLE_SLOTS) {
+			TrackedData<ItemStack> tracked = GEAR.get(slot);
+			ItemStack equipped = loadout.getEquipment(slot);
+			ItemStack visible = dataTracker.get(tracked);
+			if (!ItemStack.areItemsEqual(equipped, visible)) {
+				// Worn models use the item ID. Container contents and search state stay in the loot UI.
+				dataTracker.set(tracked, equipped.isEmpty() ? ItemStack.EMPTY : new ItemStack(equipped.getItem()));
+			}
+		}
 	}
 
 	@Override
 	protected void initDataTracker() {
-		this.dataTracker.startTracking(OWNER_NAME, "Scav");
-		this.dataTracker.startTracking(HAS_BACKPACK, false);
-		this.dataTracker.startTracking(HAS_HELMET, false);
+		dataTracker.startTracking(OWNER_NAME, "Scav");
+		dataTracker.startTracking(OWNER_UUID, Optional.empty());
+		dataTracker.startTracking(CORPSE_KIND, Kind.SCAV.name());
+		dataTracker.startTracking(OWNER_PROFILE, new NbtCompound());
+		for (EquipmentSlotType slot : VISIBLE_SLOTS) {
+			dataTracker.startTracking(GEAR.get(slot), ItemStack.EMPTY);
+		}
 	}
 
 	public String getOwnerName() {
@@ -321,19 +379,34 @@ public class CorpseEntity extends Entity {
 
 	@Nullable
 	public UUID getOwnerUuid() {
-		return ownerUuid;
+		return dataTracker.get(OWNER_UUID).orElse(null);
+	}
+
+	public Kind getKind() {
+		return Kind.fromName(dataTracker.get(CORPSE_KIND), Kind.SCAV);
+	}
+
+	@Nullable
+	public GameProfile getOwnerProfile() {
+		UUID ownerUuid = getOwnerUuid();
+		if (ownerUuid == null) return null;
+		NbtCompound profileTag = dataTracker.get(OWNER_PROFILE);
+		if (cachedProfile == null || profileTag != cachedProfileTag || !ownerUuid.equals(cachedProfile.getId())) {
+			GameProfile stored = NbtHelper.toGameProfile(profileTag);
+			cachedProfile = stored != null && ownerUuid.equals(stored.getId())
+				? stored : new GameProfile(ownerUuid, getOwnerName());
+			cachedProfileTag = profileTag;
+		}
+		return cachedProfile;
 	}
 
 	public void setOwnerName(String name) {
 		this.dataTracker.set(OWNER_NAME, name == null ? "Scav" : name);
 	}
 
-	public boolean hasBackpackVisual() {
-		return this.dataTracker.get(HAS_BACKPACK);
-	}
-
-	public boolean hasHelmetVisual() {
-		return this.dataTracker.get(HAS_HELMET);
+	public ItemStack getVisibleEquipment(EquipmentSlotType slot) {
+		TrackedData<ItemStack> tracked = GEAR.get(slot);
+		return tracked == null ? ItemStack.EMPTY : dataTracker.get(tracked);
 	}
 
 	public PlayerLoadout getLoadout() {
@@ -404,6 +477,7 @@ public class CorpseEntity extends Entity {
 	public void tick() {
 		super.tick();
 		if (!this.getWorld().isClient) {
+			syncVisualEquipment();
 			ageTicks++;
 			if (isCompletelyEmpty()) {
 				emptyTicks++;
@@ -427,7 +501,7 @@ public class CorpseEntity extends Entity {
 	}
 
 	public void openForPlayer(ServerPlayerEntity player) {
-		if (player.getUuid().equals(ownerUuid) && RaidSession.isScav(player)) {
+		if (player.getUuid().equals(getOwnerUuid()) && RaidSession.isScav(player)) {
 			player.sendMessage(Text.translatable("message.tarkovcraft.raid.own_corpse"), true);
 			return;
 		}
@@ -459,7 +533,11 @@ public class CorpseEntity extends Entity {
 		if (nbt.contains("OwnerName", NbtElement.STRING_TYPE)) {
 			setOwnerName(nbt.getString("OwnerName"));
 		}
-		ownerUuid = nbt.containsUuid("OwnerUuid") ? nbt.getUuid("OwnerUuid") : null;
+		Optional<UUID> ownerUuid = nbt.containsUuid("OwnerUuid") ? Optional.of(nbt.getUuid("OwnerUuid")) : Optional.empty();
+		dataTracker.set(OWNER_UUID, ownerUuid);
+		Kind defaultKind = ownerUuid.isPresent() ? Kind.PLAYER : Kind.SCAV;
+		dataTracker.set(CORPSE_KIND, Kind.fromName(nbt.getString("CorpseKind"), defaultKind).name());
+		dataTracker.set(OWNER_PROFILE, nbt.getCompound("OwnerProfile"));
 		if (nbt.contains("Loadout", NbtElement.COMPOUND_TYPE)) {
 			loadout.readNbt(nbt.getCompound("Loadout"));
 		}
@@ -470,13 +548,15 @@ public class CorpseEntity extends Entity {
 			pocketsSearchMemory = ContainerSearchMemory.fromNbt(nbt.getCompound("PocketsSearchMemory"));
 		}
 		ageTicks = nbt.getInt("AgeTicks");
-		syncVisualFlags();
+		syncVisualEquipment();
 	}
 
 	@Override
 	protected void writeCustomDataToNbt(NbtCompound nbt) {
 		nbt.putString("OwnerName", getOwnerName());
-		if (ownerUuid != null) nbt.putUuid("OwnerUuid", ownerUuid);
+		dataTracker.get(OWNER_UUID).ifPresent(uuid -> nbt.putUuid("OwnerUuid", uuid));
+		nbt.putString("CorpseKind", getKind().name());
+		if (!dataTracker.get(OWNER_PROFILE).isEmpty()) nbt.put("OwnerProfile", dataTracker.get(OWNER_PROFILE));
 		nbt.put("Loadout", loadout.writeLootNbt());
 		nbt.put("PocketsGrid", pocketsGrid.toNbt());
 		nbt.put("PocketsSearchMemory", pocketsSearchMemory.toNbt());

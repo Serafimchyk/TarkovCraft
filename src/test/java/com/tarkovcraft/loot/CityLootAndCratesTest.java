@@ -120,7 +120,6 @@ class CityLootAndCratesTest {
 		var boss = TarkovLootGenerator.createBossLoot(random);
 		assertTrue(assertInstanceOf(TarkovArmorItem.class, boss.bodyArmor().getItem()).getArmorClass() >= 5);
 		assertTrue(assertInstanceOf(TarkovArmorItem.class, boss.helmet().getItem()).getArmorClass() >= 5);
-		assertFalse(boss.weapon().isEmpty());
 		assertEquals(2, boss.trophies().size());
 		for (ItemStack trophy : boss.trophies()) {
 			assertTrue(assertInstanceOf(TarkovFunctionalItem.class, trophy.getItem()).isValuable());

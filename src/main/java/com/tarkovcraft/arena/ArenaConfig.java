@@ -16,7 +16,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -137,12 +136,14 @@ final class ArenaConfig {
 	private record Config(Map<String, Map<String, Definition>> dimensions, Lobby lobby) { }
 	private record Lobby(String dimension, BlockPos position) { }
 
-	private record Definition(String displayName, BlockPos anchor, List<BlockPos> corners, int durationMinutes,
-		boolean airdropsEnabled, int maxGroundY, boolean bossEnabled, Set<BlockPos> airdropPoints, Set<BlockPos> pointsOfInterest,
+	private record Definition(String displayName, BlockPos anchor, List<BlockPos> vertices, List<BlockPos> corners, int durationMinutes,
+		boolean airdropsEnabled, int maxGroundY, boolean bossEnabled, Boolean scavBotsEnabled, Integer scavBotCount,
+		Set<BlockPos> airdropPoints, Set<BlockPos> pointsOfInterest,
 		Set<BlockPos> pmcSpawns, Set<BlockPos> scavSpawns, Map<String, ArenaEventsState.Extract> extracts, Set<BlockPos> lootPoints) {
 		static Definition from(ArenaEventsState.Arena arena) {
-			return new Definition(arena.displayName, arena.anchor, Arrays.asList(arena.corners.clone()), arena.durationMinutes,
-				arena.airdropsEnabled, arena.maxGroundY, arena.bossEnabled, arena.airdropPoints, arena.pointsOfInterest,
+			return new Definition(arena.displayName, arena.anchor, arena.corners(), null, arena.durationMinutes,
+				arena.airdropsEnabled, arena.maxGroundY, arena.bossEnabled, arena.scavBotsEnabled, arena.scavBotCount,
+				arena.airdropPoints, arena.pointsOfInterest,
 				arena.pmcSpawns, arena.scavSpawns, arena.extracts, arena.lootPoints);
 		}
 
@@ -153,11 +154,10 @@ final class ArenaConfig {
 			arena.airdropsEnabled = airdropsEnabled;
 			arena.maxGroundY = maxGroundY;
 			arena.bossEnabled = bossEnabled;
-			if (corners != null) {
-				for (int i = 0; i < Math.min(4, corners.size()); i++) {
-					if (corners.get(i) != null) arena.setCorner(i, corners.get(i));
-				}
-			}
+			if (scavBotsEnabled != null) arena.scavBotsEnabled = scavBotsEnabled;
+			if (scavBotCount != null) arena.scavBotCount = Math.max(0, Math.min(32, scavBotCount));
+			if (vertices != null) arena.setVertices(vertices);
+			else if (corners != null) arena.setVertices(ArenaPolygon.migrateCorners(corners));
 			if (airdropPoints != null) arena.airdropPoints.addAll(airdropPoints);
 			if (pointsOfInterest != null) arena.pointsOfInterest.addAll(pointsOfInterest);
 			if (pmcSpawns != null) arena.pmcSpawns.addAll(pmcSpawns);

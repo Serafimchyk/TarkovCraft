@@ -7,7 +7,6 @@ import com.tarkovcraft.loadout.PlayerLoadoutHolder;
 import com.tarkovcraft.search.ItemRarityTier;
 import net.minecraft.client.item.TooltipContext;
 import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -25,7 +24,7 @@ import java.util.Locale;
  * TarkovCraft medical item (bandages, tourniquets, splints, painkillers, medkits, surgical kits).
  * Tracks remaining uses or HP pool via NBT_REMAINING without item stacking.
  */
-public class TarkovMedicalItem extends Item implements TarkovSizedItem {
+public class TarkovMedicalItem extends ModelledItem {
 	public static final String NBT_REMAINING = "TarkovMedRemaining";
 
 	private final MedicalType medicalType;

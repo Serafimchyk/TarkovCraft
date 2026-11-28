@@ -1585,11 +1585,12 @@ public class TarkovInventoryScreen extends HandledScreen<TarkovScreenHandler> {
 					InteractiveRegion region = findRegionAt(mouseX, mouseY);
 					if (region != null) {
 						DropEvaluation eval = evaluateDrop(region, mouseX, mouseY);
-						if (region.locType == TarkovNetworking.LOC_EQUIPMENT
-							&& region.containerIndex == EquipmentSlotType.HEADSET.ordinal()
-							&& EquipmentSlotType.HEADSET.accepts(drag.stack)
-							&& ClientLoadoutCache.getLoadout().blocksHeadset() && client != null && client.player != null) {
-							client.player.sendMessage(Text.translatable("message.tarkovcraft.headset_blocked"), true);
+						if (!eval.valid && region.locType == TarkovNetworking.LOC_EQUIPMENT && client != null && client.player != null) {
+							EquipmentSlotType slot = EquipmentSlotType.values()[region.containerIndex];
+							if (slot.accepts(drag.stack) && ClientLoadoutCache.getLoadout().hasHeadsetConflict(slot, drag.stack)) {
+								client.player.sendMessage(Text.translatable(slot == EquipmentSlotType.HEADSET
+									? "message.tarkovcraft.headset_blocked" : "message.tarkovcraft.headgear_blocked"), true);
+							}
 						}
 						if (eval.valid) {
 							TarkovNetworking.sendMoveItem(

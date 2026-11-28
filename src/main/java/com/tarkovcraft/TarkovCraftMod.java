@@ -1,6 +1,7 @@
 package com.tarkovcraft;
 
 import com.tarkovcraft.ammo.AmmoReloadTracker;
+import com.tarkovcraft.audio.TarkovFootstepSounds;
 import com.tarkovcraft.arena.ArenaBossSpawner;
 import com.tarkovcraft.arena.ArenaEvents;
 import com.tarkovcraft.arena.RaidSession;
@@ -9,6 +10,7 @@ import com.tarkovcraft.container.VanillaContainerBridge;
 import com.tarkovcraft.grid.ItemSizeRegistry;
 import com.tarkovcraft.health.BodyHealthTicker;
 import com.tarkovcraft.health.TaCZBulletHelper;
+import com.tarkovcraft.loadout.ArmorHandling;
 import com.tarkovcraft.loadout.PlayerLoadoutHolder;
 import com.tarkovcraft.item.TarkovArmorRepairItem;
 import com.tarkovcraft.network.AmmoSelectionNetworking;
@@ -51,11 +53,16 @@ public class TarkovCraftMod implements ModInitializer {
 		com.tarkovcraft.config.TarkovConfig.loadOrCreate();
 		ModBlocks.init();
 		ModItems.init();
+		net.minecraft.registry.Registry.register(net.minecraft.registry.Registries.SOUND_EVENT,
+			com.tarkovcraft.audio.TarkovSoundType.SNEAK_STEP_ID, com.tarkovcraft.audio.TarkovSoundType.SNEAK_STEP);
+		TarkovFootstepSounds.register();
 		ModEntities.init();
 		ModScreenHandlers.init();
 		com.tarkovcraft.worldgen.ModWorldGen.init();
 		com.tarkovcraft.entity.MobGearSpawner.register();
 		ArenaBossSpawner.register();
+		com.tarkovcraft.arena.ArenaBoundaryEditing.register();
+		com.tarkovcraft.arena.ArenaInspectorServer.register();
 		RaidSession.register();
 		TarkovNetworking.registerServerReceivers();
 		com.tarkovcraft.network.AdminItemNetworking.register();
@@ -95,6 +102,7 @@ public class TarkovCraftMod implements ModInitializer {
 					tsh.tickServer(player);
 				}
 				if (player instanceof PlayerLoadoutHolder holder) {
+					ArmorHandling.updateMovement(player, holder.tarkovcraft$getLoadout());
 					holder.tarkovcraft$syncLoadoutIfChanged();
 				}
 			}

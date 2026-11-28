@@ -92,10 +92,8 @@ public final class LobbyServiceScreenHandler extends LobbyScreenHandler {
 		PlayerLoadoutHolder holder = (PlayerLoadoutHolder) player;
 		BodyPartHealth health = holder.tarkovcraft$getBodyHealth();
 		GridContainer stash = PlayerProfileState.get(player.getServer()).stash(player.getUuid());
-		List<Repair> all = new ArrayList<>();
-		for (EquipmentSlotType slot : EquipmentSlotType.values())
-			addRepair(all, slot, null, holder.tarkovcraft$getLoadout().getEquipment(slot));
-		List<Repair> equipped = List.copyOf(all);
+		List<Repair> equipped = equippedRepairs(player);
+		List<Repair> all = new ArrayList<>(equipped);
 		for (GridEntry entry : stash.getEntries()) addRepair(all, null, entry.getEntryId(), entry.getStack());
 
 		int pages = Math.max(1, (all.size() + ROWS - 1) / ROWS);
@@ -106,6 +104,24 @@ public final class LobbyServiceScreenHandler extends LobbyScreenHandler {
 			hasMeds, repairs.stream().map(Repair::view).toList());
 		open(player, LobbyManager.label("tab.service", "Service"), view::write,
 			syncId -> new LobbyServiceScreenHandler(syncId, player, view, repairs, equipped));
+	}
+
+	static long equippedRepairPrice(ServerPlayerEntity player) {
+		return equippedRepairs(player).stream().mapToLong(Repair::price).sum();
+	}
+
+	static boolean repairEquipped(ServerPlayerEntity player, long expectedPrice) {
+		List<Repair> repairs = equippedRepairs(player);
+		return expectedPrice > 0 && repairs.stream().mapToLong(Repair::price).sum() == expectedPrice
+			&& repair(player, repairs);
+	}
+
+	private static List<Repair> equippedRepairs(ServerPlayerEntity player) {
+		var loadout = ((PlayerLoadoutHolder) player).tarkovcraft$getLoadout();
+		List<Repair> repairs = new ArrayList<>();
+		for (EquipmentSlotType slot : EquipmentSlotType.values())
+			addRepair(repairs, slot, null, loadout.getEquipment(slot));
+		return repairs;
 	}
 
 	private static long healingPrice(BodyPartHealth health) {
@@ -180,8 +196,8 @@ public final class LobbyServiceScreenHandler extends LobbyScreenHandler {
 		holder.tarkovcraft$syncBodyHealth();
 	}
 
-	private static void repair(ServerPlayerEntity player, List<Repair> repairs) {
-		if (repairs.isEmpty()) return;
+	private static boolean repair(ServerPlayerEntity player, List<Repair> repairs) {
+		if (repairs.isEmpty()) return false;
 		PlayerLoadoutHolder holder = (PlayerLoadoutHolder) player;
 		var loadout = holder.tarkovcraft$getLoadout();
 		PlayerProfileState profile = PlayerProfileState.get(player.getServer());
@@ -192,14 +208,15 @@ public final class LobbyServiceScreenHandler extends LobbyScreenHandler {
 			GridEntry entry = repair.entryId() == null ? null : stash.getEntry(repair.entryId());
 			ItemStack target = repair.slot() != null ? loadout.getEquipment(repair.slot())
 				: entry == null ? ItemStack.EMPTY : entry.getStack();
-			if (!ItemStack.areEqual(target, repair.original())) return;
+			if (!ItemStack.areEqual(target, repair.original())) return false;
 			targets.add(target);
 			price += repair.price();
 		}
-		if (!pay(player, profile, price)) return;
+		if (!pay(player, profile, price)) return false;
 		for (int i = 0; i < targets.size(); i++)
 			targets.get(i).setNbt(repairs.get(i).result().getNbt().copy());
 		holder.tarkovcraft$syncLoadout();
+		return true;
 	}
 
 	private static boolean pay(ServerPlayerEntity player, PlayerProfileState profile, long price) {

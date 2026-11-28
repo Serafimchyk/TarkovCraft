@@ -3,7 +3,6 @@ package com.tarkovcraft.item;
 import com.tarkovcraft.grid.ItemSize;
 import com.tarkovcraft.search.ItemRarityTier;
 import net.minecraft.client.item.TooltipContext;
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
@@ -12,7 +11,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
-public class TacticalRigItem extends Item implements TarkovSizedItem {
+public class TacticalRigItem extends ModelledItem {
 	private final List<ItemSize> compartmentLayouts;
 	private final ItemSize storedItemSize;
 	private final ItemRarityTier rarityTier;

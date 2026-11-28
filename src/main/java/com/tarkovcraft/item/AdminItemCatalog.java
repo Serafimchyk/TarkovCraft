@@ -1,6 +1,8 @@
 package com.tarkovcraft.item;
 
 import com.tarkovcraft.TarkovCraftMod;
+import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.ammo.TaCZCaliberCatalog;
 import com.tarkovcraft.loadout.EquipmentSlotType;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.loader.api.FabricLoader;
@@ -17,15 +19,26 @@ import java.util.Optional;
 public final class AdminItemCatalog {
 	private AdminItemCatalog() { }
 
-	public record Entry(Identifier itemId, Identifier variant) {
+	public record Entry(Identifier itemId, Identifier variant, AmmoTier tier) {
+		public Entry(Identifier itemId, Identifier variant) {
+			this(itemId, variant, AmmoTier.FMJ);
+		}
+
 		public ItemStack create() {
+			if (tier != AmmoTier.FMJ && (!TaCZKind.Ammo.itemId.equals(itemId) || variant == null
+				|| !TaCZCaliberCatalog.isBallisticAmmoId(variant.toString())
+				|| !TaCZCaliberCatalog.isTierAllowed(variant.toString(), tier))) return ItemStack.EMPTY;
 			if (variant == null) {
 				return TarkovCraftMod.MOD_ID.equals(itemId.getNamespace())
 					? Registries.ITEM.getOrEmpty(itemId).map(ItemStack::new).orElse(ItemStack.EMPTY)
 					: ItemStack.EMPTY;
 			}
 			for (TaCZKind kind : TaCZKind.values()) {
-				if (kind.itemId.equals(itemId)) return kind.create(variant);
+				if (kind.itemId.equals(itemId)) {
+					ItemStack stack = kind.create(variant);
+					if (tier != AmmoTier.FMJ) AmmoTier.setOnAmmoStack(stack, tier);
+					return stack;
+				}
 			}
 			return ItemStack.EMPTY;
 		}
@@ -35,7 +48,7 @@ public final class AdminItemCatalog {
 		if (stack.getItem() instanceof TarkovArmorItem armor) return List.of(armor.getTargetSlot());
 		if (stack.getItem() instanceof BackpackItem) return List.of(EquipmentSlotType.BACKPACK);
 		if (stack.getItem() instanceof TacticalRigItem) return List.of(EquipmentSlotType.RIG);
-		if (stack.getItem() instanceof TarkovFunctionalItem item && item.isHeadset()) return List.of(EquipmentSlotType.HEADSET);
+		if (stack.getItem() instanceof TarkovHeadsetItem) return List.of(EquipmentSlotType.HEADSET);
 		if (stack.getItem() instanceof TarkovMeleeItem) return List.of(EquipmentSlotType.MELEE);
 		if (TaCZKind.Gun.itemId.equals(Registries.ITEM.getId(stack.getItem()))) {
 			return List.of(EquipmentSlotType.PISTOL, EquipmentSlotType.PRIMARY_1, EquipmentSlotType.PRIMARY_2)

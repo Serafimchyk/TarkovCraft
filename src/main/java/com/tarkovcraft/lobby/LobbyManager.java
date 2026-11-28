@@ -193,8 +193,9 @@ public final class LobbyManager {
 			if (!isInLobby(player) || !player.isAlive()) continue;
 			maintainLobbyPlayer(player);
 			if (clock % 10 == 0) {
-				if (player.currentScreenHandler == player.playerScreenHandler) LobbyPlayScreenHandler.open(player);
-				else if (player.currentScreenHandler instanceof LobbyPlayScreenHandler screen) screen.refresh(player);
+				if (player.currentScreenHandler == player.playerScreenHandler) {
+					if (!RaidSession.showPendingResult(player)) LobbyPlayScreenHandler.open(player);
+				} else if (player.currentScreenHandler instanceof LobbyPlayScreenHandler screen) screen.refresh(player);
 			}
 		}
 		updateCountdown(server);
@@ -287,7 +288,11 @@ public final class LobbyManager {
 	}
 
 	private static RaidSession.LobbyConditions defaults(RaidSession.ArenaChoice arena) {
-		return arena == null ? null : new RaidSession.LobbyConditions(arena.boss(), arena.airdrops(), 0);
+		return arena == null ? null : new RaidSession.LobbyConditions(arena.boss(), arena.airdrops(), 0, null);
+	}
+
+	private boolean scavBotsEnabled() {
+		return conditions.scavOverride() == null ? selectedArena.scavs() : conditions.scavOverride();
 	}
 
 	private boolean canConfigure(ServerPlayerEntity player) {
@@ -341,7 +346,8 @@ public final class LobbyManager {
 		selectCurrentArena(arenas);
 		int selected = selectedArena == null ? -1 : arenas.indexOf(selectedArena);
 		var arena = selectedArena == null ? ArenaView.EMPTY : new ArenaView(selectedArena.name(), selectedArena.minutes(),
-			conditions.boss(), conditions.airdrops(), selectedArena.exits(), conditions.timeOfDay(), selectedArena.ready());
+			conditions.boss(), conditions.airdrops(), selectedArena.exits(), conditions.timeOfDay(), selectedArena.ready(),
+			scavBotsEnabled() && selectedArena.scavCount() > 0, selectedArena.scavCount());
 		var party = party(leader).stream().map(server.getPlayerManager()::getPlayer).filter(member -> member != null)
 			.map(member -> new PlayerView(member.getUuid(), member.getGameProfile().getName(), ready.contains(member.getUuid()),
 				leader.equals(member.getUuid()))).toList();
@@ -446,7 +452,7 @@ public final class LobbyManager {
 		return true;
 	}
 
-	public enum Configuration { PREVIOUS_ARENA, NEXT_ARENA, SQUADS, BOSS, AIRDROPS, TIME }
+	public enum Configuration { PREVIOUS_ARENA, NEXT_ARENA, SQUADS, BOSS, AIRDROPS, TIME, SCAVS }
 
 	public static boolean configure(ServerPlayerEntity player, Configuration option) {
 		if (!isInLobby(player) || RaidSession.isActive(player.getServer())) return false;
@@ -464,11 +470,16 @@ public final class LobbyManager {
 			}
 			case SQUADS -> lobby.squads = !lobby.squads;
 			case BOSS -> lobby.conditions = new RaidSession.LobbyConditions(!lobby.conditions.boss(),
-				lobby.conditions.airdrops(), lobby.conditions.timeOfDay());
+				lobby.conditions.airdrops(), lobby.conditions.timeOfDay(), lobby.conditions.scavOverride());
 			case AIRDROPS -> lobby.conditions = new RaidSession.LobbyConditions(lobby.conditions.boss(),
-				!lobby.conditions.airdrops(), lobby.conditions.timeOfDay());
+				!lobby.conditions.airdrops(), lobby.conditions.timeOfDay(), lobby.conditions.scavOverride());
 			case TIME -> lobby.conditions = new RaidSession.LobbyConditions(lobby.conditions.boss(),
-				lobby.conditions.airdrops(), (lobby.conditions.timeOfDay() + 1) % 3);
+				lobby.conditions.airdrops(), (lobby.conditions.timeOfDay() + 1) % 3, lobby.conditions.scavOverride());
+			case SCAVS -> {
+				if (lobby.selectedArena.scavCount() <= 0) return false;
+				lobby.conditions = new RaidSession.LobbyConditions(lobby.conditions.boss(),
+					lobby.conditions.airdrops(), lobby.conditions.timeOfDay(), !lobby.scavBotsEnabled());
+			}
 		}
 		lobby.ready.clear();
 		lobby.cancelCountdown();
@@ -554,8 +565,9 @@ public final class LobbyManager {
 	private record Invitation(UUID leader, long expires) { }
 	private record WaitingPlayer(boolean invisible, int food, float saturation) { }
 
-	public record ArenaView(String name, int minutes, boolean boss, boolean airdrops, int exits, int timeOfDay, boolean valid) {
-		private static final ArenaView EMPTY = new ArenaView("", 0, false, false, 0, 0, false);
+	public record ArenaView(String name, int minutes, boolean boss, boolean airdrops, int exits, int timeOfDay,
+		boolean valid, boolean scavs, int scavCount) {
+		private static final ArenaView EMPTY = new ArenaView("", 0, false, false, 0, 0, false, false, 0);
 	}
 
 	public record PlayerView(UUID id, String name, boolean ready, boolean leader) { }

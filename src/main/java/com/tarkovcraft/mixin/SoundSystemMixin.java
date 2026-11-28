@@ -1,71 +1,69 @@
 package com.tarkovcraft.mixin;
 
-import com.tarkovcraft.audio.HearingProfile;
-import com.tarkovcraft.client.ClientLoadoutCache;
-import net.minecraft.client.MinecraftClient;
+import com.tarkovcraft.audio.TarkovFootstepSounds;
+import com.tarkovcraft.client.TarkovSoundEngine;
 import net.minecraft.client.sound.SoundInstance;
+import net.minecraft.client.sound.SoundInstanceListener;
 import net.minecraft.client.sound.SoundSystem;
+import net.minecraft.client.sound.WeightedSoundSet;
+import net.minecraft.client.gui.hud.SubtitlesHud;
 import net.minecraft.sound.SoundCategory;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(SoundSystem.class)
 abstract class SoundSystemMixin {
-	@ModifyVariable(method = "play(Lnet/minecraft/client/sound/SoundInstance;)V", at = @At("STORE"), ordinal = 1)
-	private float tarkovcraft$attenuation(float range, SoundInstance sound) {
-		HearingProfile profile = tarkovcraft$profile(sound);
-		return profile.muffled() || tarkovcraft$isTactical(sound) && !tarkovcraft$isLoud(sound)
-			? range * profile.range() : range;
+	@Shadow
+	private float getAdjustedVolume(float volume, SoundCategory category) {
+		throw new AssertionError();
 	}
 
-	@ModifyVariable(method = "play(Lnet/minecraft/client/sound/SoundInstance;)V", at = @At("STORE"), ordinal = 2)
+	@Redirect(method = "play(Lnet/minecraft/client/sound/SoundInstance;)V", at = @At(value = "INVOKE",
+		target = "Lnet/minecraft/client/sound/SoundInstanceListener;onSoundPlayed(Lnet/minecraft/client/sound/SoundInstance;Lnet/minecraft/client/sound/WeightedSoundSet;)V"))
+	private void tarkovcraft$notifySoundListener(SoundInstanceListener listener, SoundInstance sound, WeightedSoundSet set) {
+		if (!(listener instanceof SubtitlesHud) || !TarkovSoundEngine.isTactical(sound)) listener.onSoundPlayed(sound, set);
+	}
+
+	@Redirect(method = "play(Lnet/minecraft/client/sound/SoundInstance;)V", at = @At(value = "INVOKE",
+		target = "Lnet/minecraft/client/sound/SoundInstance;getAttenuationType()Lnet/minecraft/client/sound/SoundInstance$AttenuationType;"))
+	private SoundInstance.AttenuationType tarkovcraft$attenuation(SoundInstance sound) {
+		// Distance gain is calculated in game units. OpenAL still receives the source position.
+		return TarkovSoundEngine.mix(sound).positional() ? SoundInstance.AttenuationType.NONE : sound.getAttenuationType();
+	}
+
+	@ModifyVariable(method = "play(Lnet/minecraft/client/sound/SoundInstance;)V", at = @At(value = "STORE"), ordinal = 2)
 	private float tarkovcraft$initialVolume(float volume, SoundInstance sound) {
-		return tarkovcraft$volume(volume, sound);
+		return tarkovcraft$mixVolume(volume, sound);
+	}
+
+	@ModifyVariable(method = "play(Lnet/minecraft/client/sound/SoundInstance;)V", at = @At("STORE"), ordinal = 1)
+	private float tarkovcraft$ambientRange(float range, SoundInstance sound) {
+		return range * TarkovSoundEngine.ambientRange(sound);
 	}
 
 	@Inject(method = "getAdjustedVolume(Lnet/minecraft/client/sound/SoundInstance;)F", at = @At("RETURN"), cancellable = true)
-	private void tarkovcraft$tickingVolume(SoundInstance sound, CallbackInfoReturnable<Float> callback) {
-		callback.setReturnValue(tarkovcraft$volume(callback.getReturnValueF(), sound));
+	private void tarkovcraft$volume(SoundInstance sound, CallbackInfoReturnable<Float> callback) {
+		callback.setReturnValue(tarkovcraft$mixVolume(callback.getReturnValueF(), sound));
+	}
+
+	@Unique
+	private float tarkovcraft$mixVolume(float adjustedVolume, SoundInstance sound) {
+		float gain = TarkovSoundEngine.mix(sound).gain();
+		if (TarkovFootstepSounds.isPlayerMovement(sound.getId())) {
+			// Keep the sprint gain through distance attenuation before applying the output ceiling.
+			return getAdjustedVolume(sound.getVolume() * gain, sound.getCategory());
+		}
+		return adjustedVolume * gain;
 	}
 
 	@Inject(method = "getAdjustedPitch", at = @At("RETURN"), cancellable = true)
 	private void tarkovcraft$pitch(SoundInstance sound, CallbackInfoReturnable<Float> callback) {
-		callback.setReturnValue(callback.getReturnValueF() * tarkovcraft$profile(sound).pitch());
-	}
-
-	@Unique
-	private static float tarkovcraft$volume(float volume, SoundInstance sound) {
-		HearingProfile profile = tarkovcraft$profile(sound);
-		if (profile == HearingProfile.DEFAULT) return volume;
-		if (!profile.muffled()) {
-			if (tarkovcraft$isLoud(sound)) return Math.min(volume, profile.loudClamp());
-			if (!tarkovcraft$isTactical(sound)) return volume;
-		}
-		return Math.min(1.0f, volume * profile.ambientGain());
-	}
-
-	@Unique
-	private static HearingProfile tarkovcraft$profile(SoundInstance sound) {
-		if (MinecraftClient.getInstance().player == null || sound.getCategory() == SoundCategory.MUSIC
-			|| sound.getCategory() == SoundCategory.RECORDS || sound.getCategory() == SoundCategory.VOICE
-			|| sound.getCategory() == SoundCategory.MASTER && sound.isRelative()) return HearingProfile.DEFAULT;
-		return HearingProfile.forLoadout(ClientLoadoutCache.getLoadout());
-	}
-
-	@Unique
-	private static boolean tarkovcraft$isTactical(SoundInstance sound) {
-		return HearingProfile.isQuietTactical(sound.getId(), sound.getCategory())
-			|| sound.getSound() != null
-				&& HearingProfile.isQuietTactical(sound.getSound().getIdentifier(), sound.getCategory());
-	}
-
-	@Unique
-	private static boolean tarkovcraft$isLoud(SoundInstance sound) {
-		return HearingProfile.isLoud(sound.getId().getPath())
-			|| sound.getSound() != null && HearingProfile.isLoud(sound.getSound().getIdentifier().getPath());
+		callback.setReturnValue(callback.getReturnValueF() * TarkovSoundEngine.mix(sound).pitch());
 	}
 }

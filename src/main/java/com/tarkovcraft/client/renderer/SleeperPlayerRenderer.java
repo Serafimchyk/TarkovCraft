@@ -1,18 +1,15 @@
 package com.tarkovcraft.client.renderer;
 
 import com.mojang.authlib.GameProfile;
-import com.tarkovcraft.client.model.GearModel;
 import com.tarkovcraft.entity.SleeperPlayerEntity;
 import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.entity.EntityRendererFactory;
 import net.minecraft.client.render.entity.LivingEntityRenderer;
-import net.minecraft.client.render.entity.feature.FeatureRenderer;
 import net.minecraft.client.render.entity.feature.HeldItemFeatureRenderer;
 import net.minecraft.client.render.entity.model.EntityModelLayers;
 import net.minecraft.client.render.entity.model.PlayerEntityModel;
 import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.item.Item;
 import net.minecraft.util.Identifier;
 
 import java.util.Map;
@@ -28,17 +25,7 @@ public final class SleeperPlayerRenderer extends LivingEntityRenderer<SleeperPla
 		wideModel = model;
 		slimModel = new PlayerEntityModel<>(context.getPart(EntityModelLayers.PLAYER_SLIM), true);
 		addFeature(new HeldItemFeatureRenderer<>(this, context.getHeldItemRenderer()));
-		addFeature(new FeatureRenderer<>(this) {
-			@Override
-			public void render(MatrixStack matrices, VertexConsumerProvider vertices, int light, SleeperPlayerEntity sleeper,
-					float limbAngle, float limbDistance, float tickDelta, float animationProgress, float headYaw, float headPitch) {
-				if (sleeper.isInvisible()) return;
-				for (Item item : sleeper.getVisibleGear()) {
-					GearModel gear = GearAppearance.worn(item);
-					if (gear != null) gear.renderWorn(matrices, vertices, light, getContextModel(), item);
-				}
-			}
-		});
+		addFeature(new TarkovEquipmentFeatureRenderer<>(this, SleeperPlayerEntity::getVisibleGear));
 	}
 
 	@Override

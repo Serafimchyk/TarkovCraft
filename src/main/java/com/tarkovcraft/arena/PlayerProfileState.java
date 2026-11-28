@@ -1,10 +1,18 @@
 package com.tarkovcraft.arena;
 
+import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.ammo.TaCZBotGun;
 import com.tarkovcraft.grid.GridContainer;
+import com.tarkovcraft.loot.TarkovLootGenerator;
+import com.tarkovcraft.registry.ModItems;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
 import net.minecraft.nbt.NbtList;
+import net.minecraft.registry.Registries;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.PersistentState;
 
@@ -13,7 +21,7 @@ import java.util.Map;
 import java.util.UUID;
 
 public final class PlayerProfileState extends PersistentState {
-	public static final long STARTING_RUBLES = 150_000L;
+	public static final long STARTING_RUBLES = 500_000L;
 	public static final int STASH_WIDTH = 10;
 	public static final int STASH_HEIGHT = 24;
 	private static final int PRESET_COUNT = 3;
@@ -52,6 +60,67 @@ public final class PlayerProfileState extends PersistentState {
 		NbtCompound profile = get(player);
 		profile.putLong("Rubles", rubles);
 		put(player, profile);
+	}
+
+	boolean deliverStartingSupplies(UUID player) {
+		NbtCompound profile = get(player);
+		boolean firstDelivery = !profile.getBoolean("StartingSuppliesGranted");
+		NbtList supplies = firstDelivery ? startingSupplies()
+			: profile.getList("StartingSuppliesPending", NbtElement.COMPOUND_TYPE);
+		if (!firstDelivery && supplies.isEmpty()) return true;
+
+		if (firstDelivery) {
+			profile.putBoolean("StartingSuppliesGranted", true);
+			profile.putLong("Rubles", Math.max(STARTING_RUBLES, rubles(player)));
+		}
+		GridContainer destination = stash(player);
+		NbtList remaining = new NbtList();
+		for (int i = 0; i < supplies.size(); i++) {
+			ItemStack stack = ItemStack.fromNbt(supplies.getCompound(i));
+			if (!stack.isEmpty() && !destination.tryAutoPlace(stack)) {
+				remaining.add(stack.writeNbt(new NbtCompound()));
+			}
+		}
+		if (remaining.isEmpty()) profile.remove("StartingSuppliesPending");
+		else profile.put("StartingSuppliesPending", remaining);
+		put(player, profile);
+		return remaining.isEmpty();
+	}
+
+	private static NbtList startingSupplies() {
+		NbtList supplies = new NbtList();
+		for (String id : new String[]{"tacz:glock_17", "tacz:hk_mp5a5"}) {
+			TaCZBotGun gun = TaCZBotGun.find(id);
+			if (gun == null) continue;
+			ItemStack weapon = TarkovLootGenerator.createLoadedGunStack(gun, AmmoTier.FMJ);
+			if (weapon.isEmpty()) continue;
+			supplies.add(weapon.writeNbt(new NbtCompound()));
+			ItemStack ammo = AmmoTier.createTaczAmmoStack(gun.ammo().toString(), AmmoTier.FMJ, 30);
+			supplies.add(ammo.writeNbt(new NbtCompound()));
+			supplies.add(ammo.writeNbt(new NbtCompound()));
+		}
+		addSupplies(supplies, ModItems.PACA_ARMOR, 2);
+		addSupplies(supplies, ModItems.SSH68_HELMET, 2);
+		addSupplies(supplies, ModItems.BANK_ROBBER_RIG, 2);
+		addSupplies(supplies, ModItems.BERKUT_BACKPACK, 2);
+		addSupplies(supplies, ModItems.AI2_MEDKIT, 3);
+		addSupplies(supplies, ModItems.BANDAGE, 3);
+		addSupplies(supplies, ModItems.CAT_TOURNIQUET, 2);
+		addSupplies(supplies, ModItems.SPLINT, 2);
+		addSupplies(supplies, ModItems.ANALGIN, 2);
+		Registries.ITEM.getOrEmpty(new Identifier("tarkovcraft:butylka_vody_0_6l_5448fe"))
+			.ifPresent(item -> addSupplies(supplies, item, 2));
+		Registries.ITEM.getOrEmpty(new Identifier("tarkovcraft:sukhoy_paek_iskra_590c5d"))
+			.ifPresent(item -> addSupplies(supplies, item, 2));
+		return supplies;
+	}
+
+	private static void addSupplies(NbtList supplies, Item item, int count) {
+		while (count > 0) {
+			int amount = Math.min(count, item.getMaxCount());
+			supplies.add(new ItemStack(item, amount).writeNbt(new NbtCompound()));
+			count -= amount;
+		}
 	}
 
 	public int pendingLootCount(UUID player) {

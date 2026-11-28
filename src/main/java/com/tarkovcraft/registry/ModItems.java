@@ -8,7 +8,9 @@ import com.tarkovcraft.grid.ItemSize;
 import com.tarkovcraft.health.HitZone;
 import com.tarkovcraft.item.ArmorMaterialType;
 import com.tarkovcraft.item.BackpackItem;
+import com.tarkovcraft.item.ItemModelAppearance;
 import com.tarkovcraft.item.MedicalType;
+import com.tarkovcraft.item.ModelledItem;
 import com.tarkovcraft.item.TacticalRigItem;
 import com.tarkovcraft.item.TarkovArmorItem;
 import com.tarkovcraft.item.TarkovMedicalItem;
@@ -30,24 +32,26 @@ import java.util.EnumSet;
 import java.util.List;
 
 public final class ModItems {
+	public static final com.tarkovcraft.item.ArenaBoundaryWandItem ARENA_BOUNDARY_WAND =
+		register("arena_boundary_wand", new com.tarkovcraft.item.ArenaBoundaryWandItem());
 	// Backpacks
-	public static final BackpackItem SLING_BACKPACK = register("sling_backpack",
+	public static final BackpackItem SLING_BACKPACK = register("sling_backpack", "backpack_small", "ground_backpack_small",
 		new BackpackItem(new FabricItemSettings(), 2, 3, new ItemSize(2, 3)));
-	public static final BackpackItem BERKUT_BACKPACK = register("berkut_backpack",
+	public static final BackpackItem BERKUT_BACKPACK = register("berkut_backpack", "backpack_small", "ground_backpack_small",
 		new BackpackItem(new FabricItemSettings(), 4, 5, new ItemSize(4, 5)));
-	public static final BackpackItem TRIZIP_BACKPACK = register("trizip_backpack",
+	public static final BackpackItem TRIZIP_BACKPACK = register("trizip_backpack", "backpack_large", "ground_backpack_large",
 		new BackpackItem(new FabricItemSettings(), 5, 6, new ItemSize(5, 6)));
 
 	// Tactical Rigs
-	public static final TacticalRigItem SCAV_VEST = register("scav_vest",
+	public static final TacticalRigItem SCAV_VEST = register("scav_vest", "rig_scav_vest", "ground_rig",
 		new TacticalRigItem(new FabricItemSettings(),
 			List.of(new ItemSize(1, 2), new ItemSize(1, 2), new ItemSize(1, 1), new ItemSize(1, 1)),
 			new ItemSize(2, 2)));
-	public static final TacticalRigItem BANK_ROBBER_RIG = register("bank_robber_rig",
+	public static final TacticalRigItem BANK_ROBBER_RIG = register("bank_robber_rig", "rig_belt_rps", "ground_rig",
 		new TacticalRigItem(new FabricItemSettings(),
 			List.of(new ItemSize(1, 2), new ItemSize(1, 2), new ItemSize(1, 2), new ItemSize(1, 2)),
 			new ItemSize(3, 2)));
-	public static final TacticalRigItem TRITON_RIG = register("triton_rig",
+	public static final TacticalRigItem TRITON_RIG = register("triton_rig", "rig_chest_heavy", "ground_rig",
 		new TacticalRigItem(new FabricItemSettings(),
 			List.of(
 				new ItemSize(1, 2), new ItemSize(1, 3), new ItemSize(1, 3), new ItemSize(1, 2),
@@ -57,40 +61,40 @@ public final class ModItems {
 
 	// Zonal Helmets
 	// SSh-68: Class 3, covers ONLY HEAD_TOP (ears, eyes, jaws remain EXPOSED!)
-	public static final TarkovArmorItem SSH68_HELMET = register("ssh68_helmet",
+	public static final TarkovArmorItem SSH68_HELMET = register("ssh68_helmet", "helmet_lowcut", "ground_helmet_open",
 		new TarkovArmorItem(new FabricItemSettings(), EquipmentSlotType.HELMET, new ItemSize(2, 2), 3, 30,
-			ArmorMaterialType.STEEL, 0.45f, 1.3f, EnumSet.of(HitZone.HEAD_TOP)));
+			ArmorMaterialType.STEEL, 0.45f, 1.3f, EnumSet.of(HitZone.HEAD_TOP), ItemRarityTier.UNCOMMON, false, true, 1.0f));
 	// 6B47 Ratnik: Class 3, covers HEAD_TOP + HEAD_EARS (eyes & jaws remain EXPOSED!)
-	public static final TarkovArmorItem RATNIK_6B47_HELMET = register("ratnik_6b47_helmet",
+	public static final TarkovArmorItem RATNIK_6B47_HELMET = register("ratnik_6b47_helmet", "helmet_lowcut", "ground_helmet_open",
 		new TarkovArmorItem(new FabricItemSettings(), EquipmentSlotType.HELMET, new ItemSize(2, 2), 3, 35,
 			ArmorMaterialType.ARAMID, 0.30f, 1.25f, EnumSet.of(HitZone.HEAD_TOP, HitZone.HEAD_EARS), ItemRarityTier.UNCOMMON, false, true, 0.85f));
 	// Altyn Visor Helmet: Class 5, covers HEAD_TOP + HEAD_EARS + HEAD_EYES + HEAD_JAWS (stops head-eyes oneshot!)
-	public static final TarkovArmorItem ALTYN_HELMET = register("altyn_helmet",
+	public static final TarkovArmorItem ALTYN_HELMET = register("altyn_helmet", "helmet_visor", "ground_helmet_visor",
 		new TarkovArmorItem(new FabricItemSettings(), EquipmentSlotType.HELMET, new ItemSize(2, 2), 5, 55,
 			ArmorMaterialType.TITANIUM, 0.40f, 4.1f,
 			EnumSet.of(HitZone.HEAD_TOP, HitZone.HEAD_EARS, HitZone.HEAD_EYES, HitZone.HEAD_JAWS), ItemRarityTier.UNCOMMON, false, true, 0.50f));
 
 	// Face Masks
 	// Balaclava: cosmetic (Class 0, zero ballistic protection)
-	public static final TarkovArmorItem BALACLAVA_MASK = register("balaclava_mask",
+	public static final TarkovArmorItem BALACLAVA_MASK = register("balaclava_mask", "balaclava", "balaclava",
 		new TarkovArmorItem(new FabricItemSettings(), EquipmentSlotType.FACE_MASK, new ItemSize(1, 1), 0, 0,
 			ArmorMaterialType.COSMETIC, 0.0f, 0.1f, EnumSet.noneOf(HitZone.class)));
 	// Death Shadow Lightweight Mask: Class 2, covers HEAD_EYES + HEAD_JAWS
-	public static final TarkovArmorItem DEATH_SHADOW_MASK = register("death_shadow_mask",
+	public static final TarkovArmorItem DEATH_SHADOW_MASK = register("death_shadow_mask", "balaclava", "balaclava",
 		new TarkovArmorItem(new FabricItemSettings(), EquipmentSlotType.FACE_MASK, new ItemSize(2, 2), 2, 25,
 			ArmorMaterialType.ARAMID, 0.10f, 0.4f, EnumSet.of(HitZone.HEAD_EYES, HitZone.HEAD_JAWS)));
 
 	// Body Armor Vests
 	// PACA: Class 2, Thorax + Stomach (Neck & Armpits EXPOSED!)
-	public static final TarkovArmorItem PACA_ARMOR = register("paca_armor",
+	public static final TarkovArmorItem PACA_ARMOR = register("paca_armor", "armor_slick", "ground_armor",
 		new TarkovArmorItem(new FabricItemSettings(), EquipmentSlotType.BODY_ARMOR, new ItemSize(3, 3), 2, 50,
 			ArmorMaterialType.ARAMID, 0.0f, 2.4f, EnumSet.of(HitZone.THORAX, HitZone.STOMACH)));
 	// Zhuk-3 Press: Class 3, Thorax + Stomach (Neck & Armpits EXPOSED!)
-	public static final TarkovArmorItem PRESS_ARMOR = register("press_armor",
+	public static final TarkovArmorItem PRESS_ARMOR = register("press_armor", "armor_medium", "ground_armor",
 		new TarkovArmorItem(new FabricItemSettings(), EquipmentSlotType.BODY_ARMOR, new ItemSize(3, 3), 3, 60,
 			ArmorMaterialType.UHMWPE, 0.0f, 5.0f, EnumSet.of(HitZone.THORAX, HitZone.STOMACH)));
 	// 6B43 Zabralo: Class 6 Heavy Armor, covers Thorax + Stomach + Neck + Left/Right Armpits!
-	public static final TarkovArmorItem ZABRALO_ARMOR = register("zabralo_armor",
+	public static final TarkovArmorItem ZABRALO_ARMOR = register("zabralo_armor", "armor_heavy", "ground_armor",
 		new TarkovArmorItem(new FabricItemSettings(), EquipmentSlotType.BODY_ARMOR, new ItemSize(3, 4), 6, 95,
 			ArmorMaterialType.COMBINED, 0.0f, 14.5f,
 			EnumSet.of(HitZone.THORAX, HitZone.STOMACH, HitZone.NECK, HitZone.ARMPIT_LEFT, HitZone.ARMPIT_RIGHT)));
@@ -106,9 +110,9 @@ public final class ModItems {
 		new TarkovMedicalItem(new FabricItemSettings(), MedicalType.ALU_SPLINT));
 	public static final TarkovMedicalItem ANALGIN = register("analgin",
 		new TarkovMedicalItem(new FabricItemSettings(), MedicalType.ANALGIN));
-	public static final TarkovMedicalItem AI2_MEDKIT = register("ai2_medkit",
+	public static final TarkovMedicalItem AI2_MEDKIT = register("ai2_medkit", null, "ground_case_medkit",
 		new TarkovMedicalItem(new FabricItemSettings(), MedicalType.AI2_MEDKIT));
-	public static final TarkovMedicalItem SALEWA_MEDKIT = register("salewa_medkit",
+	public static final TarkovMedicalItem SALEWA_MEDKIT = register("salewa_medkit", null, "ground_case_medkit",
 		new TarkovMedicalItem(new FabricItemSettings(), MedicalType.SALEWA_MEDKIT));
 	public static final TarkovMedicalItem CMS_KIT = register("cms_kit",
 		new TarkovMedicalItem(new FabricItemSettings(), MedicalType.CMS_KIT));
@@ -247,6 +251,11 @@ public final class ModItems {
 
 	private static <T extends Item> T register(String path, T item) {
 		return Registry.register(Registries.ITEM, new Identifier(TarkovCraftMod.MOD_ID, path), item);
+	}
+
+	private static <T extends ModelledItem> T register(String path, String worn, String ground, T item) {
+		item.setModelAppearance(new ItemModelAppearance(worn, new Identifier(TarkovCraftMod.MOD_ID, path), ground));
+		return register(path, item);
 	}
 
 	public static void init() {

@@ -2,10 +2,10 @@ package com.tarkovcraft.item;
 
 import com.tarkovcraft.grid.ItemSize;
 import com.tarkovcraft.health.HitZone;
+import com.tarkovcraft.loadout.ArmorHandling;
 import com.tarkovcraft.loadout.EquipmentSlotType;
 import com.tarkovcraft.search.ItemRarityTier;
 import net.minecraft.client.item.TooltipContext;
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
  * ballistic material, ricochet chance, weight, durability, and explicit HitZone coverage.
  * Zones NOT in coveredZones take full unmitigated damage.
  */
-public class TarkovArmorItem extends Item implements TarkovSizedItem {
+public class TarkovArmorItem extends ModelledItem {
 	private static final List<HitZone> HELMET_VULNERABLE_ZONES = List.of(
 		HitZone.HEAD_TOP, HitZone.HEAD_EARS, HitZone.HEAD_EYES, HitZone.HEAD_JAWS
 	);
@@ -38,6 +38,7 @@ public class TarkovArmorItem extends Item implements TarkovSizedItem {
 	private final ArmorMaterialType material;
 	private final float ricochetChance;
 	private final float weightKg;
+	private final ArmorHandling handling;
 	private final Set<HitZone> coveredZones;
 	private final ItemRarityTier rarityTier;
 	private static final String MAX_DURABILITY_KEY = "TarkovMaxDurability";
@@ -106,6 +107,7 @@ public class TarkovArmorItem extends Item implements TarkovSizedItem {
 		this.material = material;
 		this.ricochetChance = Math.max(0.0f, Math.min(0.65f, ricochetChance));
 		this.weightKg = Math.max(0.0f, weightKg);
+		this.handling = ArmorHandling.forArmor(targetSlot, armorClass, this.weightKg);
 		Set<HitZone> zones = (coveredZones == null || coveredZones.isEmpty())
 			? EnumSet.noneOf(HitZone.class)
 			: EnumSet.copyOf(coveredZones);
@@ -157,6 +159,10 @@ public class TarkovArmorItem extends Item implements TarkovSizedItem {
 	@Override
 	public float getWeightKg() {
 		return weightKg;
+	}
+
+	public ArmorHandling getHandling() {
+		return handling;
 	}
 
 	public Set<HitZone> getCoveredZones() {
@@ -214,6 +220,15 @@ public class TarkovArmorItem extends Item implements TarkovSizedItem {
 
 	@Override
 	public void appendTooltip(ItemStack stack, @Nullable World world, List<Text> tooltip, TooltipContext context) {
+		if (targetSlot == EquipmentSlotType.HELMET || targetSlot == EquipmentSlotType.FACE_MASK) {
+			if (hearingMultiplier < 1.0f) {
+				tooltip.add(Text.translatable("tooltip.tarkovcraft.armor.hearing",
+					Math.round((1.0f - hearingMultiplier) * 100.0f)).formatted(Formatting.RED));
+			}
+			if (blocksHeadset) {
+				tooltip.add(Text.translatable("tooltip.tarkovcraft.armor.blocks_headset").formatted(Formatting.RED));
+			}
+		}
 		if (armorClass > 0) {
 			tooltip.add(Text.translatable("tooltip.tarkovcraft.armor_class", armorClass).formatted(Formatting.AQUA));
 			tooltip.add(Text.translatable("tooltip.tarkovcraft.armor_material",
@@ -257,5 +272,13 @@ public class TarkovArmorItem extends Item implements TarkovSizedItem {
 
 		tooltip.add(Text.translatable("tooltip.tarkovcraft.armor_weight", String.format(Locale.ROOT, "%.1f", weightKg))
 			.formatted(Formatting.DARK_GRAY));
+		if (handling.movementPenalty() > 0) {
+			tooltip.add(Text.translatable("tooltip.tarkovcraft.armor_movement_penalty", "−" + handling.movementPenalty() + "%")
+				.formatted(Formatting.RED));
+		}
+		if (handling.ergonomicsPenalty() > 0) {
+			tooltip.add(Text.translatable("tooltip.tarkovcraft.armor_ergonomics_penalty", "−" + handling.ergonomicsPenalty() + "%")
+				.formatted(Formatting.RED));
+		}
 	}
 }

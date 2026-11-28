@@ -49,6 +49,8 @@ $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 
 После успешной сборки скопируй итоговый JAR мода `build/libs/tarkovcraft-0.1.0.jar` в папку `C:\Users\seraphimchyk\AppData\Roaming\ModrinthApp\profiles\test\mods`. Замени предыдущий файл с тем же именем.
 
+Порядок запуска в Modrinth и расположение журналов при повторяющихся вылетах описаны в [документации по запуску](docs/launch-and-crash-troubleshooting.md).
+
 Для проверки реальных сигнатур Minecraft/Yarn:
 - Использовать `javap` по ремапленному JAR Minecraft из `.gradle/loom-cache/` или сверяться с `build/loom-cache/mixin-map-net.fabricmc.yarn.1_20_1.1.20.1+build.10-v2.main.tiny`.
 - При необходимости полных декомпилированных исходников запускать `.\gradlew.bat genSources --no-daemon` (с выставленным JDK 17).

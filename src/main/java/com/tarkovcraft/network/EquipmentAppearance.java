@@ -4,6 +4,10 @@ import com.tarkovcraft.loadout.EquipmentSlotType;
 import com.tarkovcraft.loadout.PlayerLoadout;
 import net.minecraft.item.Item;
 import net.minecraft.item.Items;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtElement;
+import net.minecraft.nbt.NbtList;
+import net.minecraft.nbt.NbtString;
 import net.minecraft.network.PacketByteBuf;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.Identifier;
@@ -22,7 +26,7 @@ public record EquipmentAppearance(Item armor, Item rig, Item backpack, Item mask
 			loadout.getEquipment(EquipmentSlotType.BACKPACK).getItem(),
 			loadout.getEquipment(EquipmentSlotType.FACE_MASK).getItem(),
 			loadout.getEquipment(EquipmentSlotType.HELMET).getItem(),
-			loadout.getEquipment(EquipmentSlotType.HEADSET).getItem());
+			loadout.blocksHeadset() ? Items.AIR : loadout.getEquipment(EquipmentSlotType.HEADSET).getItem());
 	}
 
 	public List<Item> items() {
@@ -31,6 +35,28 @@ public record EquipmentAppearance(Item armor, Item rig, Item backpack, Item mask
 
 	public boolean isEmpty() {
 		return equals(EMPTY);
+	}
+
+	public NbtCompound toTrackedNbt() {
+		NbtList items = new NbtList();
+		for (Item item : items()) {
+			items.add(NbtString.of(Registries.ITEM.getId(item).toString()));
+		}
+		NbtCompound tag = new NbtCompound();
+		tag.put("items", items);
+		return tag;
+	}
+
+	public static EquipmentAppearance fromTrackedNbt(NbtCompound tag) {
+		NbtList items = tag.getList("items", NbtElement.STRING_TYPE);
+		if (items.size() != EMPTY.items().size()) return EMPTY;
+		return new EquipmentAppearance(trackedItem(items, 0), trackedItem(items, 1),
+			trackedItem(items, 2), trackedItem(items, 3), trackedItem(items, 4), trackedItem(items, 5));
+	}
+
+	private static Item trackedItem(NbtList items, int slot) {
+		Identifier id = Identifier.tryParse(items.getString(slot));
+		return id == null ? Items.AIR : Registries.ITEM.get(id);
 	}
 
 	void write(PacketByteBuf buf) {

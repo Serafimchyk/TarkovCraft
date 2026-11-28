@@ -5,10 +5,11 @@ import com.tarkovcraft.grid.ContainerItemHelper;
 import com.tarkovcraft.audio.HearingProfile;
 import com.tarkovcraft.item.TarkovArmorItem;
 import com.tarkovcraft.item.TarkovCaseItem;
-import com.tarkovcraft.item.TarkovFunctionalItem;
+import com.tarkovcraft.item.TarkovHeadsetItem;
 import com.tarkovcraft.loadout.EquipmentSlotType;
 import com.tarkovcraft.loadout.PlayerLoadout;
 import com.tarkovcraft.loadout.SecureContainerValidator;
+import com.tarkovcraft.network.EquipmentAppearance;
 import com.tarkovcraft.registry.ModItems;
 import com.tarkovcraft.registry.TarkovItemCatalog;
 import com.tarkovcraft.search.ContainerSearchMemory;
@@ -176,7 +177,7 @@ class TarkovInventoryLogicTest {
 	@Test
 	void headsetAndClosedHelmetProduceDistinctProfiles() {
 		var headset = TarkovItemCatalog.getTacticalItems().stream()
-			.filter(item -> item instanceof TarkovFunctionalItem functional && functional.isHeadset())
+			.filter(TarkovHeadsetItem.class::isInstance)
 			.findFirst().orElseThrow();
 		PlayerLoadout loadout = new PlayerLoadout();
 		ItemStack stack = new ItemStack(headset);
@@ -187,6 +188,39 @@ class TarkovInventoryLogicTest {
 		assertFalse(loadout.canEquip(EquipmentSlotType.HEADSET, new ItemStack(headset)));
 		assertFalse(PlayerLoadout.canPlaceInSecureContainer(new ItemStack(headset)));
 		assertEquals(0.50f, HearingProfile.forLoadout(loadout).range());
+	}
+
+	@Test
+	void ssh68BlocksHeadsetInBothOrdersAndLegacyStackCanBeRecovered() {
+		var headset = TarkovItemCatalog.getTacticalItems().stream()
+			.filter(TarkovHeadsetItem.class::isInstance).findFirst().orElseThrow();
+		ItemStack earProtection = new ItemStack(headset);
+		ItemStack helmet = new ItemStack(ModItems.SSH68_HELMET);
+		PlayerLoadout loadout = new PlayerLoadout();
+
+		loadout.setEquipment(EquipmentSlotType.HELMET, helmet.copy());
+		assertFalse(loadout.canEquip(EquipmentSlotType.HEADSET, earProtection));
+		assertFalse(loadout.trySmartPickup(earProtection, null));
+		assertSame(headset, earProtection.getItem());
+
+		loadout.setEquipment(EquipmentSlotType.HELMET, ItemStack.EMPTY);
+		loadout.setEquipment(EquipmentSlotType.HEADSET, earProtection.copy());
+		assertFalse(loadout.canEquip(EquipmentSlotType.HELMET, helmet));
+		assertFalse(loadout.trySmartPickup(helmet, null));
+		assertSame(ModItems.SSH68_HELMET, helmet.getItem());
+		ItemStack airframe = new ItemStack(Registries.ITEM.get(
+			new Identifier("tarkovcraft", "shlem_crye_precision_airframe_pesoch_5c17a7")));
+		assertFalse(airframe.isEmpty());
+		assertTrue(loadout.canEquip(EquipmentSlotType.HELMET, airframe));
+
+		loadout.setEquipment(EquipmentSlotType.HELMET, helmet.copy());
+		PlayerLoadout restored = new PlayerLoadout();
+		restored.readNbt(loadout.writeNbt());
+		assertSame(headset, restored.getEquipment(EquipmentSlotType.HEADSET).getItem());
+		assertSame(Items.AIR, EquipmentAppearance.capture(restored).headset());
+		assertTrue(restored.canEquip(EquipmentSlotType.HEADSET, ItemStack.EMPTY));
+		restored.setEquipment(EquipmentSlotType.HELMET, airframe);
+		assertSame(headset, EquipmentAppearance.capture(restored).headset());
 	}
 
 	@Test

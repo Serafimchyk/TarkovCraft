@@ -1,6 +1,7 @@
 package com.tarkovcraft.arena;
 
 import com.tarkovcraft.grid.GridContainer;
+import com.tarkovcraft.registry.ModItems;
 import net.minecraft.Bootstrap;
 import net.minecraft.SharedConstants;
 import net.minecraft.item.ItemStack;
@@ -19,6 +20,7 @@ class PlayerProfileStateTest {
 	static void bootstrap() {
 		SharedConstants.createGameVersion();
 		Bootstrap.initialize();
+		ModItems.init();
 	}
 
 	@Test
@@ -39,7 +41,7 @@ class PlayerProfileStateTest {
 		legacy.putLong("LobbyPos", new BlockPos(8, 70, 12).asLong());
 
 		PlayerProfileState profile = PlayerProfileState.read(legacy);
-		assertEquals(150_000L, profile.rubles(player));
+		assertEquals(500_000L, profile.rubles(player));
 		assertEquals(1234567L, profile.scavCooldownEndMs(player));
 		assertEquals(new BlockPos(8, 70, 12), profile.lobbyPos());
 		assertEquals(5, profile.stash(player).getEntry(legacyEntry.getEntryId()).getStack().getCount());
@@ -58,5 +60,27 @@ class PlayerProfileStateTest {
 		assertEquals("KIA_OFFLINE", reloaded.get(player).getString("Result"));
 		assertEquals("Custom kit", reloaded.preset(player, 2).equipment().getString("Name"));
 		assertTrue(reloaded.preset(player, 0).equipment().isEmpty());
+	}
+
+	@Test
+	void suppliesAreGrantedOnceAndSurviveAFullStashAndReload() {
+		UUID player = UUID.randomUUID();
+		PlayerProfileState profile = new PlayerProfileState();
+		profile.setRubles(player, 440);
+		profile.replaceStash(player, new GridContainer(1, 1));
+		assertNotNull(profile.stash(player).place(new ItemStack(Items.APPLE), 0, 0, false));
+		assertFalse(profile.deliverStartingSupplies(player));
+		assertEquals(500_000L, profile.rubles(player));
+		assertEquals(Items.APPLE, profile.stash(player).getAt(0, 0).getStack().getItem());
+
+		profile.setRubles(player, 450_000);
+		PlayerProfileState reloaded = PlayerProfileState.read(profile.writeNbt(new NbtCompound()));
+		reloaded.replaceStash(player, new GridContainer(10, 24));
+		assertTrue(reloaded.deliverStartingSupplies(player));
+		assertEquals(450_000L, reloaded.rubles(player));
+		var entries = reloaded.stash(player).getEntries();
+		assertEquals(2, entries.stream().filter(entry -> entry.getStack().isOf(ModItems.PACA_ARMOR)).count());
+		assertTrue(reloaded.deliverStartingSupplies(player));
+		assertEquals(entries.size(), reloaded.stash(player).getEntries().size());
 	}
 }

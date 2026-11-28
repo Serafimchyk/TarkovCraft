@@ -1,7 +1,9 @@
 package com.tarkovcraft.screen;
 
 import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.arena.PlayerProfileState;
 import com.tarkovcraft.arena.RaidSession;
+import com.tarkovcraft.arena.RaidSession.ResultStats;
 import com.tarkovcraft.health.DamageReport;
 import com.tarkovcraft.registry.ModScreenHandlers;
 import net.fabricmc.fabric.api.screenhandler.v1.ExtendedScreenHandlerFactory;
@@ -15,121 +17,113 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
 public final class RaidScreenHandler extends ScreenHandler {
-	public static final int BACK = 0;
-	public static final int CLAIM_ALL = 4;
-	public static final int PREVIOUS_PAGE = 5;
-	public static final int NEXT_PAGE = 6;
-	public static final int TAKE_FIRST = 7;
+	public static final int BACK = 0, CLAIM_ALL = 4, PREVIOUS_PAGE = 5, NEXT_PAGE = 6;
+	public static final int TAKE_FIRST = 7, SELECT_FIRST = 11, ROTATE = 15;
+	// ButtonClickC2SPacket uses a signed byte. IDs 16–255 encode the 240 stash cells.
+	public static final int CELL_FIRST = 16;
 	public static final int PAGE_SIZE = 4;
 
-	public enum Mode {
-		SUMMARY("summary", "Raid results"),
-		TRANSFER("transfer", "Scav loot");
+	public enum Mode { SUMMARY, TRANSFER }
 
-		private final String key;
-		private final String fallback;
-
-		Mode(String key, String fallback) {
-			this.key = key;
-			this.fallback = fallback;
+	public record StashItem(ItemStack stack, int x, int y, int width, int height, boolean rotated) {
+		void write(PacketByteBuf buf) {
+			buf.writeItemStack(preview(stack));
+			buf.writeByte(x).writeByte(y).writeByte(width).writeByte(height).writeBoolean(rotated);
 		}
 
-		public Text title() {
-			return label(key, fallback);
+		static StashItem read(PacketByteBuf buf) {
+			return new StashItem(buf.readItemStack(), buf.readUnsignedByte(), buf.readUnsignedByte(),
+				buf.readUnsignedByte(), buf.readUnsignedByte(), buf.readBoolean());
 		}
 	}
 
-	private final Mode mode;
-	private final String result;
-	private final String arena;
-	@Nullable
-	private final DamageReport report;
-	private final int page;
-	private final int totalItems;
-	private final List<ItemStack> items;
+	private record View(Mode mode, String result, String arena, @Nullable NbtCompound report, ResultStats stats,
+		int page, int totalItems, List<ItemStack> items, List<StashItem> stash) {
+		void write(PacketByteBuf buf) {
+			buf.writeEnumConstant(mode);
+			if (mode == Mode.SUMMARY) {
+				buf.writeString(truncate(result, 32), 32);
+				buf.writeString(truncate(arena, 128), 128);
+				buf.writeNbt(report);
+				buf.writeVarInt(stats.seconds()).writeVarInt(stats.kills()).writeVarInt(stats.damage()).writeVarLong(stats.lootValue());
+			} else {
+				buf.writeVarInt(page).writeVarInt(totalItems);
+				buf.writeCollection(items, (packet, stack) -> packet.writeItemStack(preview(stack)));
+				buf.writeCollection(stash, (packet, entry) -> entry.write(packet));
+			}
+		}
+
+		static View read(PacketByteBuf buf) {
+			if (buf.readEnumConstant(Mode.class) == Mode.SUMMARY) {
+				return new View(Mode.SUMMARY, buf.readString(32), buf.readString(128), buf.readNbt(),
+					new ResultStats(buf.readVarInt(), buf.readVarInt(), buf.readVarInt(), buf.readVarLong()),
+					0, 0, List.of(), List.of());
+			}
+			return new View(Mode.TRANSFER, "", "", null, null, buf.readVarInt(), buf.readVarInt(),
+				buf.readList(PacketByteBuf::readItemStack), buf.readList(StashItem::read));
+		}
+	}
+
 	@Nullable
 	private final ServerPlayerEntity owner;
+	private final View view;
+	private int selection = -1;
+	private boolean rotated;
 
-	private RaidScreenHandler(int syncId, @Nullable ServerPlayerEntity owner, Mode mode, String result, String arena,
-		@Nullable NbtCompound report, int page, int totalItems, List<ItemStack> items) {
+	private RaidScreenHandler(int syncId, @Nullable ServerPlayerEntity owner, View view) {
 		super(ModScreenHandlers.RAID_SCREEN_HANDLER, syncId);
 		this.owner = owner;
-		this.mode = mode;
-		this.result = result;
-		this.arena = arena;
-		this.report = report == null ? null : DamageReport.fromNbt(report);
-		this.page = page;
-		this.totalItems = totalItems;
-		this.items = items;
+		this.view = view;
 	}
 
 	public static RaidScreenHandler fromClientBuf(int syncId, PlayerInventory inventory, PacketByteBuf buf) {
-		Mode mode = buf.readEnumConstant(Mode.class);
-		String result = buf.readString(32);
-		String arena = buf.readString(128);
-		NbtCompound report = buf.readNbt();
-		int page = buf.readVarInt();
-		int totalItems = buf.readVarInt();
-		List<ItemStack> items = buf.readList(PacketByteBuf::readItemStack);
-		return new RaidScreenHandler(syncId, null, mode, result, arena, report, page, totalItems, items);
+		return new RaidScreenHandler(syncId, null, View.read(buf));
 	}
 
 	public static void openLobby(ServerPlayerEntity player) {
 		LobbyPlayScreenHandler.open(player);
 	}
 
-	public static void openSummary(ServerPlayerEntity player, String result, String arena, @Nullable NbtCompound report) {
-		open(player, Mode.SUMMARY, result.toUpperCase(Locale.ROOT), arena, report, 0);
+	public static void openSummary(ServerPlayerEntity player, String result, String arena,
+		@Nullable NbtCompound report, ResultStats stats) {
+		open(player, new View(Mode.SUMMARY, result.toUpperCase(Locale.ROOT), arena, report, stats, 0, 0, List.of(), List.of()),
+			label("summary", "Raid results"));
 	}
 
 	public static void openTransfer(ServerPlayerEntity player) {
-		open(player, Mode.TRANSFER, "", "", null, 0);
+		openTransfer(player, 0);
 	}
 
-	public static boolean isOpen(ServerPlayerEntity player) {
-		return player.currentScreenHandler instanceof RaidScreenHandler
-			|| player.currentScreenHandler instanceof LobbyPlayScreenHandler
-			|| player.currentScreenHandler instanceof LobbyScreenHandler
-			|| player.currentScreenHandler instanceof TarkovWorkbenchScreenHandler workbench && workbench.isLobby()
-			|| player.currentScreenHandler instanceof TarkovScreenHandler inventory && inventory.getMode() == TarkovScreenHandler.MODE_STASH;
-	}
-
-	private static void open(ServerPlayerEntity player, Mode mode, String result, String arena,
-		@Nullable NbtCompound report, int requestedPage) {
-		if (!player.isAlive() || !RaidSession.isLobby(player)) return;
-		List<ItemStack> loot = mode == Mode.TRANSFER ? RaidSession.pendingLoot(player) : List.of();
-		int page = Math.min(Math.max(requestedPage, 0), lastPage(loot.size()));
+	private static void openTransfer(ServerPlayerEntity player, int requestedPage) {
+		if (!LobbyTabNavigation.canUse(player)) return;
+		List<ItemStack> loot = RaidSession.pendingLoot(player);
+		int page = Math.max(0, Math.min(requestedPage, lastPage(loot.size())));
 		int from = page * PAGE_SIZE;
-		int to = Math.min(from + PAGE_SIZE, loot.size());
-		List<ItemStack> items = new ArrayList<>(to - from);
-		if (mode == Mode.TRANSFER) {
-			for (int i = from; i < to; i++) items.add(loot.get(i).copy());
-		}
+		var stash = PlayerProfileState.get(player.getServer()).stash(player.getUuid());
+		List<StashItem> stashItems = stash.getEntries().stream().map(entry -> {
+			var size = entry.getOccupiedSize();
+			return new StashItem(entry.getStack(), entry.getX(), entry.getY(), size.width(), size.height(), entry.isRotated());
+		}).toList();
+		open(player, new View(Mode.TRANSFER, "", "", null, null, page, loot.size(),
+			loot.subList(from, Math.min(from + PAGE_SIZE, loot.size())), stashItems), label("transfer", "Scav loot"));
+	}
+
+	private static void open(ServerPlayerEntity player, View view, Text title) {
+		if (!LobbyTabNavigation.canUse(player)) return;
 		player.openHandledScreen(new ExtendedScreenHandlerFactory() {
 			@Override
-			public void writeScreenOpeningData(ServerPlayerEntity viewer, PacketByteBuf buf) {
-				buf.writeEnumConstant(mode);
-				buf.writeString(truncate(result, 32), 32);
-				buf.writeString(truncate(arena, 128), 128);
-				buf.writeNbt(report);
-				buf.writeVarInt(page);
-				buf.writeVarInt(loot.size());
-				buf.writeCollection(items, (packet, stack) -> packet.writeItemStack(preview(stack)));
-			}
+			public void writeScreenOpeningData(ServerPlayerEntity viewer, PacketByteBuf buf) { view.write(buf); }
 
 			@Override
-			public Text getDisplayName() {
-				return mode.title();
-			}
+			public Text getDisplayName() { return title; }
 
 			@Override
 			public ScreenHandler createMenu(int syncId, PlayerInventory inventory, PlayerEntity viewer) {
-				return new RaidScreenHandler(syncId, player, mode, result, arena, report, page, loot.size(), items);
+				return new RaidScreenHandler(syncId, player, view);
 			}
 		});
 	}
@@ -141,58 +135,75 @@ public final class RaidScreenHandler extends ScreenHandler {
 	private static ItemStack preview(ItemStack stack) {
 		ItemStack display = new ItemStack(stack.getItem(), stack.getCount());
 		if (stack.hasCustomName()) display.setCustomName(Text.literal(truncate(stack.getName().getString(), 100)));
-		if (AmmoTier.isTaczGunStack(stack) && stack.hasNbt()) {
+		if (AmmoTier.isTaczGunStack(stack) && stack.hasNbt())
 			display.getOrCreateNbt().putString("GunId", truncate(stack.getNbt().getString("GunId"), 128));
-		}
 		if (AmmoTier.isTaczAmmoStack(stack)) {
 			display.getOrCreateNbt().putString("AmmoId", truncate(AmmoTier.getAmmoId(stack), 128));
+			AmmoTier.setOnAmmoStack(display, AmmoTier.getFromAmmoStack(stack));
 		}
 		return display;
 	}
 
 	@Override
 	public boolean canUse(PlayerEntity player) {
-		return owner == null || player == owner && owner.isAlive() && RaidSession.isLobby(owner);
+		return owner == null || player == owner && LobbyTabNavigation.canUse(owner);
 	}
 
 	@Override
-	public ItemStack quickMove(PlayerEntity player, int slot) {
-		return ItemStack.EMPTY;
-	}
+	public ItemStack quickMove(PlayerEntity player, int slot) { return ItemStack.EMPTY; }
 
 	@Override
 	public boolean onButtonClick(PlayerEntity player, int id) {
-		if (!(player instanceof ServerPlayerEntity serverPlayer) || !canUse(player) || serverPlayer.currentScreenHandler != this) {
+		if (!(player instanceof ServerPlayerEntity serverPlayer) || !canUse(player) || serverPlayer.currentScreenHandler != this)
 			return false;
-		}
 		if (id == BACK) {
-			if (mode == Mode.SUMMARY && result.equals("SCAV_EXTRACTED") && !RaidSession.pendingLoot(serverPlayer).isEmpty()) {
+			if (mode() == Mode.SUMMARY) RaidSession.acknowledgeResult(serverPlayer);
+			if (mode() == Mode.SUMMARY && result().equals("SCAV_EXTRACTED") && !RaidSession.pendingLoot(serverPlayer).isEmpty()) {
 				openTransfer(serverPlayer);
 			} else {
 				openLobby(serverPlayer);
 			}
 			return true;
 		}
-		return mode == Mode.TRANSFER && lootButton(serverPlayer, id);
+		return mode() == Mode.TRANSFER && lootButton(serverPlayer, id & 0xff);
 	}
 
 	private boolean lootButton(ServerPlayerEntity player, int id) {
 		if (id == PREVIOUS_PAGE || id == NEXT_PAGE) {
-			int requestedPage = page + (id == NEXT_PAGE ? 1 : -1);
-			if (requestedPage < 0 || requestedPage > lastPage(totalItems)) return false;
-			open(player, mode, "", "", null, requestedPage);
+			int requestedPage = page() + (id == NEXT_PAGE ? 1 : -1);
+			if (requestedPage < 0 || requestedPage >= pageCount()) return false;
+			openTransfer(player, requestedPage);
+			return true;
+		}
+		int row = id - SELECT_FIRST;
+		if (row >= 0 && row < items().size()) {
+			selection = selection == row ? -1 : row;
+			rotated = false;
+			return true;
+		}
+		if (id == ROTATE && selection >= 0) {
+			rotated = !rotated;
+			return true;
+		}
+		if (id >= CELL_FIRST && selection >= 0) {
+			int cell = id - CELL_FIRST;
+			int width = PlayerProfileState.STASH_WIDTH;
+			boolean placed = RaidSession.placeLoot(player, page() * PAGE_SIZE + selection, items().get(selection),
+				cell % width, cell / width, rotated);
+			if (placed) openTransfer(player, page());
+			else player.sendMessage(label("no_space", "No room for this loot."), true);
 			return true;
 		}
 		if (id == CLAIM_ALL) {
 			claim(player, -1);
 			return true;
 		}
-		int row = id - TAKE_FIRST;
-		if (row < 0 || row >= items.size()) return false;
-		int index = page * PAGE_SIZE + row;
+		row = id - TAKE_FIRST;
+		if (row < 0 || row >= items().size()) return false;
+		int index = page() * PAGE_SIZE + row;
 		List<ItemStack> live = RaidSession.pendingLoot(player);
-		if (index >= live.size() || !ItemStack.areEqual(live.get(index), items.get(row))) {
-			open(player, mode, "", "", null, page);
+		if (index >= live.size() || !ItemStack.areEqual(live.get(index), items().get(row))) {
+			openTransfer(player, page());
 			return false;
 		}
 		claim(player, index);
@@ -201,23 +212,23 @@ public final class RaidScreenHandler extends ScreenHandler {
 
 	private void claim(ServerPlayerEntity player, int index) {
 		boolean changed = RaidSession.claimLoot(player, index);
-		if (!changed) player.sendMessage(label("no_space", "No room for this loot."), true);
-		open(player, mode, "", "", null, page);
+		if (!changed || index == -1 && !RaidSession.pendingLoot(player).isEmpty())
+			player.sendMessage(label("no_space", "No room for this loot."), true);
+		openTransfer(player, page());
 	}
 
-	private static int lastPage(int count) {
-		return count == 0 ? 0 : (count - 1) / PAGE_SIZE;
-	}
+	private static int lastPage(int count) { return count == 0 ? 0 : (count - 1) / PAGE_SIZE; }
 
-	public Mode mode() { return mode; }
-	public String result() { return result; }
-	public String arena() { return arena; }
-	@Nullable
-	public DamageReport report() { return report; }
-	public int page() { return page; }
-	public int pageCount() { return lastPage(totalItems) + 1; }
-	public int totalItems() { return totalItems; }
-	public List<ItemStack> items() { return items; }
+	public Mode mode() { return view.mode(); }
+	public String result() { return view.result(); }
+	public String arena() { return view.arena(); }
+	@Nullable public DamageReport report() { return view.report() == null ? null : DamageReport.fromNbt(view.report()); }
+	public ResultStats stats() { return view.stats(); }
+	public int page() { return view.page(); }
+	public int pageCount() { return lastPage(view.totalItems()) + 1; }
+	public int totalItems() { return view.totalItems(); }
+	public List<ItemStack> items() { return view.items(); }
+	public List<StashItem> stash() { return view.stash(); }
 
 	public static Text label(String key, String fallback, Object... args) {
 		return Text.translatableWithFallback("screen.tarkovcraft.raid." + key, fallback, args);

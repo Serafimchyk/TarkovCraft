@@ -1,0 +1,541 @@
+{
+  "step.concrete.walk": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/concrete/concrete_walk1",
+        "attenuation_distance": 26
+      },
+      {
+        "name": "tarkovcraft:steps/concrete/concrete_walk2",
+        "attenuation_distance": 26
+      },
+      {
+        "name": "tarkovcraft:steps/concrete/concrete_walk3",
+        "attenuation_distance": 26
+      }
+    ]
+  },
+  "step.concrete.sprint": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/concrete/concrete_run1",
+        "attenuation_distance": 34
+      },
+      {
+        "name": "tarkovcraft:steps/concrete/concrete_run2",
+        "attenuation_distance": 34
+      },
+      {
+        "name": "tarkovcraft:steps/concrete/concrete_run3",
+        "attenuation_distance": 34
+      }
+    ]
+  },
+  "step.concrete.sneak": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/concrete/concrete_walk1",
+        "attenuation_distance": 9
+      },
+      {
+        "name": "tarkovcraft:steps/concrete/concrete_walk2",
+        "attenuation_distance": 9
+      },
+      {
+        "name": "tarkovcraft:steps/concrete/concrete_walk3",
+        "attenuation_distance": 9
+      }
+    ]
+  },
+  "step.metal.walk": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/metal/metalbar_walk1",
+        "attenuation_distance": 26
+      },
+      {
+        "name": "tarkovcraft:steps/metal/metalbar_walk2",
+        "attenuation_distance": 26
+      },
+      {
+        "name": "tarkovcraft:steps/metal/metalbar_walk3",
+        "attenuation_distance": 26
+      }
+    ]
+  },
+  "step.metal.sprint": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/metal/metalbox_run1",
+        "attenuation_distance": 34
+      },
+      {
+        "name": "tarkovcraft:steps/metal/metalbox_run2",
+        "attenuation_distance": 34
+      },
+      {
+        "name": "tarkovcraft:steps/metal/metalbox_run3",
+        "attenuation_distance": 34
+      }
+    ]
+  },
+  "step.metal.sneak": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/metal/metalbar_walk1",
+        "attenuation_distance": 9
+      },
+      {
+        "name": "tarkovcraft:steps/metal/metalbar_walk2",
+        "attenuation_distance": 9
+      },
+      {
+        "name": "tarkovcraft:steps/metal/metalbar_walk3",
+        "attenuation_distance": 9
+      }
+    ]
+  },
+  "step.wood.walk": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/wood/wood_walk1",
+        "attenuation_distance": 26
+      },
+      {
+        "name": "tarkovcraft:steps/wood/wood_walk2",
+        "attenuation_distance": 26
+      },
+      {
+        "name": "tarkovcraft:steps/wood/wood_walk3",
+        "attenuation_distance": 26
+      }
+    ]
+  },
+  "step.wood.sprint": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/wood/deckwood_run1",
+        "attenuation_distance": 34
+      },
+      {
+        "name": "tarkovcraft:steps/wood/deckwood_run2",
+        "attenuation_distance": 34
+      },
+      {
+        "name": "tarkovcraft:steps/wood/deckwood_run3",
+        "attenuation_distance": 34
+      }
+    ]
+  },
+  "step.wood.sneak": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/wood/wood_walk1",
+        "attenuation_distance": 9
+      },
+      {
+        "name": "tarkovcraft:steps/wood/wood_walk2",
+        "attenuation_distance": 9
+      },
+      {
+        "name": "tarkovcraft:steps/wood/wood_walk3",
+        "attenuation_distance": 9
+      }
+    ]
+  },
+  "step.grass.walk": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/grass/grass_walk1",
+        "attenuation_distance": 26
+      },
+      {
+        "name": "tarkovcraft:steps/grass/grass_walk2",
+        "attenuation_distance": 26
+      },
+      {
+        "name": "tarkovcraft:steps/grass/dirt_walk1",
+        "attenuation_distance": 26
+      }
+    ]
+  },
+  "step.grass.sprint": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/grass/grass_run1",
+        "attenuation_distance": 34
+      },
+      {
+        "name": "tarkovcraft:steps/grass/grass_run2",
+        "attenuation_distance": 34
+      },
+      {
+        "name": "tarkovcraft:steps/grass/grass_run3",
+        "attenuation_distance": 34
+      }
+    ]
+  },
+  "step.grass.sneak": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/grass/grass_walk1",
+        "attenuation_distance": 9
+      },
+      {
+        "name": "tarkovcraft:steps/grass/grass_walk2",
+        "attenuation_distance": 9
+      },
+      {
+        "name": "tarkovcraft:steps/grass/dirt_walk1",
+        "attenuation_distance": 9
+      }
+    ]
+  },
+  "step.gravel.walk": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/gravel/gravel_walk1",
+        "attenuation_distance": 26
+      },
+      {
+        "name": "tarkovcraft:steps/gravel/gravel_walk2",
+        "attenuation_distance": 26
+      },
+      {
+        "name": "tarkovcraft:steps/gravel/sand_walk1",
+        "attenuation_distance": 26
+      }
+    ]
+  },
+  "step.gravel.sprint": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/gravel/gravel_run1",
+        "attenuation_distance": 34
+      },
+      {
+        "name": "tarkovcraft:steps/gravel/gravel_run2",
+        "attenuation_distance": 34
+      },
+      {
+        "name": "tarkovcraft:steps/gravel/gravel_run3",
+        "attenuation_distance": 34
+      }
+    ]
+  },
+  "step.gravel.sneak": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/gravel/gravel_walk1",
+        "attenuation_distance": 9
+      },
+      {
+        "name": "tarkovcraft:steps/gravel/gravel_walk2",
+        "attenuation_distance": 9
+      },
+      {
+        "name": "tarkovcraft:steps/gravel/sand_walk1",
+        "attenuation_distance": 9
+      }
+    ]
+  },
+  "step.glass.walk": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/glass/marble_walk1",
+        "attenuation_distance": 26
+      },
+      {
+        "name": "tarkovcraft:steps/glass/marble_walk2",
+        "attenuation_distance": 26
+      },
+      {
+        "name": "tarkovcraft:steps/glass/marble_walk3",
+        "attenuation_distance": 26
+      }
+    ]
+  },
+  "step.glass.sprint": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/glass/marble_run1",
+        "attenuation_distance": 34
+      },
+      {
+        "name": "tarkovcraft:steps/glass/marble_run2",
+        "attenuation_distance": 34
+      },
+      {
+        "name": "tarkovcraft:steps/glass/marble_run3",
+        "attenuation_distance": 34
+      }
+    ]
+  },
+  "step.glass.sneak": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/glass/marble_walk1",
+        "attenuation_distance": 9
+      },
+      {
+        "name": "tarkovcraft:steps/glass/marble_walk2",
+        "attenuation_distance": 9
+      },
+      {
+        "name": "tarkovcraft:steps/glass/marble_walk3",
+        "attenuation_distance": 9
+      }
+    ]
+  },
+  "step.snow.walk": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/snow/snow_walk1",
+        "attenuation_distance": 26
+      },
+      {
+        "name": "tarkovcraft:steps/snow/snow_walk2",
+        "attenuation_distance": 26
+      },
+      {
+        "name": "tarkovcraft:steps/snow/snow_walk3",
+        "attenuation_distance": 26
+      }
+    ]
+  },
+  "step.snow.sprint": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/snow/snow_run1",
+        "attenuation_distance": 34
+      },
+      {
+        "name": "tarkovcraft:steps/snow/snow_run2",
+        "attenuation_distance": 34
+      },
+      {
+        "name": "tarkovcraft:steps/snow/snow_run3",
+        "attenuation_distance": 34
+      }
+    ]
+  },
+  "step.snow.sneak": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/snow/snow_walk1",
+        "attenuation_distance": 9
+      },
+      {
+        "name": "tarkovcraft:steps/snow/snow_walk2",
+        "attenuation_distance": 9
+      },
+      {
+        "name": "tarkovcraft:steps/snow/snow_walk3",
+        "attenuation_distance": 9
+      }
+    ]
+  },
+  "step.water.walk": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/water/water_through1",
+        "attenuation_distance": 26
+      },
+      {
+        "name": "tarkovcraft:steps/water/water_through2",
+        "attenuation_distance": 26
+      },
+      {
+        "name": "tarkovcraft:steps/water/water_through3",
+        "attenuation_distance": 26
+      }
+    ]
+  },
+  "step.water.sprint": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/water/water_through4",
+        "attenuation_distance": 34
+      },
+      {
+        "name": "tarkovcraft:steps/water/water_through5",
+        "attenuation_distance": 34
+      },
+      {
+        "name": "tarkovcraft:steps/water/water_through6",
+        "attenuation_distance": 34
+      }
+    ]
+  },
+  "step.water.sneak": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:steps/water/water_through1",
+        "attenuation_distance": 9
+      },
+      {
+        "name": "tarkovcraft:steps/water/water_through2",
+        "attenuation_distance": 9
+      },
+      {
+        "name": "tarkovcraft:steps/water/water_through3",
+        "attenuation_distance": 9
+      }
+    ]
+  },
+  "gear.rustle.walk": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:gear/rustle1",
+        "attenuation_distance": 26
+      },
+      {
+        "name": "tarkovcraft:gear/rustle2",
+        "attenuation_distance": 26
+      },
+      {
+        "name": "tarkovcraft:gear/rustle3",
+        "attenuation_distance": 26
+      },
+      {
+        "name": "tarkovcraft:gear/rustle4",
+        "attenuation_distance": 26
+      },
+      {
+        "name": "tarkovcraft:gear/rustle5",
+        "attenuation_distance": 26
+      }
+    ]
+  },
+  "gear.rustle.heavy": {
+    "sounds": [
+      {
+        "name": "tarkovcraft:gear/rustle1",
+        "attenuation_distance": 34
+      },
+      {
+        "name": "tarkovcraft:gear/rustle2",
+        "attenuation_distance": 34
+      },
+      {
+        "name": "tarkovcraft:gear/rustle3",
+        "attenuation_distance": 34
+      },
+      {
+        "name": "tarkovcraft:gear/rustle4",
+        "attenuation_distance": 34
+      },
+      {
+        "name": "tarkovcraft:gear/rustle5",
+        "attenuation_distance": 34
+      }
+    ]
+  },
+  "sneak_step": {
+    "sounds": [
+      "minecraft:step/cloth1",
+      "minecraft:step/cloth2",
+      "minecraft:step/cloth3",
+      "minecraft:step/cloth4"
+    ]
+  },
+  "scav.detected.1": {
+    "subtitle": "subtitles.tarkovcraft.scav.detected.1",
+    "sounds": [
+      {
+        "name": "tarkovcraft:scav/detected_1",
+        "attenuation_distance": 28
+      }
+    ]
+  },
+  "scav.detected.2": {
+    "subtitle": "subtitles.tarkovcraft.scav.detected.2",
+    "sounds": [
+      {
+        "name": "tarkovcraft:scav/detected_2",
+        "attenuation_distance": 28
+      }
+    ]
+  },
+  "scav.detected.3": {
+    "subtitle": "subtitles.tarkovcraft.scav.detected.3",
+    "sounds": [
+      {
+        "name": "tarkovcraft:scav/detected_3",
+        "attenuation_distance": 28
+      }
+    ]
+  },
+  "scav.detected.4": {
+    "subtitle": "subtitles.tarkovcraft.scav.detected.4",
+    "sounds": [
+      {
+        "name": "tarkovcraft:scav/detected_4",
+        "attenuation_distance": 28
+      }
+    ]
+  },
+  "scav.wounded.1": {
+    "subtitle": "subtitles.tarkovcraft.scav.wounded.1",
+    "sounds": [
+      {
+        "name": "tarkovcraft:scav/wounded_1",
+        "attenuation_distance": 28
+      }
+    ]
+  },
+  "scav.wounded.2": {
+    "subtitle": "subtitles.tarkovcraft.scav.wounded.2",
+    "sounds": [
+      {
+        "name": "tarkovcraft:scav/wounded_2",
+        "attenuation_distance": 28
+      }
+    ]
+  },
+  "scav.wounded.3": {
+    "subtitle": "subtitles.tarkovcraft.scav.wounded.3",
+    "sounds": [
+      {
+        "name": "tarkovcraft:scav/wounded_3",
+        "attenuation_distance": 28
+      }
+    ]
+  },
+  "scav.noise.1": {
+    "subtitle": "subtitles.tarkovcraft.scav.noise.1",
+    "sounds": [
+      {
+        "name": "tarkovcraft:scav/noise_1",
+        "attenuation_distance": 28
+      }
+    ]
+  },
+  "scav.noise.2": {
+    "subtitle": "subtitles.tarkovcraft.scav.noise.2",
+    "sounds": [
+      {
+        "name": "tarkovcraft:scav/noise_2",
+        "attenuation_distance": 28
+      }
+    ]
+  },
+  "scav.reload.1": {
+    "subtitle": "subtitles.tarkovcraft.scav.reload.1",
+    "sounds": [
+      {
+        "name": "tarkovcraft:scav/reload_1",
+        "attenuation_distance": 28
+      }
+    ]
+  },
+  "scav.reload.2": {
+    "subtitle": "subtitles.tarkovcraft.scav.reload.2",
+    "sounds": [
+      {
+        "name": "tarkovcraft:scav/reload_2",
+        "attenuation_distance": 28
+      }
+    ]
+  }
+}

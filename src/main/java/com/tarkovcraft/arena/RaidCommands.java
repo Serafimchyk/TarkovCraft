@@ -18,6 +18,15 @@ public final class RaidCommands {
 
 	public static LiteralArgumentBuilder<ServerCommandSource> admin() {
 		return literal("raid")
+			.then(literal("stop").executes(ctx -> {
+				var source = ctx.getSource();
+				if (!RaidSession.stop(source.getServer())) {
+					source.sendError(Text.literal("Нет активного рейда."));
+					return 0;
+				}
+				source.sendFeedback(() -> Text.literal("Рейд досрочно завершён."), true);
+				return 1;
+			}))
 			.then(literal("start").then(argument("arena", StringArgumentType.word())
 				.suggests((ctx, builder) -> CommandSource.suggestMatching(ArenaEventsState.get(ctx.getSource().getWorld())
 					.definitions().keySet(), builder))

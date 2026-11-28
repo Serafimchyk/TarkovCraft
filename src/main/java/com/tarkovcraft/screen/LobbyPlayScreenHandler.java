@@ -39,6 +39,7 @@ public final class LobbyPlayScreenHandler extends ScreenHandler {
 	public static final int LEAVE = 14;
 	public static final int PREVIOUS_PLAYERS = 15;
 	public static final int NEXT_PLAYERS = 16;
+	public static final int TOGGLE_SCAVS = 17;
 	public static final int INVITE_FIRST = 32;
 	public static final int KICK_FIRST = 48;
 	public static final int TRANSFER_LEADER_FIRST = 64;
@@ -51,28 +52,29 @@ public final class LobbyPlayScreenHandler extends ScreenHandler {
 	private static final int LEADER = 32;
 	private static final int PREVIOUS_PAGE = 64;
 	private static final int NEXT_PAGE = 128;
+	private static final int ARENA_BOSS = 1;
+	private static final int ARENA_AIRDROPS = 2;
+	private static final int ARENA_VALID = 4;
+	private static final int ARENA_SCAVS = 8;
 
 	private enum Field {
 		FLAGS, PARTY_READY, HEALTH, MAX_HEALTH, SCAV_STATUS, SCAV_DELAY, RAID, COUNTDOWN, READY_COUNT, QUEUED_COUNT,
-		PENDING_LOOT, WEIGHT, WARNING, RUBLES_0, RUBLES_1, RUBLES_2, RUBLES_3, KIT_0, KIT_1, KIT_2, KIT_3
+		PENDING_LOOT, WEIGHT, WARNING, RUBLES_0, RUBLES_1, RUBLES_2, RUBLES_3, KIT_0, KIT_1, KIT_2, KIT_3,
+		ARENA_INDEX, ARENA_FLAGS, ARENA_MINUTES, ARENA_EXITS, ARENA_TIME, ARENA_SCAV_COUNT
 	}
 
 	private final PlayerEntity owner;
-	private final ArenaView arena;
 	private final List<String> arenas;
-	private final int arenaIndex;
 	private final List<PlayerView> party;
 	private final List<PlayerView> online;
 	private final String inviter;
 	private final Property[] live = new Property[Field.values().length];
 
-	private LobbyPlayScreenHandler(int syncId, PlayerEntity owner, ArenaView arena, List<String> arenas,
-			int arenaIndex, List<PlayerView> party, List<PlayerView> online, String inviter, int[] props) {
+	private LobbyPlayScreenHandler(int syncId, PlayerEntity owner, List<String> arenas,
+			List<PlayerView> party, List<PlayerView> online, String inviter, int[] props) {
 		super(ModScreenHandlers.LOBBY_PLAY_SCREEN_HANDLER, syncId);
 		this.owner = owner;
-		this.arena = arena;
 		this.arenas = arenas;
-		this.arenaIndex = arenaIndex;
 		this.party = party;
 		this.online = online;
 		this.inviter = inviter;
@@ -83,16 +85,13 @@ public final class LobbyPlayScreenHandler extends ScreenHandler {
 	}
 
 	public static LobbyPlayScreenHandler fromClientBuf(int syncId, PlayerInventory inventory, PacketByteBuf buf) {
-		var arena = new ArenaView(buf.readString(128), buf.readVarInt(), buf.readBoolean(), buf.readBoolean(),
-			buf.readVarInt(), buf.readUnsignedByte(), buf.readBoolean());
 		var arenas = buf.readList(packet -> packet.readString(128));
-		int arenaIndex = buf.readVarInt();
 		var party = buf.readList(LobbyPlayScreenHandler::readPlayer);
 		var online = buf.readList(LobbyPlayScreenHandler::readPlayer);
 		String inviter = buf.readString(16);
 		int[] props = new int[Field.values().length];
 		for (int i = 0; i < props.length; i++) props[i] = buf.readShort();
-		return new LobbyPlayScreenHandler(syncId, inventory.player, arena, arenas, arenaIndex, party, online, inviter, props);
+		return new LobbyPlayScreenHandler(syncId, inventory.player, arenas, party, online, inviter, props);
 	}
 
 	public static void open(ServerPlayerEntity player) {
@@ -102,16 +101,7 @@ public final class LobbyPlayScreenHandler extends ScreenHandler {
 		player.openHandledScreen(new ExtendedScreenHandlerFactory() {
 			@Override
 			public void writeScreenOpeningData(ServerPlayerEntity viewer, PacketByteBuf buf) {
-				var arena = snapshot.arena();
-				buf.writeString(limit(arena.name()), 128);
-				buf.writeVarInt(arena.minutes());
-				buf.writeBoolean(arena.boss());
-				buf.writeBoolean(arena.airdrops());
-				buf.writeVarInt(arena.exits());
-				buf.writeByte(arena.timeOfDay());
-				buf.writeBoolean(arena.valid());
 				buf.writeCollection(snapshot.arenas(), (packet, name) -> packet.writeString(limit(name), 128));
-				buf.writeVarInt(snapshot.arenaIndex());
 				buf.writeCollection(snapshot.party(), LobbyPlayScreenHandler::writePlayer);
 				buf.writeCollection(snapshot.online(), LobbyPlayScreenHandler::writePlayer);
 				buf.writeString(snapshot.inviter(), 16);
@@ -125,7 +115,7 @@ public final class LobbyPlayScreenHandler extends ScreenHandler {
 
 			@Override
 			public ScreenHandler createMenu(int syncId, PlayerInventory inventory, PlayerEntity viewer) {
-				return new LobbyPlayScreenHandler(syncId, viewer, snapshot.arena(), snapshot.arenas(), snapshot.arenaIndex(),
+				return new LobbyPlayScreenHandler(syncId, viewer, snapshot.arenas(),
 					snapshot.party(), snapshot.online(), snapshot.inviter(), props);
 			}
 		});
@@ -171,6 +161,18 @@ public final class LobbyPlayScreenHandler extends ScreenHandler {
 		props[Field.PENDING_LOOT.ordinal()] = Math.min(Short.MAX_VALUE, state.pendingLoot());
 		props[Field.WEIGHT.ordinal()] = Math.min(Short.MAX_VALUE, Math.round(state.kitWeightKg() * 10));
 		props[Field.WARNING.ordinal()] = state.warningFlags();
+		var arena = state.arena();
+		int arenaFlags = 0;
+		if (arena.boss()) arenaFlags |= ARENA_BOSS;
+		if (arena.airdrops()) arenaFlags |= ARENA_AIRDROPS;
+		if (arena.valid()) arenaFlags |= ARENA_VALID;
+		if (arena.scavs()) arenaFlags |= ARENA_SCAVS;
+		props[Field.ARENA_INDEX.ordinal()] = state.arenaIndex();
+		props[Field.ARENA_FLAGS.ordinal()] = arenaFlags;
+		props[Field.ARENA_MINUTES.ordinal()] = arena.minutes();
+		props[Field.ARENA_EXITS.ordinal()] = Math.min(Short.MAX_VALUE, arena.exits());
+		props[Field.ARENA_TIME.ordinal()] = arena.timeOfDay();
+		props[Field.ARENA_SCAV_COUNT.ordinal()] = arena.scavCount();
 		writeMoney(props, Field.RUBLES_0, state.rubles());
 		writeMoney(props, Field.KIT_0, state.kitRubles());
 		return props;
@@ -192,6 +194,12 @@ public final class LobbyPlayScreenHandler extends ScreenHandler {
 
 	public Snapshot snapshot() {
 		int flags = get(Field.FLAGS);
+		int arenaIndex = get(Field.ARENA_INDEX);
+		int arenaFlags = get(Field.ARENA_FLAGS);
+		String name = arenaIndex >= 0 && arenaIndex < arenas.size() ? arenas.get(arenaIndex) : "";
+		var arena = new ArenaView(name, get(Field.ARENA_MINUTES), (arenaFlags & ARENA_BOSS) != 0,
+			(arenaFlags & ARENA_AIRDROPS) != 0, get(Field.ARENA_EXITS), get(Field.ARENA_TIME),
+			(arenaFlags & ARENA_VALID) != 0, (arenaFlags & ARENA_SCAVS) != 0, get(Field.ARENA_SCAV_COUNT));
 		int ready = get(Field.PARTY_READY);
 		var members = new ArrayList<PlayerView>(party.size());
 		for (int i = 0; i < party.size(); i++) {
@@ -209,8 +217,9 @@ public final class LobbyPlayScreenHandler extends ScreenHandler {
 	public void refresh(ServerPlayerEntity player) {
 		if (player.currentScreenHandler != this || !canUse(player)) return;
 		var state = LobbyManager.snapshot(player);
-		if (!arena.equals(state.arena()) || !arenas.equals(state.arenas()) || arenaIndex != state.arenaIndex()
-			|| !sameParty(state.party()) || !online.equals(state.online()) || !inviter.equals(state.inviter())) {
+		if (!arenas.equals(state.arenas()) || !sameParty(state.party())
+			|| !online.equals(state.online()) || !inviter.equals(state.inviter())) {
+			player.onHandledScreenClosed();
 			open(player);
 			return;
 		}
@@ -245,7 +254,12 @@ public final class LobbyPlayScreenHandler extends ScreenHandler {
 		if (!(player instanceof ServerPlayerEntity serverPlayer) || player.currentScreenHandler != this || !canUse(player)) return false;
 		if (LobbyTabNavigation.handle(serverPlayer, id)) return true;
 		boolean handled = switch (id) {
-			case CHARACTER -> { TarkovScreenHandler.openStash(serverPlayer); yield true; }
+			case CHARACTER -> {
+				// Clean up the handler without the close packet that recenters the cursor.
+				serverPlayer.onHandledScreenClosed();
+				TarkovScreenHandler.openStash(serverPlayer);
+				yield true;
+			}
 			case EDITOR -> LobbyManager.toggleEditor(serverPlayer);
 			case JOIN_SCAV -> RaidSession.joinScav(serverPlayer);
 			case TRANSFER -> { RaidScreenHandler.openTransfer(serverPlayer); yield true; }
@@ -257,6 +271,7 @@ public final class LobbyPlayScreenHandler extends ScreenHandler {
 			case TOGGLE_BOSS -> LobbyManager.configure(serverPlayer, Configuration.BOSS);
 			case TOGGLE_AIRDROPS -> LobbyManager.configure(serverPlayer, Configuration.AIRDROPS);
 			case NEXT_TIME -> LobbyManager.configure(serverPlayer, Configuration.TIME);
+			case TOGGLE_SCAVS -> LobbyManager.configure(serverPlayer, Configuration.SCAVS);
 			case ACCEPT -> LobbyManager.answerInvite(serverPlayer, inviter, true);
 			case DECLINE -> LobbyManager.answerInvite(serverPlayer, inviter, false);
 			case LEAVE -> LobbyManager.leaveParty(serverPlayer);

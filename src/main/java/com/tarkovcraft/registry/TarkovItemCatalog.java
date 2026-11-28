@@ -1,5 +1,7 @@
 package com.tarkovcraft.registry;
 
+import com.tarkovcraft.item.ItemModelAppearance;
+import com.tarkovcraft.item.ModelledItem;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -16,6 +18,7 @@ import com.tarkovcraft.item.TarkovArmorRepairItem;
 import com.tarkovcraft.item.TarkovCaseItem;
 import com.tarkovcraft.item.TarkovFoodItem;
 import com.tarkovcraft.item.TarkovFunctionalItem;
+import com.tarkovcraft.item.TarkovHeadsetItem;
 import com.tarkovcraft.item.TarkovGrenadeItem;
 import com.tarkovcraft.item.TarkovMedicalItem;
 import com.tarkovcraft.item.TarkovMeleeItem;
@@ -116,6 +119,12 @@ public final class TarkovItemCatalog {
 			return false;
 		}
 
+		if (item instanceof ModelledItem modelled) {
+			modelled.setModelAppearance(new ItemModelAppearance(
+				getString(obj, "modelSilhouette", null),
+				Identifier.tryParse(getString(obj, "modelTexture", identifier.toString())),
+				getString(obj, "groundSilhouette", null)));
+		}
 		Registry.register(Registries.ITEM, identifier, item);
 		addToTabBucket(category, item);
 		return true;
@@ -178,7 +187,7 @@ public final class TarkovItemCatalog {
 				TarkovGrenadeItem.GrenadeType gType = TarkovGrenadeItem.GrenadeType.fromString(gTypeStr);
 				yield new TarkovGrenadeItem(settings, gType, size, rarity, weight);
 			}
-			case "headset" -> new TarkovFunctionalItem(settings, category, size, rarity, weight);
+			case "headset" -> new TarkovHeadsetItem(settings, size, rarity, weight);
 			case "barter", "valuable" -> new TarkovFunctionalItem(settings, category, size, rarity, weight,
 				obj.has("basePrice") ? obj.get("basePrice").getAsLong() : 0L);
 			default -> null;

@@ -1,5 +1,6 @@
 package com.tarkovcraft.health;
 
+import com.tarkovcraft.entity.TarkovAiBulletEntity;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.damage.DamageSource;
@@ -23,6 +24,9 @@ public final class HitZoneResolver {
 	 * Resolves exact HitZone from a live Minecraft DamageSource hitting a LivingEntity.
 	 */
 	public static HitZone resolveFromDamage(LivingEntity victim, DamageSource source) {
+		if (source.getSource() instanceof TarkovAiBulletEntity bullet && bullet.impact() != null) {
+			return bullet.impact().zone();
+		}
 		String msgId = source.getName();
 		if (source.isIn(DamageTypeTags.IS_FALL) || "fall".equals(msgId) || "stalagmite".equals(msgId)) {
 			return victim.getRandom().nextBoolean() ? HitZone.LEFT_LEG : HitZone.RIGHT_LEG;
@@ -122,6 +126,11 @@ public final class HitZoneResolver {
 			victim.getBodyYaw(), victim.getHeadYaw(),
 			hitPos, null
 		);
+	}
+
+	@Nullable
+	public static HitZoneBoxes.RayHit traceProjectileImpact(LivingEntity victim, Vec3d start, Vec3d direction, double maxDist) {
+		return HitZoneBoxes.raycastZones(HitZoneBoxes.computeForEntity(victim), start, direction, maxDist);
 	}
 
 	private static Vec3d raycastMeleeHitPos(LivingEntity victim, Entity attacker) {

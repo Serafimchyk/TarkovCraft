@@ -4,6 +4,8 @@ import com.tarkovcraft.TarkovCraftMod;
 import com.tarkovcraft.entity.CorpseEntity;
 import com.tarkovcraft.entity.SleeperPlayerEntity;
 import com.tarkovcraft.entity.TarkovGrenadeEntity;
+import com.tarkovcraft.entity.TarkovScavEntity;
+import com.tarkovcraft.entity.TarkovAiBulletEntity;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityTypeBuilder;
 import net.minecraft.entity.EntityDimensions;
@@ -56,10 +58,24 @@ public final class ModEntities {
 			.build()
 	);
 
+	public static final EntityType<TarkovScavEntity> SCAV = Registry.register(
+		Registries.ENTITY_TYPE, new Identifier(TarkovCraftMod.MOD_ID, "scav"),
+		FabricEntityTypeBuilder.create(SpawnGroup.MONSTER, TarkovScavEntity::new)
+			.dimensions(EntityDimensions.fixed(0.6f, 1.8f)).trackRangeChunks(8).trackedUpdateRate(3)
+			.disableSaving().disableSummon().build());
+
+	public static final EntityType<TarkovAiBulletEntity> AI_BULLET = Registry.register(
+		Registries.ENTITY_TYPE, new Identifier(TarkovCraftMod.MOD_ID, "ai_bullet"),
+		FabricEntityTypeBuilder.<TarkovAiBulletEntity>create(SpawnGroup.MISC, TarkovAiBulletEntity::new)
+			.dimensions(EntityDimensions.fixed(0.05f, 0.05f)).trackRangeBlocks(32).trackedUpdateRate(10)
+			.disableSaving().disableSummon().build());
+
 	private ModEntities() {
 	}
 
 	public static void init() {
 		FabricDefaultAttributeRegistry.register(SLEEPER, LivingEntity.createLivingAttributes());
+		FabricDefaultAttributeRegistry.register(SCAV, TarkovScavEntity.createAttributes());
+		TarkovScavEntity.registerSounds();
 	}
 }

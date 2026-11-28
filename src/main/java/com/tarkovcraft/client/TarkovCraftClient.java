@@ -3,16 +3,18 @@ package com.tarkovcraft.client;
 import com.tarkovcraft.ammo.AmmoReloadTracker;
 import com.tarkovcraft.ammo.AmmoTier;
 import com.tarkovcraft.ammo.TaCZCaliberCatalog;
+import com.tarkovcraft.client.model.GearModel;
 import com.tarkovcraft.client.model.GearPalette;
 import com.tarkovcraft.client.renderer.CorpseEntityRenderer;
 import com.tarkovcraft.client.renderer.HitZoneDebugRenderer;
-import com.tarkovcraft.client.renderer.PlayerGearFeature;
+import com.tarkovcraft.client.renderer.TarkovEquipmentFeatureRenderer;
 import com.tarkovcraft.client.renderer.SleeperPlayerRenderer;
 import com.tarkovcraft.client.screen.AmmoRadialScreen;
 import com.tarkovcraft.client.screen.AdminMenuScreen;
 import com.tarkovcraft.client.screen.RaidScreen;
 import com.tarkovcraft.client.screen.LobbyPlayScreen;
 import com.tarkovcraft.client.screen.LobbyServiceScreen;
+import com.tarkovcraft.client.screen.LobbyLoadoutScreen;
 import com.tarkovcraft.client.screen.LobbyTraderScreen;
 import com.tarkovcraft.client.screen.TarkovInventoryScreen;
 import com.tarkovcraft.client.screen.TarkovWorkbenchScreen;
@@ -43,27 +45,37 @@ import java.util.Locale;
 public class TarkovCraftClient implements ClientModInitializer {
 	public static KeyBinding toggleMeleeKey;
 	public static KeyBinding interactKey;
+	public static KeyBinding extractListKey;
 	public static KeyBinding toggleHitboxesKey;
 	private static KeyBinding ammoRadialKey;
 
 	@Override
 	public void onInitializeClient() {
+		TaCZPositionedSound.register();
 		TarkovNetworking.registerClientReceivers();
+		ClientArenaEditor.register();
 		ClientNetworkSender.registerWorkbenchClientReceiver();
-		PlayerGearFeature.register();
+		GearModel.registerLayers();
+		TarkovEquipmentFeatureRenderer.register();
 		GearPalette.register();
 		HandledScreens.register(ModScreenHandlers.TARKOV_SCREEN_HANDLER, TarkovInventoryScreen::new);
 		HandledScreens.register(ModScreenHandlers.TARKOV_WORKBENCH_SCREEN_HANDLER, TarkovWorkbenchScreen::new);
 		HandledScreens.register(ModScreenHandlers.LOBBY_PLAY_SCREEN_HANDLER, LobbyPlayScreen::new);
 		HandledScreens.register(ModScreenHandlers.LOBBY_TRADER_SCREEN_HANDLER, LobbyTraderScreen::new);
+		HandledScreens.register(ModScreenHandlers.LOBBY_LOADOUT_SCREEN_HANDLER, LobbyLoadoutScreen::new);
 		HandledScreens.register(ModScreenHandlers.LOBBY_SERVICE_SCREEN_HANDLER, LobbyServiceScreen::new);
-		HandledScreens.register(ModScreenHandlers.RAID_SCREEN_HANDLER, RaidScreen::new);
+		HandledScreens.register(ModScreenHandlers.RAID_SCREEN_HANDLER, RaidScreen::create);
 		HandledScreens.register(ModScreenHandlers.ADMIN_MENU_SCREEN_HANDLER, AdminMenuScreen::new);
 		EntityRendererRegistry.register(ModEntities.CORPSE, CorpseEntityRenderer::new);
 		EntityRendererRegistry.register(ModEntities.SLEEPER, SleeperPlayerRenderer::new);
+		EntityRendererRegistry.register(ModEntities.SCAV, com.tarkovcraft.client.renderer.TarkovScavRenderer::new);
+		EntityRendererRegistry.register(ModEntities.AI_BULLET, net.minecraft.client.render.entity.EmptyEntityRenderer::new);
 		EntityRendererRegistry.register(ModEntities.GRENADE, FlyingItemEntityRenderer::new);
 		EntityRendererRegistry.register(ModEntities.AIRDROP, com.tarkovcraft.client.renderer.AirdropEntityRenderer::new);
 		WorldRenderEvents.AFTER_ENTITIES.register(HitZoneDebugRenderer::render);
+		WorldRenderEvents.AFTER_ENTITIES.register(com.tarkovcraft.client.renderer.ArenaPreviewRenderer::render);
+		ClientRaidExtracts.register();
+		WorldRenderEvents.LAST.register(com.tarkovcraft.client.renderer.ArenaPreviewRenderer::renderAim);
 
 		ItemTooltipCallback.EVENT.register((stack, context, lines) -> {
 			if (stack == null || stack.isEmpty()) {
@@ -155,6 +167,10 @@ public class TarkovCraftClient implements ClientModInitializer {
 			"category.tarkovcraft"
 		));
 
+		extractListKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+			"key.tarkovcraft.extract_list", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_O, "category.tarkovcraft"
+		));
+
 		toggleHitboxesKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
 			"key.tarkovcraft.toggle_hitboxes",
 			InputUtil.Type.KEYSYM,
@@ -170,9 +186,7 @@ public class TarkovCraftClient implements ClientModInitializer {
 		));
 
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
-			com.tarkovcraft.compat.voicechat.VoicechatAdapter.updateClientProfile(client.player == null
-				? com.tarkovcraft.audio.HearingProfile.DEFAULT
-				: com.tarkovcraft.audio.HearingProfile.forLoadout(ClientLoadoutCache.getLoadout()));
+			com.tarkovcraft.compat.voicechat.VoicechatAdapter.updateClientProfile(TarkovSoundEngine.profile(client));
 			while (ammoRadialKey.wasPressed()) {
 				if (client.player != null && client.currentScreen == null && client.player.isAlive()
 						&& !client.player.isSpectator() && ClientPlayNetworking.canSend(AmmoSelectionNetworking.SELECT)) {
@@ -195,6 +209,9 @@ public class TarkovCraftClient implements ClientModInitializer {
 				if (client.player != null && client.currentScreen == null) {
 					TarkovNetworking.sendInteract((byte) WorldInteractState.getSelectedAction());
 				}
+			}
+			while (extractListKey.wasPressed()) {
+				if (client.currentScreen == null) ClientRaidExtracts.showList(client);
 			}
 			while (toggleHitboxesKey.wasPressed()) {
 				boolean on = HitZoneDebugRenderer.toggle();

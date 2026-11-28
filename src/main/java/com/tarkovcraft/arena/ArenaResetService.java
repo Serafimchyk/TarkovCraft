@@ -5,6 +5,8 @@ import com.tarkovcraft.container.VanillaContainerBridge;
 import com.tarkovcraft.entity.AirdropEntity;
 import com.tarkovcraft.entity.CorpseEntity;
 import com.tarkovcraft.entity.SleeperPlayerEntity;
+import com.tarkovcraft.entity.TarkovAiBulletEntity;
+import com.tarkovcraft.entity.TarkovScavEntity;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.DoorBlock;
@@ -27,7 +29,7 @@ final class ArenaResetService {
 
 	static boolean isTemporary(Entity entity) {
 		return entity instanceof CorpseEntity || entity instanceof SleeperPlayerEntity || entity instanceof ItemEntity
-			|| entity instanceof AirdropEntity || entity instanceof MobEntity;
+			|| entity instanceof AirdropEntity || entity instanceof TarkovAiBulletEntity || entity instanceof MobEntity;
 	}
 
 	static BlockPos openable(BlockPos pos, BlockState state) {
@@ -71,6 +73,7 @@ final class ArenaResetService {
 		}
 		for (Entity entity : world.iterateEntities()) {
 			if (entity.getUuid().equals(arena.activeBoss)
+				|| entity instanceof TarkovScavEntity bot && arena.contains(bot.home().x, bot.home().z)
 				|| isTemporary(entity) && arena.contains(entity.getX(), entity.getZ())) obsolete.add(entity);
 		}
 		obsolete.forEach(Entity::discard);

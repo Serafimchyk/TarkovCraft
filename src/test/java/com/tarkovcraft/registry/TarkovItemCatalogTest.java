@@ -21,6 +21,7 @@ import com.tarkovcraft.item.TarkovArmorRepairItem;
 import com.tarkovcraft.item.TarkovCaseItem;
 import com.tarkovcraft.item.TarkovFoodItem;
 import com.tarkovcraft.item.TarkovFunctionalItem;
+import com.tarkovcraft.item.TarkovHeadsetItem;
 import com.tarkovcraft.item.TarkovGrenadeItem;
 import com.tarkovcraft.item.TarkovMedicalItem;
 import com.tarkovcraft.item.TarkovMeleeItem;
@@ -376,9 +377,9 @@ class TarkovItemCatalogTest {
 		assertTrue(EquipmentSlotType.MELEE.accepts(meleeStack));
 		assertEquals(melee.getStoredItemSize(), ItemSizeRegistry.getSize(meleeStack));
 
-		TarkovFunctionalItem headset = TarkovItemCatalog.getTacticalItems().stream()
-			.filter(TarkovFunctionalItem.class::isInstance)
-			.map(TarkovFunctionalItem.class::cast)
+		TarkovHeadsetItem headset = TarkovItemCatalog.getTacticalItems().stream()
+			.filter(TarkovHeadsetItem.class::isInstance)
+			.map(TarkovHeadsetItem.class::cast)
 			.findFirst()
 			.orElseThrow();
 		ItemStack hsStack = new ItemStack(headset);

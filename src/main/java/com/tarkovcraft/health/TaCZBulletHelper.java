@@ -1,6 +1,8 @@
 package com.tarkovcraft.health;
 
 import com.tarkovcraft.ammo.AmmoTier;
+import com.tarkovcraft.entity.TarkovAiBulletEntity;
+import com.tarkovcraft.entity.TarkovAiFirearmController;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.damage.DamageSource;
@@ -53,6 +55,7 @@ public final class TaCZBulletHelper {
 		}
 		if (shooter instanceof ServerPlayerEntity player) {
 			MedicalUseManager.interruptForCombat(player);
+			TarkovAiFirearmController.reportNoise(player, 48);
 		}
 	}
 
@@ -71,6 +74,7 @@ public final class TaCZBulletHelper {
 	public static BulletInfo inspectDamageSource(DamageSource source) {
 		Entity direct = source.getSource();
 		Entity attacker = source.getAttacker();
+		if (direct instanceof TarkovAiBulletEntity bullet && bullet.bulletInfo() != null) return bullet.bulletInfo();
 
 		boolean isTacz = isTaczProjectile(direct)
 			|| (source.getName() != null && source.getName().toLowerCase(Locale.ROOT).contains("tacz.bullet"));
@@ -78,11 +82,7 @@ public final class TaCZBulletHelper {
 			AmmoTier loadedTier = direct != null ? PROJECTILE_TIERS.getOrDefault(direct.getId(), AmmoTier.FMJ) : AmmoTier.FMJ;
 			String gunStr = direct != null ? invokeCachedGetter(direct, true) : "";
 			String ammoStr = direct != null ? invokeCachedGetter(direct, false) : "";
-			String cleanGun = prettifyId(gunStr, "Firearm");
-			String cleanAmmo = prettifyId(ammoStr, "Ballistic") + " [" + loadedTier.getBadge() + "]";
-			int pen = computePenetration(ammoStr, loadedTier);
-			return new BulletInfo(true, cleanGun, cleanAmmo, loadedTier, pen,
-				loadedTier.getDamageMultiplier(), loadedTier.getArmorWearMultiplier());
+			return ballisticInfo(gunStr, ammoStr, loadedTier);
 		}
 
 		if (attacker instanceof LivingEntity living) {
@@ -93,6 +93,11 @@ public final class TaCZBulletHelper {
 		}
 
 		return new BulletInfo(false, source.getName(), "", AmmoTier.FMJ, 0, 1.0f, 0.0f);
+	}
+
+	public static BulletInfo ballisticInfo(String gun, String ammo, AmmoTier tier) {
+		return new BulletInfo(true, prettifyId(gun, "Firearm"), prettifyId(ammo, "Ballistic") + " [" + tier.getBadge() + "]",
+			tier, computePenetration(ammo, tier), tier.getDamageMultiplier(), tier.getArmorWearMultiplier());
 	}
 
 	private static BulletGetters resolveGetters(Class<?> bulletClass) {

@@ -94,7 +94,7 @@ abstract class LobbyCommerceScreen<T extends LobbyScreenHandler> extends Handled
 
 	protected int closeAction() { return LobbyTabNavigation.PLAY; }
 
-	private void send(int id) {
+	protected final void send(int id) {
 		if (client.interactionManager != null) client.interactionManager.clickButton(handler.syncId, id);
 	}
 

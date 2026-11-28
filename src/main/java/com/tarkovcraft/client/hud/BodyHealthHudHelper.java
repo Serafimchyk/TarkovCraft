@@ -61,10 +61,10 @@ public final class BodyHealthHudHelper {
 	private BodyHealthHudHelper() {
 	}
 
-	public static void drawCompactTopRight(DrawContext context, TextRenderer textRenderer, PlayerEntity player, int screenW) {
+	public static int drawCompactTopRight(DrawContext context, TextRenderer textRenderer, PlayerEntity player, int screenW) {
 		MinecraftClient mc = MinecraftClient.getInstance();
 		if (mc != null && (mc.currentScreen instanceof TarkovInventoryScreen || mc.currentScreen instanceof TarkovDeathScreen)) {
-			return;
+			return 8;
 		}
 		BodyPartHealth health = ClientLoadoutCache.getBodyHealth();
 
@@ -120,8 +120,9 @@ public final class BodyHealthHudHelper {
 			int eBg = energy <= 15 ? 0xDD6A1414 : (energy <= 30 ? 0xDD4D3C12 : 0xDD14222D);
 			int eBorder = energy <= 15 ? 0xFFFF4444 : (energy <= 30 ? 0xFFE0B23B : 0xFF3E6888);
 			int eText = energy <= 15 ? 0xFFFFCCCC : (energy <= 30 ? 0xFFFFEEAA : 0xFF90CDF4);
-			drawHudBadge(context, textRenderer, x + boxW, py, "E:" + energy, eBg, eBorder, eText);
+			py = drawHudBadge(context, textRenderer, x + boxW, py, "E:" + energy, eBg, eBorder, eText);
 		}
+		return py;
 	}
 
 	private static int drawHudBadge(

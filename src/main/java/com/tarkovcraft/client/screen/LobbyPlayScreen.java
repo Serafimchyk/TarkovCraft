@@ -292,6 +292,8 @@ public final class LobbyPlayScreen extends HandledScreen<LobbyPlayScreenHandler>
 					default -> label("deployment.day", "Day");
 				};
 				targets.add(full(box, 124, label("deployment.time", "Time %s", timeOfDay), NEXT_TIME, canChange, false));
+				targets.add(full(box, 145, label("deployment.scav_bots", "Scav bots %s (%s)", onOff(arena.scavs()),
+					arena.scavCount()), TOGGLE_SCAVS, canChange && arena.scavCount() > 0, false));
 			}
 			Text ready = snapshot.ready() ? label("deployment.cancel", "Cancel")
 				: snapshot.readyCount() == 0 ? label("deployment.deploy", "Deploy") : label("deployment.ready", "Ready");

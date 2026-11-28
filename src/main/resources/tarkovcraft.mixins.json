@@ -10,15 +10,21 @@
     "ServerPlayNetworkHandlerMixin",
     "ArmorItemMixin",
     "BlockStateMixin",
-    "PlayerManagerSoundMixin"
+    "PlayerManagerSoundMixin",
+    "ServerWorldExplosionSoundMixin",
+    "VoicePhysicsRangeMixin",
+    "TaCZSoundMixin",
+    "TaCZAimMixin"
   ],
   "client": [
     "MinecraftClientMixin",
+    "MouseArenaEditorMixin",
     "InGameHudMixin",
     "ItemEntityRendererMixin",
     "KeyBindingMixin",
     "SoundSystemMixin",
-    "VoicePhysicsHudMixin"
+    "VoicePhysicsHudMixin",
+    "TaCZClientAimMixin"
   ],
   "injectors": {
     "defaultRequire": 1

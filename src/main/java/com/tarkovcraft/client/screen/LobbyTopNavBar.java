@@ -25,7 +25,7 @@ public final class LobbyTopNavBar {
 	public enum Tab {
 		PLAY("play", "Play", Action.PLAY, 0),
 		CHARACTER("character", "Character", Action.CHARACTER, 0),
-		LOADOUT("loadout", "Loadout", null, 8),
+		LOADOUT("loadout", "Loadout", Action.LOADOUT, 0),
 		TRADERS("traders", "Traders", Action.TRADERS, 0),
 		WORKBENCH("workbench", "Workbench", Action.WORKBENCH, 0),
 		SERVICE("service", "Service", Action.SERVICE, 0);
@@ -43,7 +43,7 @@ public final class LobbyTopNavBar {
 
 	public enum Action {
 		PLAY(LobbyTabNavigation.PLAY), CHARACTER(LobbyTabNavigation.CHARACTER),
-		TRADERS(LobbyTabNavigation.TRADERS), WORKBENCH(LobbyTabNavigation.WORKBENCH),
+		LOADOUT(LobbyTabNavigation.LOADOUT), TRADERS(LobbyTabNavigation.TRADERS), WORKBENCH(LobbyTabNavigation.WORKBENCH),
 		SERVICE(LobbyTabNavigation.SERVICE), EDITOR(LobbyTabNavigation.EDITOR), SETTINGS(-1), DISCONNECT(-1);
 
 		private final int button;

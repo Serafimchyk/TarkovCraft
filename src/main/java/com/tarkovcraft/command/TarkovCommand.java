@@ -350,7 +350,12 @@ public final class TarkovCommand {
 			return 0;
 		}
 		PlayerLoadout loadout = holder.tarkovcraft$getLoadout();
-		loadout.setEquipment(EquipmentSlotType.HELMET, new ItemStack(ModItems.SSH68_HELMET));
+		ItemStack helmet = new ItemStack(ModItems.SSH68_HELMET);
+		if (loadout.canEquip(EquipmentSlotType.HELMET, helmet)) {
+			loadout.setEquipment(EquipmentSlotType.HELMET, helmet);
+		} else {
+			source.sendFeedback(() -> Text.translatable("message.tarkovcraft.headgear_blocked"), false);
+		}
 		loadout.setEquipment(EquipmentSlotType.FACE_MASK, new ItemStack(ModItems.BALACLAVA_MASK));
 		loadout.setEquipment(EquipmentSlotType.BODY_ARMOR, new ItemStack(ModItems.PACA_ARMOR));
 		loadout.setEquipment(EquipmentSlotType.MELEE, new ItemStack(Items.IRON_SWORD));

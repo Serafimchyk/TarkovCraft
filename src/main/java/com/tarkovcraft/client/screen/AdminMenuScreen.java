@@ -2,16 +2,19 @@ package com.tarkovcraft.client.screen;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.suggestion.Suggestion;
+import com.tarkovcraft.ammo.AmmoTier;
 import com.tarkovcraft.client.screen.AdminCommands.Action;
 import com.tarkovcraft.client.screen.AdminCommands.Group;
 import com.tarkovcraft.client.screen.AdminGear.Card;
 import com.tarkovcraft.client.screen.AdminGear.Category;
+import com.tarkovcraft.client.screen.AdminGear.Section;
 import com.tarkovcraft.client.screen.AdminParameters.NumberControl;
 import com.tarkovcraft.client.screen.AdminUi.Rect;
 import com.tarkovcraft.client.screen.TarkovDropdownWidget.Option;
 import com.tarkovcraft.item.AdminItemCatalog;
 import com.tarkovcraft.loot.TarkovLootPool;
 import com.tarkovcraft.network.AdminItemNetworking;
+import com.tarkovcraft.network.ArenaAdminPackets;
 import com.tarkovcraft.screen.AdminMenuScreenHandler;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -44,8 +47,10 @@ public final class AdminMenuScreen extends HandledScreen<AdminMenuScreenHandler>
 	private static final List<Integer> AMOUNTS = List.of(1, 5, 16, 30);
 	private static final int ACTION_HEIGHT = 71;
 	private static final int ITEM_HEIGHT = 88;
+	private static final int CALIBER_HEADER_HEIGHT = 17;
 
 	private final List<Click> clicks = new ArrayList<>();
+	private final ArenaInspectorPanel inspector = new ArenaInspectorPanel(this);
 	private final Map<AdminItemCatalog.Entry, Integer> amounts = new HashMap<>();
 	private final Map<String, String> values = new LinkedHashMap<>();
 	private final Map<String, List<Option>> choices = new HashMap<>();
@@ -53,6 +58,7 @@ public final class AdminMenuScreen extends HandledScreen<AdminMenuScreenHandler>
 	private List<Action> filteredActions = List.of();
 	private List<Card> gear;
 	private List<Card> filteredGear = List.of();
+	private List<Section> gearSections = List.of();
 	private List<Option> arenas = List.of();
 	private CommandDispatcher<CommandSource> dispatcher;
 	private Group group = Group.ALL;
@@ -65,7 +71,7 @@ public final class AdminMenuScreen extends HandledScreen<AdminMenuScreenHandler>
 	private Rect closeBox;
 	private Rect grid;
 	private Rect modalFields;
-	private Rect clickClip;
+	Rect clickClip;
 	private String query = "";
 	private String draftArenaId = "";
 	private String feedback = "";
@@ -98,8 +104,10 @@ public final class AdminMenuScreen extends HandledScreen<AdminMenuScreenHandler>
 		search.setChangedListener(value -> {
 			query = value;
 			filter();
+			inspector.resetSearchScroll();
 		});
 		dropdown = null;
+		inspector.closeCreate();
 		loadCommands();
 	}
 
@@ -137,6 +145,7 @@ public final class AdminMenuScreen extends HandledScreen<AdminMenuScreenHandler>
 			if (gear == null) gear = AdminGear.cards();
 			String[] terms = AdminCommands.searchable(query).split("\\s+");
 			filteredGear = gear.stream().filter(card -> card.matches(category, terms)).toList();
+			gearSections = AdminGear.sections(filteredGear);
 		} else {
 			filteredActions = actions.stream().filter(action -> (group == Group.ALL || action.group() == group)
 				&& action.matches(query)).toList();
@@ -154,6 +163,7 @@ public final class AdminMenuScreen extends HandledScreen<AdminMenuScreenHandler>
 		int bottom = tabs(ctx, List.of(Group.values()), group, value -> value.title, value -> {
 			group = value;
 			filter();
+			if (group == Group.ARENA) inspector.refresh();
 		}, 56);
 		if (group == Group.GEAR) {
 			bottom = tabs(ctx, List.of(false, true), issuing, value -> value ? "Выдать предметы" : "Наборы и киты", value -> {
@@ -166,16 +176,29 @@ public final class AdminMenuScreen extends HandledScreen<AdminMenuScreenHandler>
 				filter();
 			}, bottom + 3);
 		}
-		drawGrid(ctx, bottom + 7);
+		if (group == Group.ARENA) {
+			int top = bottom + 7;
+			inspector.draw(ctx, new Rect(MARGIN, top, width - MARGIN * 2, Math.max(1, height - top - 19)), query, mouseX, mouseY);
+		} else drawGrid(ctx, bottom + 7);
 		String footer = hoveredItem.isBlank() ? feedback : hoveredItem;
 		label(ctx, footer, MARGIN, height - 13, width - MARGIN * 2 - 55, MUTED);
 		String total = Integer.toString(itemMode() ? filteredGear.size() : filteredActions.size());
-		label(ctx, total, width - MARGIN - textRenderer.getWidth(total), height - 13, 50, MUTED);
+		if (group != Group.ARENA) label(ctx, total, width - MARGIN - textRenderer.getWidth(total), height - 13, 50, MUTED);
 		if (modal != null) {
 			clicks.clear();
 			drawModal(ctx);
 		}
 		if (dropdown != null) dropdown.render(ctx, mouseX, mouseY, delta);
+		if (group == Group.ARENA && inspector.creating()) {
+			clicks.clear();
+			inspector.drawCreate(ctx, mouseX, mouseY, delta);
+		}
+	}
+
+	public void receiveArenaSnapshot(ArenaAdminPackets.SnapshotPart part, ArenaAdminPackets.Details details,
+		List<ArenaAdminPackets.Point> points, String message) {
+		if (part == ArenaAdminPackets.SnapshotPart.MESSAGE) feedback = message;
+		else inspector.receive(part, details, points);
 	}
 
 	private void drawHeader(DrawContext ctx, float delta) {
@@ -223,36 +246,61 @@ public final class AdminMenuScreen extends HandledScreen<AdminMenuScreenHandler>
 		int total = itemMode() ? filteredGear.size() : filteredActions.size();
 		if (total == 0) {
 			gridMaxScroll = 0;
-			center(ctx, textRenderer, actions.isEmpty() ? "Сервер не предоставил команды TarkovCraft." : "Ничего не найдено",
+			center(ctx, textRenderer, !itemMode() && actions.isEmpty() ? "Сервер не предоставил команды TarkovCraft." : "Ничего не найдено",
 				new Rect(grid.x(), grid.y(), grid.w(), Math.min(30, grid.h())), MUTED);
 			return;
 		}
 		int columns = itemMode() ? MathHelper.clamp((grid.w() + GAP) / 89, 1, 5) : grid.w() < 520 ? 2 : 3;
 		int rowHeight = (itemMode() ? ITEM_HEIGHT : ACTION_HEIGHT) + GAP;
 		int cardWidth = (grid.w() - 6 - GAP * (columns - 1)) / columns;
-		int rows = (total + columns - 1) / columns;
-		gridMaxScroll = Math.max(0, rows * rowHeight - GAP - grid.h());
+		int contentHeight = itemMode() ? gearSections.stream().mapToInt(section ->
+			(section.title().isEmpty() ? 0 : CALIBER_HEADER_HEIGHT) + rowCount(section.cards().size(), columns) * rowHeight).sum()
+			: rowCount(total, columns) * rowHeight;
+		gridMaxScroll = Math.max(0, contentHeight - GAP - grid.h());
 		gridScroll = MathHelper.clamp(gridScroll, 0, gridMaxScroll);
 		ctx.enableScissor(grid.x(), grid.y(), grid.right(), grid.bottom());
 		clickClip = grid;
-		int first = gridScroll / rowHeight;
-		int last = Math.min(rows, (gridScroll + grid.h() + rowHeight - 1) / rowHeight);
-		for (int row = first; row < last; row++) {
-			for (int column = 0; column < columns; column++) {
-				int index = row * columns + column;
-				if (index >= total) break;
-				Rect card = new Rect(grid.x() + column * (cardWidth + GAP), grid.y() + row * rowHeight - gridScroll,
-					cardWidth, rowHeight - GAP);
-				boolean hover = grid.contains(mouseX, mouseY) && card.contains(mouseX, mouseY);
-				fillRoundedRect(ctx, card, 6, hover ? HOVER : PANEL);
-				drawRoundedBorder(ctx, card, 6, BORDER);
-				if (itemMode()) drawItemCard(ctx, card, filteredGear.get(index), hover);
-				else drawActionCard(ctx, card, filteredActions.get(index));
+		int y = grid.y() - gridScroll;
+		if (itemMode()) {
+			for (Section section : gearSections) {
+				if (y >= grid.bottom()) break;
+				if (!section.title().isEmpty()) {
+					if (y + CALIBER_HEADER_HEIGHT > grid.y()) {
+						label(ctx, section.title(), grid.x() + 5, y + 3, grid.w() - 12, AMBER);
+					}
+					y += CALIBER_HEADER_HEIGHT;
+				}
+				drawGridRows(ctx, y, columns, rowHeight, cardWidth, section.cards().size(), section.cards());
+				y += rowCount(section.cards().size(), columns) * rowHeight;
 			}
+		} else {
+			drawGridRows(ctx, y, columns, rowHeight, cardWidth, total, List.of());
 		}
 		clickClip = null;
 		ctx.disableScissor();
 		scrollbar(ctx, grid, gridScroll, gridMaxScroll);
+	}
+
+	private static int rowCount(int total, int columns) {
+		return (total + columns - 1) / columns;
+	}
+
+	private void drawGridRows(DrawContext ctx, int y, int columns, int rowHeight, int cardWidth, int total, List<Card> items) {
+		int first = Math.max(0, (grid.y() - y) / rowHeight);
+		int last = Math.min(rowCount(total, columns), (grid.bottom() - y + rowHeight - 1) / rowHeight);
+		for (int row = first; row < last; row++) {
+			for (int column = 0; column < columns; column++) {
+				int index = row * columns + column;
+				if (index >= total) break;
+				Rect card = new Rect(grid.x() + column * (cardWidth + GAP), y + row * rowHeight,
+					cardWidth, rowHeight - GAP);
+				boolean hover = grid.contains(mouseX, mouseY) && card.contains(mouseX, mouseY);
+				fillRoundedRect(ctx, card, 6, hover ? HOVER : PANEL);
+				drawRoundedBorder(ctx, card, 6, BORDER);
+				if (!items.isEmpty()) drawItemCard(ctx, card, items.get(index), hover);
+				else drawActionCard(ctx, card, filteredActions.get(index));
+			}
+		}
 	}
 
 	private void drawActionCard(DrawContext ctx, Rect card, Action action) {
@@ -276,7 +324,7 @@ public final class AdminMenuScreen extends HandledScreen<AdminMenuScreenHandler>
 		fillRoundedRect(ctx, badge, 4, ACTIVE);
 		center(ctx, textRenderer, card.badge(), badge, TEAL);
 		label(ctx, card.title(), rect.x() + 6, rect.y() + 30, rect.w() - 12, INK);
-		if (hovered) hoveredItem = card.title();
+		if (hovered) hoveredItem = card.category() == Category.AMMO ? card.title() + " · " + card.badge() : card.title();
 		int w = (rect.w() - 13) / AMOUNTS.size();
 		int count = amounts.getOrDefault(card.entry(), 1);
 		for (int i = 0; i < AMOUNTS.size(); i++) {
@@ -305,6 +353,7 @@ public final class AdminMenuScreen extends HandledScreen<AdminMenuScreenHandler>
 		buf.writeString(card.entry().variant() == null ? "" : card.entry().variant().toString());
 		buf.writeByte(count);
 		buf.writeBoolean(equip);
+		if (card.entry().tier() != AmmoTier.FMJ) buf.writeString(card.entry().tier().getId());
 		ClientPlayNetworking.send(AdminItemNetworking.C2S_ADMIN_GIVE_ITEM, buf);
 		feedback = "Запрос отправлен · " + card.title() + " ×" + count;
 	}
@@ -512,7 +561,7 @@ public final class AdminMenuScreen extends HandledScreen<AdminMenuScreenHandler>
 		keyboardFocus = -1;
 	}
 
-	private void scrollbar(DrawContext ctx, Rect area, int scroll, int max) {
+	void scrollbar(DrawContext ctx, Rect area, int scroll, int max) {
 		if (max <= 0) return;
 		fillRoundedRect(ctx, new Rect(area.right() - 3, area.y(), 3, area.h()), 2, BORDER);
 		int size = Math.min(area.h(), Math.max(8, area.h() * area.h() / (area.h() + max)));
@@ -520,11 +569,11 @@ public final class AdminMenuScreen extends HandledScreen<AdminMenuScreenHandler>
 		fillRoundedRect(ctx, new Rect(area.right() - 3, y, 3, size), 2, AMBER);
 	}
 
-	private void label(DrawContext ctx, String text, int x, int y, int max, int color) {
+	void label(DrawContext ctx, String text, int x, int y, int max, int color) {
 		ctx.drawText(textRenderer, trim(textRenderer, text, max), x, y, color, false);
 	}
 
-	private void control(DrawContext ctx, Rect rect, String label, boolean selected, boolean accent, Runnable action) {
+	void control(DrawContext ctx, Rect rect, String label, boolean selected, boolean accent, Runnable action) {
 		boolean visible = clickClip == null || rect.bottom() > clickClip.y() && rect.y() < clickClip.bottom();
 		boolean focused = action != null && visible && clicks.size() == keyboardFocus;
 		boolean hover = focused || rect.contains(mouseX, mouseY) && (clickClip == null || clickClip.contains(mouseX, mouseY));
@@ -544,7 +593,8 @@ public final class AdminMenuScreen extends HandledScreen<AdminMenuScreenHandler>
 		}
 		if (button != 0) return false;
 		keyboardFocus = -1;
-		if (modal == null && searchBox.contains(x, y)) {
+		if (inspector.clickCreate(x, y)) return true;
+		if (modal == null && !inspector.creating() && searchBox.contains(x, y)) {
 			setFocused(search);
 			search.onClick(x, y);
 			return true;
@@ -569,6 +619,8 @@ public final class AdminMenuScreen extends HandledScreen<AdminMenuScreenHandler>
 			dropdown.scroll(amount);
 		} else if (modal != null && modalFields != null && modalFields.contains(x, y)) {
 			modalScroll = MathHelper.clamp(modalScroll + change, 0, modalMaxScroll);
+		} else if (group == Group.ARENA) {
+			return inspector.scroll(x, y, change);
 		} else if (modal == null && grid != null && grid.contains(x, y)) {
 			gridScroll = MathHelper.clamp(gridScroll + change, 0, gridMaxScroll);
 		}
@@ -577,6 +629,7 @@ public final class AdminMenuScreen extends HandledScreen<AdminMenuScreenHandler>
 
 	@Override
 	public boolean keyPressed(int key, int scanCode, int modifiers) {
+		if (inspector.creating()) return inspector.keyCreate(key, scanCode, modifiers);
 		if (key == GLFW.GLFW_KEY_ESCAPE) {
 			if (dropdown != null) dropdown = null;
 			else if (modal != null) dismiss();
@@ -616,6 +669,7 @@ public final class AdminMenuScreen extends HandledScreen<AdminMenuScreenHandler>
 
 	@Override
 	public boolean charTyped(char chr, int modifiers) {
+		if (inspector.creating()) return inspector.typeCreate(chr, modifiers);
 		if (dropdown != null) return dropdown.charTyped(chr, modifiers);
 		return modal == null && getFocused() == search && search.charTyped(chr, modifiers);
 	}

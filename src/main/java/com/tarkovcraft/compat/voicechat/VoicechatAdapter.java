@@ -24,10 +24,29 @@ public final class VoicechatAdapter implements LanguageAdapter {
 	private static final Map<UUID, HearingProfile> SERVER_PROFILES = new ConcurrentHashMap<>();
 	private static final Map<UUID, Float> FILTER_STATE = new ConcurrentHashMap<>();
 	private static volatile HearingProfile clientProfile = HearingProfile.DEFAULT;
+	private static final ClassValue<Method> VOICE_PHYSICS_PLAYER_ID = new ClassValue<>() {
+		@Override
+		protected Method computeValue(Class<?> type) {
+			try {
+				return type.getMethod("id");
+			} catch (NoSuchMethodException exception) {
+				throw new IllegalStateException("Voice Physics listener API has changed", exception);
+			}
+		}
+	};
 
 	public static void updateServerProfile(UUID player, HearingProfile profile) {
-		if (FabricLoader.getInstance().isModLoaded(SIMPLE_VOICE_CHAT)
-			&& !FabricLoader.getInstance().isModLoaded(VOICE_PHYSICS)) SERVER_PROFILES.put(player, profile);
+		if (FabricLoader.getInstance().isModLoaded(SIMPLE_VOICE_CHAT)) SERVER_PROFILES.put(player, profile);
+	}
+
+	public static float voicePhysicsRange(Object listener) {
+		if (listener == null) return 1.0f;
+		try {
+			UUID id = (UUID) VOICE_PHYSICS_PLAYER_ID.get(listener.getClass()).invoke(listener);
+			return SERVER_PROFILES.getOrDefault(id, HearingProfile.DEFAULT).range();
+		} catch (ReflectiveOperationException | IllegalStateException exception) {
+			return 1.0f;
+		}
 	}
 
 	public static void removePlayer(UUID player) {
@@ -64,19 +83,20 @@ public final class VoicechatAdapter implements LanguageAdapter {
 
 	private static void registerEvents(Object registration) throws ReflectiveOperationException {
 		Method register = api("events.EventRegistration").getMethod("registerEvent", Class.class, Consumer.class, int.class);
-		// Voice Physics owns proximity routing when installed. Both plugins can still process client PCM.
-		if (!FabricLoader.getInstance().isModLoaded(VOICE_PHYSICS)) {
-			registerRangeEvents(register, registration);
-		}
+		registerRangeEvents(register, registration, FabricLoader.getInstance().isModLoaded(VOICE_PHYSICS));
 		if (FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT) {
 			registerClientEvents(register, registration);
 		}
 	}
 
-	private static void registerRangeEvents(Method register, Object registration) throws ReflectiveOperationException {
+	private static void registerRangeEvents(Method register, Object registration, boolean voicePhysics) throws ReflectiveOperationException {
 		Class<?> distanceEvent = api("events.VoiceDistanceEvent");
 		Method getDistance = distanceEvent.getMethod("getDistance");
 		Method setDistance = distanceEvent.getMethod("setDistance", float.class);
+		register.invoke(registration, distanceEvent, guarded(event ->
+			setDistance.invoke(event, (float) getDistance.invoke(event) * HearingProfile.ACTIVE_RANGE)), -1000);
+		// Voice Physics adjusts its own per-listener packet in ServerRange.
+		if (voicePhysics) return;
 		Class<?> soundEvent = api("events.EntitySoundPacketEvent");
 		Method source = soundEvent.getMethod("getSource");
 		Method receiver = soundEvent.getMethod("getReceiverConnection");
@@ -93,8 +113,6 @@ public final class VoicechatAdapter implements LanguageAdapter {
 		Method builderDistance = builderType.getMethod("distance", float.class);
 		Method build = builderType.getMethod("build");
 		Method send = api("VoicechatServerApi").getMethod("sendEntitySoundPacketTo", connection, entityPacket);
-		register.invoke(registration, distanceEvent, guarded(event ->
-			setDistance.invoke(event, (float) getDistance.invoke(event) * HearingProfile.ACTIVE_RANGE)), -1000);
 		register.invoke(registration, soundEvent, guarded(event -> {
 			if (!"proximity".equals(source.invoke(event))) return;
 			Object target = receiver.invoke(event);
@@ -141,7 +159,7 @@ public final class VoicechatAdapter implements LanguageAdapter {
 			if (profile.muffled() && id != null) FILTER_STATE.put(id, previous);
 			write.invoke(event, (Object) output);
 		});
-		for (String subtype : new String[]{"EntitySound", "LocationalSound", "StaticSound"}) {
+		for (String subtype : new String[]{"EntitySound", "LocationalSound"}) {
 			register.invoke(registration, api("events.ClientReceiveSoundEvent$" + subtype), process, -1000);
 		}
 		Class<?> icon = api("events.NameTagIconRenderEvent");

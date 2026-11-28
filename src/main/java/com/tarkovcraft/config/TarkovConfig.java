@@ -26,6 +26,7 @@ public final class TarkovConfig {
 	public int airdropMaxRadius = 120;
 	public int airdropSmokeSeconds = 180;
 	public boolean airdropAnnounceCoords = true;
+	public boolean showExtractDirections = true;
 	public boolean worldgenStructuresEnabled = true;
 	public float lootDensityMultiplier = 1.0f;
 	public float mobGearSpawnChance = 0.08f;
